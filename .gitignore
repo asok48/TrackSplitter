@@ -1,0 +1,14 @@
+# Python environment and caches (each computer builds its own with start.sh / start.bat)
+.venv/
+__pycache__/
+*.pyc
+# Created when the app runs
+track-splitter.log
+output/
+# The email-sized copy of the app
+track-splitter.zip
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
