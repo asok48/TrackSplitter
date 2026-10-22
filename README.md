@@ -1,4 +1,9 @@
 # TrackSplitter
 Track Splitter for separating audio tracks from recordings
 
-Run "sh shell.sh" in root directory to start. After starting, a shortcut can be added.
+ How To Run:
+ * In root directory *
+ MacOS: "sh shell.sh"
+ Windows: "start.bat"
+
+After starting, a shortcut can be added.
