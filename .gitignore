@@ -2,11 +2,15 @@
 .venv/
 __pycache__/
 *.pyc
+
 # Created when the app runs
 track-splitter.log
 output/
-# The email-sized copy of the app
+
+# The email-sized copy of the app, and its renamed launcher (email filters block .bat)
 track-splitter.zip
+start.bat.txt
+
 # OS and editor clutter
 .DS_Store
 Thumbs.db
