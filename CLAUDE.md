@@ -42,11 +42,15 @@ Primary user runs it on a MacBook Pro (M4); it was developed and tested on Windo
   chunking (409600 samples, 8 passes, Hamming). The user asked to keep both models
   available, hence the HQ switch.
 - Lead / rhythm guitar (`center_of()`): no model separates them locally (MVSep and
-  Moises do, but in the cloud). The guitar stem is split by stereo position: per
-  time-frequency slice, sound identical in both channels = center (lead), the rest =
-  sides (rhythm). Works on studio mixes with double-tracked, hard-panned rhythm
-  guitars ("Getting Along": ~36% of the guitar in the center); poor on live/mono
-  mixes. Picking both parts is the same as All guitar (server and UI collapse it).
+  Moises do, but in the cloud). The guitar stem is split by stereo position: the
+  power both channels share (Re of L·R*, averaged over 3 STFT frames, so separate
+  takes cancel out) is the center's; each slice keeps that fraction (^1.5) as center
+  (lead), the rest is sides (rhythm). The first version compared loudness only and
+  counted equally loud doubled rhythm takes as lead; the user heard the bleed. On a
+  test mix with known parts (center vocal + two different guitar takes panned L/R)
+  bleed went -7.3 -> -10.0 dB; ~-10 dB is about the ceiling for this trick (window
+  sizes and smoothing were tuned). "Getting Along": 15% of the guitar counted as lead
+  (34% before). Poor on live/mono mixes. Picking both parts = All guitar.
 - `htdemucs_ft` is a bag of 4 per-stem specialists. `stem_model()` runs only the
   specialist(s) needed: identical output to the full bag, ~4x faster. (Outputs differ
   slightly run to run only because of Demucs' random time shift, `shifts=1`.)
@@ -70,7 +74,9 @@ Lives in `~/Music/Track Splitter/`, outside the project, so app updates never to
   <Song> (no bass).mp3         one pair of files per version
   <Song> (bass only).mp3
   <Song> [HQ] (no drums & vocals).mp3 / ... (drums & vocals only).mp3
-  .song.json                   {"sha1", "source", "added"}: sha1 of the original spots repeat uploads
+  .song.json                   {"sha1", "source", "added", "versions"}: sha1 of the original spots
+                               repeat uploads; versions = {" [HQ] (no bass)": {"level": 30}}, keyed by
+                               name minus the song title (survives renames), for one-click Redo
 ```
 
 - Ids: artist = `Artist`, song = `Artist/Song`, version = `Artist/Song/<Song> (no X)`.
@@ -116,8 +122,12 @@ Keychain), which fixed a certificate error on the Mac; certificate checking stay
   song row on an artist to move it), device label, Open library folder, Create app
   shortcut, Quit.
 - Main: searchable song list; each row shows version chips (click to play) and
-  "+ Version"; row ... menu: New version, Edit song (rename, change artist, delete
-  versions), Delete song.
+  "+ Version"; row ... menu: New version, Edit song & versions (rename, change artist,
+  delete versions), Delete song. Hovering a chip widens it and shows ↻ Redo (remakes
+  it right away with its own instruments/HQ from the name and level from .song.json,
+  via `POST /api/version/redo`; versions made before levels were recorded redo at 0%)
+  and 🗑 (to the Trash, no confirmation). Right-click a chip: Play, Redo, Redo with
+  different settings… (the dialog prefilled from the version), Delete.
 - Player bar: Web Audio, not `<audio>` elements. Both files (without + only) are
   fetched and decoded into memory, then started on the same `AudioContext` clock so
   they stay sample-exact; the Without / Original / Only switch fades two gain nodes.

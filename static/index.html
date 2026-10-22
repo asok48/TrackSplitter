@@ -162,6 +162,19 @@
   .vchip .hq { padding: 0 4px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-hover); font-size: 10px; letter-spacing: .04em; }
   .vchip.active .hq { background: rgba(255, 255, 255, .22); color: white; }
   .vchip.add { border-style: dashed; }
+  .vchip-wrap { position: relative; display: inline-flex; }
+  .vchip-actions {
+    position: absolute; top: 3px; bottom: 3px; right: 3px; display: none; align-items: center; gap: 1px;
+    padding: 0 2px; border-radius: 999px; background: var(--panel-2);
+  }
+  .vchip-wrap:hover .vchip-actions, .vchip-wrap:focus-within .vchip-actions { display: flex; }
+  /* Widen the chip to make room, so the buttons never cover its label. */
+  .vchip-wrap:hover .vchip, .vchip-wrap:focus-within .vchip { padding-right: calc(10px + var(--acts) * 23px); }
+  .vchip-wrap.active .vchip-actions { background: var(--accent); }
+  .vact { display: grid; place-items: center; width: 22px; height: 100%; padding: 0; border: none; border-radius: 999px; background: none; color: var(--muted); }
+  .vact:hover { background: var(--hover); color: var(--text); }
+  .vchip-wrap.active .vact { color: rgba(255, 255, 255, .8); }
+  .vchip-wrap.active .vact:hover { background: rgba(255, 255, 255, .2); color: white; }
   .no-versions { color: var(--faint); font-size: 13px; }
   .song-row .date { color: var(--muted); font-size: 13px; }
   .song-row .more { opacity: 0; }
@@ -584,6 +597,9 @@
     edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
     layers: svg('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>'),
     trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'),
+    trashSm: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>', 13),
+    redo: svg('<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>'),
+    redoSm: svg('<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>', 13),
     folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   };
 
@@ -746,7 +762,20 @@
         const chip = el('button', { className: `vchip${active ? ' active' : ''}`, title: `Play “${song.title}” without ${v.removed}` }, versionLabel(v));
         if (v.hq) chip.append(el('span', { className: 'hq', textContent: 'HQ' }));
         chip.addEventListener('click', (e) => { e.stopPropagation(); active ? togglePlay() : loadVersion(song, v, true); });
-        chips.append(chip);
+        // Redo / delete buttons that show on the chip's right end while hovering it.
+        const actions = el('span', { className: 'vchip-actions' });
+        const action = (icon, title, fn) => {
+          const b = el('button', { type: 'button', className: 'vact', title, ariaLabel: title });
+          b.innerHTML = icon;
+          b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+          actions.append(b);
+        };
+        if (song.has_original) action(icons.redoSm, `Redo the “${versionLabel(v)}” version with the same settings`, () => redoVersion(song, v));
+        action(icons.trashSm, `Move the “${versionLabel(v)}”${v.hq ? ' HQ' : ''} version to the Trash`, () => deleteVersion(v));
+        const wrap = el('span', { className: `vchip-wrap${active ? ' active' : ''}` }, chip, actions);
+        wrap.style.setProperty('--acts', actions.children.length);
+        wrap.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openMenu(chip, versionMenu(song, v)); });
+        chips.append(wrap);
       }
       if (song.has_original) {
         const add = el('button', { className: 'vchip add', title: 'Make another version from the saved original' });
@@ -992,10 +1021,42 @@
 
   const songMenu = (song) => [
     { label: song.has_original ? 'New version…' : 'New version… (no saved original)', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song) },
-    { label: 'Edit song…', icon: icons.edit, action: () => openEdit(song) },
+    { label: 'Edit song & versions…', icon: icons.edit, action: () => openEdit(song) },
     '-',
     { label: 'Delete song', icon: icons.trash, danger: true, action: () => deleteSong(song) },
   ];
+  const versionMenu = (song, v) => [
+    { label: 'Play', icon: icons.music, action: () => loadVersion(song, v, true) },
+    { label: song.has_original ? 'Redo' : 'Redo (no saved original)', icon: icons.redo, disabled: !song.has_original, action: () => redoVersion(song, v) },
+    { label: 'Redo with different settings…', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song, v) },
+    '-',
+    { label: `Delete this version (${versionLabel(v)}${v.hq ? ', HQ' : ''})`, icon: icons.trash, danger: true, action: () => deleteVersion(v) },
+  ];
+
+  // Redo: make the version again with its own settings (the server knows them), replacing its files.
+  async function redoVersion(song, v) {
+    if (busy()) { toast('Wait for the current processing to finish, or stop it first.'); return; }
+    state.job = { status: 'queued', total: 1, index: 0, song: song.title, fraction: 0 };
+    renderJob(); updateUploadButton();
+    try {
+      const { job } = await postJSON('/api/version/redo', { id: v.id });
+      pollJob(job, [], true);
+    } catch (err) {
+      state.job = null; renderJob(); updateUploadButton();
+      toast(err.message, 'error');
+    }
+  }
+
+  // Versions go to the Trash (recoverable), so no confirmation, same as in Edit song.
+  async function deleteVersion(v) {
+    try {
+      if (state.current?.version.id === v.id) clearPlayer();
+      await postJSON('/api/version/delete', { id: v.id });
+      toast(`Moved the “no ${v.removed}”${v.hq ? ' HQ' : ''} version to the Trash.`);
+      await refreshLibrary();
+      return true;
+    } catch (err) { toast(err.message, 'error'); return false; }
+  }
   const artistMenu = (name) => [
     { label: 'Rename artist…', icon: icons.edit, action: () => renameArtist(name) },
     '-',
@@ -1132,14 +1193,9 @@
       const del = el('button', { type: 'button', className: 'icon-btn sm', title: 'Move this version to the Trash', ariaLabel: `Delete version without ${v.removed}` });
       del.innerHTML = icons.trash;
       del.addEventListener('click', async () => {
-        try {
-          if (state.current?.version.id === v.id) clearPlayer();
-          await postJSON('/api/version/delete', { id: v.id });
-          toast(`Moved the “no ${v.removed}” version to the Trash.`);
-          await refreshLibrary();
-          editing = state.library.songs.find((s) => s.id === song.id) || { ...song, versions: song.versions.filter((x) => x.id !== v.id) };
-          renderEditVersions();
-        } catch (err) { toast(err.message, 'error'); }
+        if (!(await deleteVersion(v))) return;
+        editing = state.library.songs.find((s) => s.id === song.id) || { ...song, versions: song.versions.filter((x) => x.id !== v.id) };
+        renderEditVersions();
       });
       return el('div', { className: 'version-item' },
         el('span', { className: 'name', textContent: versionLabel(v) + (v.hq ? ' · HQ' : '') }),
@@ -1272,16 +1328,28 @@
     $('#upload-submit').disabled = !ok;
   }
 
-  function openUpload(song = null) {
+  // song: make a new version of it. redo: one of its versions, to make again starting from
+  // its own settings (for the one-click redo with no dialog, see redoVersion).
+  function openUpload(song = null, redo = null) {
     if (busy() && dlg.open) return;
     const versionMode = !!song;
     state.upload.mode = versionMode ? 'version' : 'new';
     state.upload.song = song;
-    $('#upload-title').textContent = versionMode ? `New version of “${song.title}”` : 'Add songs';
+    state.upload.redo = !!redo;
+    if (redo) {
+      state.settings.instruments = redo.removed.split(/, | & /);
+      state.settings.hq = redo.hq;
+      state.settings.level = redo.level ?? 0;
+      saveSettings();
+    }
+    $('#upload-title').textContent = redo ? `Redo “${versionLabel(redo)}” of “${song.title}”`
+      : versionMode ? `New version of “${song.title}”` : 'Add songs';
     $('#files-field').classList.toggle('hidden', versionMode);
     $('#version-intro').classList.toggle('hidden', !versionMode);
-    $('#version-intro').textContent = versionMode ? `Made from the saved original by ${song.artist}. Pick what to take out this time.` : '';
-    $('#upload-submit').textContent = versionMode ? 'Create version' : 'Upload';
+    $('#version-intro').textContent = redo
+      ? 'Makes this version again from the saved original and replaces its files. Change the settings to make a different version instead.'
+      : versionMode ? `Made from the saved original by ${song.artist}. Pick what to take out this time.` : '';
+    $('#upload-submit').textContent = redo ? 'Redo version' : versionMode ? 'Create version' : 'Upload';
     $('#level-input').value = state.settings.level;
     $('#level-out').textContent = `${state.settings.level}%`;
     setFill($('#level-input'));
@@ -1330,7 +1398,7 @@
       const { job } = await postJSON('/api/process', {
         items, instruments: state.settings.instruments, level: state.settings.level, hq: state.settings.hq,
       });
-      pollJob(job, submitted);
+      pollJob(job, submitted, state.upload.redo);
     } catch (err) {
       state.job = null;
       renderJob(); updateUploadButton();
@@ -1372,7 +1440,7 @@
     catch (err) { toast(err.message, 'error'); }
   }));
 
-  async function pollJob(jobId, submitted) {
+  async function pollJob(jobId, submitted, redo = false) {
     state.jobId = jobId;
     try {
       state.job = await api(`/api/jobs/${jobId}`);
@@ -1382,7 +1450,7 @@
       return;
     }
     renderJob();
-    if (state.job.status !== 'done') { setTimeout(() => pollJob(jobId, submitted), 600); return; }
+    if (state.job.status !== 'done') { setTimeout(() => pollJob(jobId, submitted, redo), 600); return; }
 
     const { done, failed, finished, stopped } = state.job;
     state.job = null;
@@ -1396,7 +1464,7 @@
       state.upload.items = state.upload.items.filter((i) => !gone.includes(i));
       renderUploadItems();
       if (dlg.open && !state.upload.items.length) dlg.close();
-      toast(done.length === 1 ? 'Added to your library.' : `${done.length} versions added to your library.`);
+      toast(redo ? 'Version redone.' : done.length === 1 ? 'Added to your library.' : `${done.length} versions added to your library.`);
       await refreshLibrary();
       const newest = findVersion(done[done.length - 1]);
       if (newest) {
