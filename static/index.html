@@ -277,6 +277,9 @@
   .dlg-progress .top { display: flex; justify-content: space-between; gap: 10px; }
   .dlg-progress .top span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .dlg-progress .top span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .dlg-progress .step-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .dlg-progress .step { min-width: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .btn.sm { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 13px; flex-shrink: 0; }
   .error-box { padding: 10px 12px; border-radius: 10px; background: rgba(240, 82, 82, .12); border: 1px solid rgba(240, 82, 82, .4); color: #fca5a5; }
   .version-list { display: flex; flex-direction: column; gap: 6px; }
   .version-item { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: 8px; background: var(--panel-2); }
@@ -395,6 +398,7 @@
     <div class="job-banner hidden" id="job-banner">
       <div class="text"><div id="banner-title"></div><div id="banner-sub"></div></div>
       <div class="progress"><div id="banner-bar"></div></div>
+      <button type="button" class="btn sm danger stop-job">Stop</button>
     </div>
     <div class="songs" id="songs"></div>
   </main>
@@ -464,7 +468,7 @@
       <div class="field">
         <div class="label">Remove</div>
         <div class="toggle-chips" id="instrument-chips"></div>
-        <div class="hint">Guitar and piano are separated less precisely than bass, drums and vocals.</div>
+        <div class="hint">Guitar and piano are separated less precisely than bass, drums and vocals; High quality helps a lot. Lead/rhythm is split by where the guitars sit in the stereo mix, so it works best on studio recordings with rhythm guitars panned left and right.</div>
       </div>
       <div class="row-2">
         <div class="field">
@@ -473,12 +477,13 @@
         </div>
         <div class="field">
           <div class="label">High quality</div>
-          <label class="switch"><input type="checkbox" id="hq-input"><span class="track"></span><span style="color:var(--muted);font-size:13px">Cleaner, a bit slower</span></label>
+          <label class="switch"><input type="checkbox" id="hq-input"><span class="track"></span><span style="color:var(--muted);font-size:13px">Cleaner, slower (guitar/piano: about as long as the song)</span></label>
         </div>
       </div>
       <div class="dlg-progress hidden" id="dlg-progress">
         <div class="top"><span id="dlg-progress-title"></span><span id="dlg-progress-pct"></span></div>
         <div class="progress"><div id="dlg-progress-bar"></div></div>
+        <div class="step-row"><div class="step" id="dlg-progress-step"></div><button type="button" class="btn sm danger stop-job">Stop</button></div>
       </div>
       <div class="error-box hidden" id="upload-error" role="alert"></div>
     </div>
@@ -731,7 +736,7 @@
       row.setAttribute('role', 'button');
       row.setAttribute('aria-label', `Play ${song.title}`);
       const num = el('div', { className: 'num' });
-      if (isCurrent) num.innerHTML = `<span class="eq${audio.a.paused ? ' paused' : ''}"><span></span><span></span><span></span></span>`;
+      if (isCurrent) num.innerHTML = `<span class="eq${isPaused() ? ' paused' : ''}"><span></span><span></span><span></span></span>`;
       else num.textContent = i + 1;
       const title = el('div', { className: 'title' }, el('div', { textContent: song.title }), el('div', { textContent: song.artist }));
 
@@ -779,38 +784,86 @@
   }
 
   // ---------- Player ----------
-  // Two players always run in lockstep: "without" and "only". The mode just changes
-  // which one you hear; both together sound like the original song.
-  const audio = { a: new Audio(), b: new Audio() };
-  audio.a.preload = audio.b.preload = 'auto';
+  // "Without" and "only" add up to the original song only if they stay sample-exact
+  // together; two <audio> elements drift, and the drift makes Original sound hollow.
+  // So both are decoded into memory and started on the same Web Audio clock. The mode
+  // just fades each one's gain; both together sound like the original song.
+  // 'playback' asks for bigger audio buffers than the default low-latency setting, so a
+  // busy machine (e.g. while a song is being separated) doesn't make playback stutter.
+  const ctx = new AudioContext({ latencyHint: 'playback' });
+  const master = ctx.createGain();
+  master.connect(ctx.destination);
+  const gain = { a: ctx.createGain(), b: ctx.createGain() };   // a = without, b = only
+  gain.a.connect(master); gain.b.connect(master);
+  const player = { buffers: null, sources: [], playing: false, startedAt: 0, offset: 0, wantPlay: false, token: 0, headroom: 1 };
   const seek = $('#seek');
   let seeking = false;
 
-  function loadVersion(song, version, autoplay = false, at = 0) {
+  const isPaused = () => !player.playing;
+  const duration = () => (player.buffers ? Math.min(player.buffers[0].duration, player.buffers[1].duration) : 0);
+  const currentTime = () => (player.playing ? Math.min(player.offset + ctx.currentTime - player.startedAt, duration()) : player.offset);
+
+  async function loadVersion(song, version, autoplay = false, at = 0) {
+    stopSources();
     state.current = { song, version };
-    const src = (part) => `/api/audio?version=${encodeURIComponent(version.id)}&part=${part}`;
-    audio.a.src = src('without');
-    audio.b.src = src('only');
-    audio.a.currentTime = audio.b.currentTime = at;
+    const token = ++player.token;
+    player.buffers = null;
+    player.offset = at;
+    player.wantPlay = autoplay;
     applyMode();
     renderPlayer();
     renderSongs();
-    if (autoplay) play();
+    updateTime();
+    const src = (part) => `/api/audio?version=${encodeURIComponent(version.id)}&part=${part}`;
+    try {
+      const buffers = await Promise.all(['without', 'only'].map(async (part) => {
+        const res = await fetch(src(part));
+        if (!res.ok) throw new Error(res.statusText);
+        return ctx.decodeAudioData(await res.arrayBuffer());
+      }));
+      if (token !== player.token) return;   // another song was picked meanwhile
+      player.buffers = buffers;
+      player.headroom = headroom(buffers);
+      applyMode();
+      player.offset = Math.min(at, duration());
+      updateTime();
+      if (player.wantPlay) play();
+    } catch (e) {
+      if (token === player.token) { player.wantPlay = false; renderPlayer(); toast("Couldn't load this song's audio.", 'error'); }
+    }
+  }
+
+  // Loud songs go past full scale (in the file, or once both parts are added up), and
+  // the speakers clip anything above it, which crackles. Find the loudest sample any
+  // mode can play and turn the whole song down just enough; one gain for all modes
+  // keeps them level with each other.
+  function headroom([a, b]) {
+    let peak = 0;
+    for (let c = 0; c < Math.min(a.numberOfChannels, b.numberOfChannels); c++) {
+      const x = a.getChannelData(c), y = b.getChannelData(c);
+      for (let i = 0, n = Math.min(x.length, y.length); i < n; i++) {
+        const m = Math.max(Math.abs(x[i]), Math.abs(y[i]), Math.abs(x[i] + y[i]));
+        if (m > peak) peak = m;
+      }
+    }
+    return peak > 0.98 ? 0.98 / peak : 1;
   }
 
   function clearPlayer() {
-    pause();
-    audio.a.removeAttribute('src'); audio.b.removeAttribute('src');
-    audio.a.load(); audio.b.load();
+    stopSources();
+    player.token++;
+    player.buffers = null;
+    player.offset = 0;
+    player.wantPlay = false;
     state.current = null;
     renderPlayer();
   }
 
-  // Files can't be renamed or trashed while they're streaming (Windows locks them), so
+  // Files can't be renamed or trashed while they're in use (Windows locks them), so
   // let go of the player first, then pick the same spot back up afterwards.
   function releasePlayer() {
     if (!state.current) return null;
-    const saved = { version: state.current.version.id, at: audio.a.currentTime, playing: !audio.a.paused };
+    const saved = { version: state.current.version.id, at: currentTime(), playing: player.playing || player.wantPlay };
     clearPlayer();
     return saved;
   }
@@ -820,23 +873,54 @@
     if (found) loadVersion(found.song, found.version, saved.playing, saved.at);
   }
 
+  function stopSources() {
+    if (player.playing) player.offset = currentTime();
+    for (const s of player.sources) { s.onended = null; s.stop(); }
+    player.sources = [];
+    player.playing = false;
+  }
+
   async function play() {
     if (!state.current) return;
-    audio.b.currentTime = audio.a.currentTime;
-    try { await Promise.all([audio.a.play(), audio.b.play()]); }
-    catch (e) { if (e.name !== 'AbortError') toast(`Couldn't play this song: ${e.message}`, 'error'); }
+    if (!player.buffers) { player.wantPlay = true; renderPlayer(); return; }   // starts once loaded
+    player.wantPlay = false;
+    try { await ctx.resume(); }
+    catch (e) { toast(`Couldn't play this song: ${e.message}`, 'error'); return; }
+    if (player.playing || !player.buffers) return;
+    if (player.offset >= duration()) player.offset = 0;
+    const when = ctx.currentTime + 0.03;
+    player.sources = player.buffers.map((buffer, i) => {
+      const s = ctx.createBufferSource();
+      s.buffer = buffer;
+      s.connect(i === 0 ? gain.a : gain.b);
+      s.start(when, player.offset);
+      return s;
+    });
+    player.sources[0].onended = () => { stopSources(); player.offset = 0; updateTime(); renderPlayer(); renderSongs(); };
+    player.startedAt = when;
+    player.playing = true;
+    renderPlayer(); renderSongs();
   }
-  function pause() { audio.a.pause(); audio.b.pause(); }
-  function togglePlay() { audio.a.paused ? play() : pause(); }
+  function pause() {
+    player.wantPlay = false;
+    stopSources();
+    updateTime(); renderPlayer(); renderSongs();
+  }
+  function togglePlay() { player.playing || player.wantPlay ? pause() : play(); }
   function seekTo(t) {
-    const dur = audio.a.duration || 0;
-    t = Math.max(0, Math.min(t, dur));
-    audio.a.currentTime = audio.b.currentTime = t;
+    const wasPlaying = player.playing;
+    stopSources();
+    player.offset = Math.max(0, Math.min(t, duration()));
+    if (wasPlaying) play();
+    updateTime();
   }
 
   function applyMode() {
-    audio.a.volume = state.mode === 'only' ? 0 : state.volume;
-    audio.b.volume = state.mode === 'without' ? 0 : state.volume;
+    // A short fade instead of a hard jump, so switching never clicks.
+    const now = ctx.currentTime;
+    master.gain.setTargetAtTime(state.volume * player.headroom, now, 0.01);
+    gain.a.gain.setTargetAtTime(state.mode === 'only' ? 0 : 1, now, 0.01);
+    gain.b.gain.setTargetAtTime(state.mode === 'without' ? 0 : 1, now, 0.01);
     document.querySelectorAll('.segmented button').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
   }
 
@@ -851,7 +935,7 @@
     const w = $('.segmented button[data-mode="without"]'), o = $('.segmented button[data-mode="only"]');
     w.textContent = cur ? `Without ${cur.version.removed}` : 'Without';
     o.textContent = cur ? `${cap(cur.version.removed)} only` : 'Only';
-    const playing = !audio.a.paused;
+    const playing = player.playing || player.wantPlay;
     $('#play-icon').classList.toggle('hidden', playing);
     $('#pause-icon').classList.toggle('hidden', !playing);
     $('#play-btn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
@@ -859,31 +943,22 @@
   }
 
   function updateTime() {
-    const { currentTime, duration } = audio.a;
-    $('#time-cur').textContent = fmtTime(currentTime);
-    $('#time-dur').textContent = fmtTime(duration);
-    if (!seeking && duration) { seek.value = (currentTime / duration) * 1000; setFill(seek); }
+    if (!state.current) return;
+    const t = currentTime(), dur = duration();
+    $('#time-cur').textContent = fmtTime(t);
+    $('#time-dur').textContent = fmtTime(dur);
+    if (!seeking) { seek.value = dur ? (t / dur) * 1000 : 0; setFill(seek); }
   }
-
-  audio.a.addEventListener('timeupdate', updateTime);
-  audio.a.addEventListener('loadedmetadata', updateTime);
-  audio.a.addEventListener('play', () => { renderPlayer(); renderSongs(); });
-  audio.a.addEventListener('pause', () => { audio.b.pause(); renderPlayer(); renderSongs(); });
-  audio.a.addEventListener('ended', () => { pause(); seekTo(0); });
-  audio.a.addEventListener('error', () => { if (state.current) toast("Couldn't load this song's audio.", 'error'); });
-  // Keep the two players from drifting apart on long songs.
-  setInterval(() => {
-    if (!audio.a.paused && Math.abs(audio.b.currentTime - audio.a.currentTime) > 0.06) audio.b.currentTime = audio.a.currentTime;
-  }, 300);
+  setInterval(() => { if (player.playing) updateTime(); }, 250);
 
   $('#play-btn').addEventListener('click', togglePlay);
-  $('#back-btn').addEventListener('click', () => seekTo(audio.a.currentTime - 10));
-  $('#fwd-btn').addEventListener('click', () => seekTo(audio.a.currentTime + 10));
+  $('#back-btn').addEventListener('click', () => seekTo(currentTime() - 10));
+  $('#fwd-btn').addEventListener('click', () => seekTo(currentTime() + 10));
   seek.addEventListener('input', () => {
     seeking = true; setFill(seek);
-    $('#time-cur').textContent = fmtTime((seek.value / 1000) * (audio.a.duration || 0));
+    $('#time-cur').textContent = fmtTime((seek.value / 1000) * duration());
   });
-  seek.addEventListener('change', () => { seekTo((seek.value / 1000) * (audio.a.duration || 0)); seeking = false; });
+  seek.addEventListener('change', () => { seekTo((seek.value / 1000) * duration()); seeking = false; });
   document.querySelectorAll('.segmented button').forEach((b) => b.addEventListener('click', () => { state.mode = b.dataset.mode; applyMode(); }));
   const volume = $('#volume');
   setFill(volume);
@@ -1096,11 +1171,16 @@
 
   function renderInstrumentChips() {
     $('#instrument-chips').replaceChildren(...state.instruments.map((name) => {
-      const chip = el('button', { type: 'button', className: 'toggle-chip', textContent: cap(name) });
+      const chip = el('button', { type: 'button', className: 'toggle-chip', textContent: name === 'guitar' ? 'All guitar' : cap(name) });
       chip.setAttribute('aria-pressed', state.settings.instruments.includes(name));
       chip.addEventListener('click', () => {
         const set = new Set(state.settings.instruments);
         set.has(name) ? set.delete(name) : set.add(name);
+        // All guitar replaces lead/rhythm, and lead + rhythm together are all guitar.
+        const parts = ['lead guitar', 'rhythm guitar'];
+        if (name === 'guitar' && set.has('guitar')) parts.forEach((p) => set.delete(p));
+        if (parts.includes(name) && set.has(name)) set.delete('guitar');
+        if (parts.every((p) => set.has(p))) { parts.forEach((p) => set.delete(p)); set.add('guitar'); }
         state.settings.instruments = state.instruments.filter((n) => set.has(n));
         saveSettings();
         renderInstrumentChips();
@@ -1265,11 +1345,17 @@
     $('#dlg-progress').classList.toggle('hidden', !active);
     $('#job-banner').classList.toggle('hidden', !active || dlg.open);
     $('#upload-cancel').textContent = active ? 'Hide' : 'Cancel';
-    if (!active) return;
+    if (!active) {
+      state.jobId = null;
+      document.querySelectorAll('.stop-job').forEach((s) => { s.disabled = false; s.textContent = 'Stop'; });
+      return;
+    }
     const overall = job.total ? ((job.index + job.fraction) / job.total) * 100 : 0;
     const title = `Processing “${job.song}”`;
-    const sub = job.total > 1 ? `Song ${job.index + 1} of ${job.total}` : (job.status === 'queued' ? 'Waiting…' : 'Separating instruments');
+    const step = job.status === 'queued' ? 'Waiting to start…' : (job.step || 'Starting');
+    const sub = job.total > 1 ? `Song ${job.index + 1} of ${job.total} · ${step}` : step;
     $('#dlg-progress-title').textContent = title;
+    $('#dlg-progress-step').textContent = step;
     $('#dlg-progress-pct').textContent = `${job.total > 1 ? `${job.index + 1}/${job.total} · ` : ''}${Math.round(overall)}%`;
     $('#dlg-progress-bar').style.width = `${overall}%`;
     $('#banner-title').textContent = title;
@@ -1278,7 +1364,16 @@
   }
   dlg.addEventListener('close', renderJob);
 
+  // Stop: the song being separated stops within a few seconds; nothing half-made is saved.
+  document.querySelectorAll('.stop-job').forEach((b) => b.addEventListener('click', async () => {
+    if (!state.jobId) return;
+    document.querySelectorAll('.stop-job').forEach((s) => { s.disabled = true; s.textContent = 'Stopping…'; });
+    try { await postJSON(`/api/jobs/${state.jobId}/stop`, {}); }
+    catch (err) { toast(err.message, 'error'); }
+  }));
+
   async function pollJob(jobId, submitted) {
+    state.jobId = jobId;
     try {
       state.job = await api(`/api/jobs/${jobId}`);
     } catch (err) {
@@ -1289,13 +1384,16 @@
     renderJob();
     if (state.job.status !== 'done') { setTimeout(() => pollJob(jobId, submitted), 600); return; }
 
-    const { done, failed } = state.job;
+    const { done, failed, finished, stopped } = state.job;
     state.job = null;
     renderJob();
+    if (stopped) toast(done.length ? 'Stopped. The songs already finished were kept.' : 'Stopped. Nothing was saved.');
     if (failed.length) toast(`Couldn't process: ${failed.join(', ')}`, 'error');
     if (done.length) {
       // Success: clear the songs that went in (settings stay for next time) and show the result.
-      state.upload.items = state.upload.items.filter((i) => !submitted.includes(i));
+      // After a Stop, only the ones that finished; the rest stay so they can be started again.
+      const gone = submitted.filter((_, k) => finished.includes(k));
+      state.upload.items = state.upload.items.filter((i) => !gone.includes(i));
       renderUploadItems();
       if (dlg.open && !state.upload.items.length) dlg.close();
       toast(done.length === 1 ? 'Added to your library.' : `${done.length} versions added to your library.`);
@@ -1304,7 +1402,7 @@
       if (newest) {
         if (state.view !== 'all' && state.view !== `artist:${newest.song.artist}`) state.view = `artist:${newest.song.artist}`;
         renderSidebar(); renderSongs();
-        if (audio.a.paused) loadVersion(newest.song, newest.version);
+        if (isPaused() && !player.wantPlay) loadVersion(newest.song, newest.version);
       }
     }
     updateUploadButton();

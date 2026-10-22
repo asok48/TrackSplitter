@@ -35,6 +35,10 @@ import truststore
 # own certificate.
 truststore.inject_into_ssl()
 
+# Let PyTorch run operations the Apple GPU (MPS) lacks on the CPU instead of failing.
+# Must be set before torch is imported; run_model() covers anything that still fails.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import imageio_ffmpeg
 import numpy as np
 import torch
@@ -57,8 +61,9 @@ OUTPUT_DIR = Path.home() / "Music" / "Track Splitter"
 OLD_LIBRARY_DIRS = [Path.home() / "Music" / "Bass Remover", Path(__file__).parent / "output"]
 STAGE_DIR = Path(tempfile.gettempdir()) / "track-splitter-uploads"
 SAMPLERATE = 44100  # all Demucs v4 models use this
-INSTRUMENTS = ["bass", "drums", "vocals", "guitar", "piano"]
-SIX_STEM_ONLY = {"guitar", "piano"}  # only htdemucs_6s separates these
+INSTRUMENTS = ["bass", "drums", "vocals", "guitar", "lead guitar", "rhythm guitar", "piano"]
+GUITAR_PARTS = {"lead guitar", "rhythm guitar"}  # split out of the guitar stem by stereo position
+SIX_STEM_ONLY = {"guitar", "piano"}  # htdemucs_6s (standard) or BS-RoFormer SW (HQ)
 HQ_TAG = " [HQ]"
 # "Song [HQ] (no bass & drums)" -> removed part is "bass & drums"
 NO_RE = re.compile(r" \(no (.+)\)$")
@@ -96,6 +101,80 @@ def stem_model(stem, high_quality):
     return max(zip(bag.models, bag.weights), key=lambda mw: mw[1][k])[0]
 
 
+# High quality guitar/piano: BS-RoFormer SW (by jarredou), a newer 6-stem model that
+# separates those far better than htdemucs_6s, at roughly real-time speed on an M4.
+# Downloaded once (~700 MB) into the same cache as the Demucs models.
+ROFORMER_URL = ("https://github.com/nomadkaraoke/python-audio-separator/releases/download/"
+                "model-configs/BS-Roformer-SW.ckpt")
+ROFORMER_SHA256 = "24e7d35ee9c64415673d3fd33e06a67cac2c103c5df6267ba1576459c775916e"
+ROFORMER_SOURCES = ["bass", "drums", "other", "vocals", "guitar", "piano"]
+ROFORMER_CHUNK = 588800  # samples per pass (~13 s), the length it was trained on
+_roformer = None
+
+
+def roformer_model(on_progress):
+    global _roformer
+    if _roformer is None:
+        from roformer import BSRoformer
+        weights = Path(torch.hub.get_dir()) / "checkpoints" / "BS-Roformer-SW.ckpt"
+        if not weights.exists():
+            download_model(ROFORMER_URL, weights, ROFORMER_SHA256, on_progress)
+        on_progress(None, "Loading the high-quality model")
+        model = BSRoformer(dim=256, depth=12, stereo=True, num_stems=6,
+                           time_transformer_depth=1, freq_transformer_depth=1,
+                           freqs_per_bands=(2,) * 24 + (4,) * 12 + (12,) * 8 + (24,) * 8 + (48,) * 8 + (128, 129))
+        model.load_state_dict(torch.load(weights, map_location="cpu", weights_only=True))
+        _roformer = model.eval()
+    return _roformer
+
+
+def download_model(url, dest, sha256, on_progress):
+    """Download a model file once, showing MB done, and check it arrived intact."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    digest = hashlib.sha256()
+    with urllib.request.urlopen(url) as response, open(part, "wb") as f:
+        total_mb = int(response.headers.get("Content-Length", 0)) >> 20
+        done = 0
+        while chunk := response.read(1 << 20):
+            f.write(chunk)
+            digest.update(chunk)
+            done += len(chunk)
+            of = f" of {total_mb}" if total_mb else ""
+            on_progress(None, f"Downloading the high-quality model (first time only) · {done >> 20}{of} MB")
+    if digest.hexdigest() != sha256:
+        part.unlink(missing_ok=True)
+        raise RuntimeError("the high-quality model download was damaged; please try again")
+    part.replace(dest)
+
+
+def run_roformer(mix, on_progress, device=DEVICE):
+    """All six RoFormer stems for mix, shaped (6, 2, samples).
+
+    The song goes through in half-overlapping chunks, crossfaded with a window
+    whose overlapping halves add up to 1, so there are no seams.
+    """
+    model = roformer_model(on_progress).to(device)
+    length, step = mix.shape[1], ROFORMER_CHUNK // 2
+    # Pad so every real sample lies under two chunks and the last chunk is full.
+    total = length + 2 * step
+    total += -(total - ROFORMER_CHUNK) % step
+    x = np.pad(mix, ((0, 0), (step, total - length - step)))
+    window = np.sin(np.pi * (np.arange(ROFORMER_CHUNK) + 0.5) / ROFORMER_CHUNK) ** 2
+    out = np.zeros((len(ROFORMER_SOURCES), 2, total), np.float32)
+    weight = np.zeros(total, np.float32)
+    starts = range(0, total - ROFORMER_CHUNK + 1, step)
+    for i, s in enumerate(starts):
+        chunk = torch.from_numpy(x[:, s:s + ROFORMER_CHUNK].copy())[None].to(device)
+        with torch.no_grad():
+            y = model(chunk)[0].cpu().numpy()
+        n = min(y.shape[-1], ROFORMER_CHUNK)   # the inverse STFT can come back a little short
+        out[..., s:s + n] += y[..., :n] * window[:n]
+        weight[s:s + n] += window[:n]
+        on_progress((i + 1) / len(starts))
+    return out[..., step:step + length] / np.maximum(weight[step:step + length], 1e-6)
+
+
 def decode(path, samplerate):
     """Decode an audio file to a float32 stereo array shaped (2, samples)."""
     cmd = [FFMPEG, "-v", "error", "-i", str(path),
@@ -111,31 +190,87 @@ def encode_mp3(audio, samplerate, dest):
     subprocess.run(cmd, input=pcm, check=True)
 
 
-def separate(mix, stems, high_quality, on_progress=lambda fraction: None):
-    """Return the chosen instruments summed together, same shape as mix."""
+def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=None: None):
+    """Return the chosen instruments summed together, same shape as mix.
+
+    on_progress(fraction, step): how far along (0-1, or None) and what it's doing now.
+    """
     wav = torch.from_numpy(mix)
     ref = wav.mean(0)
     mean, std = ref.mean(), ref.std()
     x = ((wav - mean) / std)[None]
 
-    # Group instruments by model so each model runs once per song.
+    # Lead and rhythm guitar are both cut out of the guitar stem.
+    bases = list(dict.fromkeys("guitar" if s in GUITAR_PARTS else s for s in stems))
+    # Group instruments by model so each model runs once per song. None = RoFormer.
+    on_progress(None, "Loading the separation model")
     runs = {}
-    for stem in stems:
-        model = stem_model(stem, high_quality)
+    for stem in bases:
+        model = None if high_quality and stem in SIX_STEM_ONLY else stem_model(stem, high_quality)
         runs.setdefault(id(model), (model, []))[1].append(stem)
 
-    removed = np.zeros_like(mix)
+    parts = {}
     length = mix.shape[1]
     for r, (model, wanted) in enumerate(runs.values()):
-        def callback(d, r=r):
+        def progress(fraction=None, step=None, r=r):
+            on_progress(None if fraction is None else (r + min(fraction, 1.0)) / len(runs), step)
+
+        if model is None:
+            roformer_model(progress)   # download/load outside run_model, so a failure there isn't retried
+        progress(0.0, f"Separating {stems_label(wanted)}{' (high quality)' if high_quality else ''}")
+        if model is None:
+            out = run_model(lambda device: run_roformer(mix, progress, device), progress)
+            for stem in wanted:
+                parts[stem] = out[ROFORMER_SOURCES.index(stem)]
+            continue
+
+        def callback(d):
             if d.get("state") == "end":
-                on_progress((r + min(d["segment_offset"] / length, 1.0)) / len(runs))
-        with torch.no_grad():
-            out = apply_model(model, x, device=DEVICE, split=True, overlap=0.25,
-                              callback=callback)[0]
+                progress(d["segment_offset"] / length)
+
+        def demucs(device, model=model, callback=callback):
+            with torch.no_grad():
+                return apply_model(model, x, device=device, split=True, overlap=0.25,
+                                   callback=callback)[0]
+        out = run_model(demucs, progress)
         for stem in wanted:
-            removed += (out[model.sources.index(stem)] * std).numpy()
-    return removed
+            parts[stem] = (out[model.sources.index(stem)] * std).numpy()
+
+    if GUITAR_PARTS & set(stems):
+        on_progress(1.0, "Splitting lead and rhythm guitar")
+        parts["lead guitar"] = center_of(parts["guitar"])
+        parts["rhythm guitar"] = parts["guitar"] - parts["lead guitar"]
+    return sum(parts[s] for s in stems)
+
+
+def center_of(stereo):
+    """The part of a stereo track that sits in the middle.
+
+    There is no model for lead vs rhythm guitar, but mixes usually double-track the
+    rhythm guitars and pan them hard left/right, with the lead in the middle. So,
+    slice by slice (time and frequency), whatever is the same in both channels counts
+    as center (lead) and the rest as sides (rhythm). Only as good as the mix allows.
+    """
+    x = torch.from_numpy(np.ascontiguousarray(stereo))
+    window = torch.hann_window(4096)
+    spec = torch.stft(x, 4096, 1024, window=window, return_complex=True)
+    left, right = spec
+    # 1 when both channels carry the same sound at the same level and phase.
+    same = 2 * (left * right.conj()).abs() / (left.abs() ** 2 + right.abs() ** 2 + 1e-12)
+    mask = ((same - 0.6) / 0.35).clamp(0, 1) ** 2   # soft: only clearly centered sound
+    return torch.istft(spec * mask, 4096, 1024, window=window, length=x.shape[1]).numpy()
+
+
+def run_model(fn, on_progress=lambda fraction=None, step=None: None):
+    """fn(device) on the GPU, retried on the CPU if the Apple GPU lacks an operation."""
+    try:
+        return fn(DEVICE)
+    except (RuntimeError, NotImplementedError):
+        if DEVICE != "mps":
+            raise
+        print("The Apple GPU couldn't run this model; using the CPU instead (slower).", flush=True)
+        on_progress(0.0, "The Apple GPU couldn't run this; continuing on the CPU (slower)")
+        return fn("cpu")
 
 
 def stems_label(stems):
@@ -344,15 +479,20 @@ job_queue = queue.Queue()
 
 
 def make_version(source, song_dir, stems, level, high_quality, on_progress):
+    on_progress(0.0, "Reading the song")
     mix = decode(source, SAMPLERATE)
     removed = separate(mix, stems, high_quality, on_progress)
+    on_progress(1.0, "Saving")
     # Subtracting the separated parts from the original keeps everything else untouched.
     without = mix - removed * (1.0 - level / 100.0)
+    # Loud masters often go past full scale once a part is taken out; clipping that
+    # crackles. Turn both files down by the same amount instead, so they still add up.
+    peak = max(np.abs(without).max(), np.abs(removed).max(), np.abs(without + removed).max())
+    if peak > 0.98:
+        without, removed = without * (0.98 / peak), removed * (0.98 / peak)
 
-    # The tag keeps standard and high-quality versions side by side. High quality
-    # only changes bass, drums and vocals, so guitar/piano alone aren't tagged.
-    hq = high_quality and any(s not in SIX_STEM_ONLY for s in stems)
-    version = f"{rel(song_dir)}/{song_dir.name}{HQ_TAG if hq else ''} (no {stems_label(stems)})"
+    # The tag keeps standard and high-quality versions side by side.
+    version = f"{rel(song_dir)}/{song_dir.name}{HQ_TAG if high_quality else ''} (no {stems_label(stems)})"
     song_dir.mkdir(parents=True, exist_ok=True)
     without_path, only_path = version_files(version)
     encode_mp3(without, SAMPLERATE, without_path)
@@ -360,13 +500,33 @@ def make_version(source, song_dir, stems, level, high_quality, on_progress):
     return version
 
 
+class Stopped(Exception):
+    """The user pressed Stop. Deliberately not a RuntimeError, so run_model doesn't retry."""
+
+
 def worker():
     while True:
         job_id, settings = job_queue.get()
         job = jobs[job_id]
+        if job.get("stop"):  # stopped while still waiting its turn
+            job.update(status="done", stopped=True)
+            continue
         job["status"] = "running"
+
+        def report(fraction=None, step=None):
+            """Engine progress: how far along (0-1) and/or what it's doing now.
+
+            The engine calls this every few seconds, so it's also where Stop takes effect.
+            """
+            if job.get("stop"):
+                raise Stopped
+            if fraction is not None:
+                job["fraction"] = fraction
+            if step:
+                job["step"] = step
+
         for i, item in enumerate(settings["items"]):
-            job.update(index=i, song=item["title"], fraction=0.0)
+            job.update(index=i, song=item["title"], fraction=0.0, step="Starting")
             try:
                 song_dir = item["song_dir"]
                 if item.get("stage"):
@@ -374,7 +534,7 @@ def worker():
                     stage = item["stage"]
                     version = make_version(stage["path"], song_dir, settings["stems"],
                                            settings["level"], settings["hq"],
-                                           on_progress=lambda f: job.update(fraction=f))
+                                           on_progress=report)
                     if not original_file(song_dir):
                         shutil.copy2(stage["path"], song_dir / f"original{stage['path'].suffix.lower()}")
                         write_meta(song_dir, {"sha1": stage["sha1"], "source": stage["filename"],
@@ -382,16 +542,23 @@ def worker():
                 else:
                     version = make_version(original_file(song_dir), song_dir, settings["stems"],
                                            settings["level"], settings["hq"],
-                                           on_progress=lambda f: job.update(fraction=f))
+                                           on_progress=report)
                 job["done"].append(version)
+            except Stopped:
+                # Nothing is saved before separation finishes, so there's nothing to undo.
+                # Uploads not yet processed stay staged, so the page can start them again.
+                job["stopped"] = True
+                break
             except subprocess.CalledProcessError:
                 job["failed"].append(f"{item['title']} (couldn't read the file)")
             except Exception as e:  # keep going with the rest of the batch
                 job["failed"].append(f"{item['title']} ({e})")
             finally:
-                if item.get("stage"):
-                    item["stage"]["path"].unlink(missing_ok=True)
-                    staged.pop(item["stage_id"], None)
+                if not job.get("stopped"):
+                    job["finished"].append(i)   # item index, so the page knows which to clear
+                    if item.get("stage"):
+                        item["stage"]["path"].unlink(missing_ok=True)
+                        staged.pop(item["stage_id"], None)
         job.update(status="done", fraction=1.0)
 
 
@@ -528,7 +695,11 @@ class ProcessRequest(BaseModel):
 
 @api.post("/api/process")
 def process(req: ProcessRequest):
-    stems = [s for s in INSTRUMENTS if s in req.instruments]
+    picked = set(req.instruments)
+    # All guitar covers both parts, and both parts together are all guitar.
+    if "guitar" in picked or GUITAR_PARTS <= picked:
+        picked = (picked - GUITAR_PARTS) | {"guitar"}
+    stems = [s for s in INSTRUMENTS if s in picked]
     if not stems:
         raise HTTPException(400, "Pick at least one instrument to remove.")
     if not req.items:
@@ -562,7 +733,7 @@ def process(req: ProcessRequest):
 
     job_id = uuid.uuid4().hex
     jobs[job_id] = {"status": "queued", "total": len(items), "index": 0, "song": items[0]["title"],
-                    "fraction": 0.0, "done": [], "failed": []}
+                    "fraction": 0.0, "done": [], "failed": [], "finished": []}
     job_queue.put((job_id, {"items": items, "stems": stems, "hq": req.hq,
                             "level": max(0, min(req.level, 100))}))
     return {"job": job_id}
@@ -573,6 +744,15 @@ def job_status(job_id: str):
     if job_id not in jobs:
         raise HTTPException(404, "Unknown job.")
     return jobs[job_id]
+
+
+@api.post("/api/jobs/{job_id}/stop")
+def stop_job(job_id: str):
+    """Stop a job: the song being separated stops within a few seconds, the rest are skipped."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Unknown job.")
+    jobs[job_id]["stop"] = True
+    return {"ok": True}
 
 
 class SongEdit(BaseModel):

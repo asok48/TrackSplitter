@@ -9,3 +9,6 @@ numpy
 send2trash
 yt-dlp
 truststore
+einops
+beartype
+rotary-embedding-torch

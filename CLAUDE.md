@@ -18,17 +18,35 @@ Primary user runs it on a MacBook Pro (M4); it was developed and tested on Windo
   step, no external downloads so it works offline).
 - `start.sh` (Mac/Linux) / `start.bat` (Windows): create `.venv` on first run, reinstall
   packages whenever `requirements.txt` is newer than `.venv/.installed`, then start.
+- `roformer/`: BS-RoFormer model code copied from the `BS-RoFormer` package v0.4.1
+  (lucidrains, MIT, see `roformer/LICENSE`), only the import made relative. That
+  version matches the BS-Roformer-SW checkpoint exactly (newer ones changed the
+  architecture), and copying it avoids the package's `librosa` dependency.
 - `requirements.txt`: torch, torchaudio, demucs, fastapi, uvicorn, python-multipart,
-  imageio-ffmpeg, numpy, send2trash, yt-dlp, truststore.
+  imageio-ffmpeg, numpy, send2trash, yt-dlp, truststore, einops, beartype,
+  rotary-embedding-torch (the last three for `roformer/`).
 - `track-splitter.zip`: an email-sized copy of the app (git-ignored). Email filters
   block `.bat`, so inside the zip it is `start.bat.txt`; never commit that name.
 
 ## How separation works
 
 - Demucs v4 (Meta, open source). Standard quality = `htdemucs`; High quality =
-  `htdemucs_ft`; guitar and piano = `htdemucs_6s` (the only model with those stems,
-  less precise, no HQ variant, so HQ is disabled in the UI when only guitar/piano are
-  picked).
+  `htdemucs_ft`. Guitar and piano: Standard = `htdemucs_6s` (fast, less precise);
+  High quality = BS-Roformer-SW by jarredou (`run_roformer()`), a 6-stem RoFormer
+  that separates guitar much better but runs at about real time on an M4 (~2 min for
+  a 2 min song). Its ~700 MB checkpoint downloads once into torch's hub cache
+  (sha256-checked) from the python-audio-separator GitHub release. Inference follows
+  the model's own config (588800-sample chunks, 2 overlapping passes, sin² crossfade).
+  The copied model code gives bit-identical output to audio-separator's on the same
+  chunk; full songs differ slightly (~-18 dB) only because audio-separator uses its own
+  chunking (409600 samples, 8 passes, Hamming). The user asked to keep both models
+  available, hence the HQ switch.
+- Lead / rhythm guitar (`center_of()`): no model separates them locally (MVSep and
+  Moises do, but in the cloud). The guitar stem is split by stereo position: per
+  time-frequency slice, sound identical in both channels = center (lead), the rest =
+  sides (rhythm). Works on studio mixes with double-tracked, hard-panned rhythm
+  guitars ("Getting Along": ~36% of the guitar in the center); poor on live/mono
+  mixes. Picking both parts is the same as All guitar (server and UI collapse it).
 - `htdemucs_ft` is a bag of 4 per-stem specialists. `stem_model()` runs only the
   specialist(s) needed: identical output to the full bag, ~4x faster. (Outputs differ
   slightly run to run only because of Demucs' random time shift, `shifts=1`.)
@@ -74,6 +92,15 @@ Lives in `~/Music/Track Splitter/`, outside the project, so app updates never to
 2. Process: `POST /api/process` with staged ids (or existing song ids for a new
    version), instruments, level, hq. One background worker thread processes jobs in
    order; the page polls `GET /api/jobs/{id}`.
+   - Progress: the engine calls `on_progress(fraction, step)`; `step` is the text the
+     page shows under the bar ("Reading the song", "Downloading the high-quality model
+     · 210 of 667 MB", "Loading…", "Separating guitar (high quality)", "Splitting lead
+     and rhythm guitar", "Saving", or the Apple GPU → CPU fallback notice).
+   - Stop: `POST /api/jobs/{id}/stop` sets a flag that the job's `report()` checks on
+     every progress call (every few seconds) and raises `Stopped` (not a RuntimeError,
+     so `run_model` doesn't retry it). Nothing is written before separation finishes,
+     so a stopped song leaves nothing behind; unprocessed uploads stay staged, and
+     `job.finished` (item indexes) tells the page which dialog items to clear.
 
 yt-dlp is used the standard way, with no cookies or bot-check workarounds. This is
 deliberate: YouTube's "confirm you're not a bot" check blocked it on the user's work
@@ -91,10 +118,12 @@ Keychain), which fixed a certificate error on the Mac; certificate checking stay
 - Main: searchable song list; each row shows version chips (click to play) and
   "+ Version"; row ... menu: New version, Edit song (rename, change artist, delete
   versions), Delete song.
-- Player bar: two `<audio>` elements kept in lockstep (without + only); the
-  Without / Original / Only switch just changes their volumes.
+- Player bar: Web Audio, not `<audio>` elements. Both files (without + only) are
+  fetched and decoded into memory, then started on the same `AudioContext` clock so
+  they stay sample-exact; the Without / Original / Only switch fades two gain nodes.
+  (Two `<audio>` elements drifted apart, which made Original sound hollow/muted.)
 - Add songs dialog: drop files or paste a link, edit title/artist per item, pick
-  instruments, level, HQ. Upload is disabled until the required fields are filled. On
+  instruments (guitar is All guitar / Lead guitar / Rhythm guitar), level, HQ. Upload is disabled until the required fields are filled. On
   success the songs clear and the dialog closes; settings persist (localStorage).
 - Dark theme, violet accent, system font; fits one screen down to ~1024x768 and
   collapses for narrow windows.
@@ -127,7 +156,5 @@ synthetic 15 s clip (sine bass line + chords + clicks) was used, measuring how m
 - Playlists / practice sets that pull songs from any artist.
 - The user once asked for "filters": interpreted as folders; filtering the song list
   (by instrument removed, HQ, etc.) may still be wanted.
-- Rhythm vs lead guitar separation was asked about: not possible with Demucs (one
-  "guitar" stem); only a stereo-position trick that works on some recordings.
 - Mac-only paths (app shortcut, MPS fallback, certificate fix) were written on Windows;
   they have been reported working on Mac but have no automated checks.
