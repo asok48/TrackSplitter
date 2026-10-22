@@ -491,6 +491,9 @@
         <div class="field">
           <div class="label">High quality</div>
           <label class="switch"><input type="checkbox" id="hq-input"><span class="track"></span><span style="color:var(--muted);font-size:13px">Cleaner, slower (guitar/piano: about as long as the song)</span></label>
+          <label class="switch hidden" id="fast-row" title="Guitar/piano high quality: separates each moment once instead of twice and blending. About half the time; may sound slightly rougher.">
+            <input type="checkbox" id="fast-input"><span class="track"></span><span style="color:var(--muted);font-size:13px">Faster guitar/piano (about half the time, may be slightly rougher)</span>
+          </label>
         </div>
       </div>
       <div class="dlg-progress hidden" id="dlg-progress">
@@ -620,7 +623,7 @@
     upload: { mode: 'new', items: [], song: null },
     job: null,
     dragSong: null,
-    settings: Object.assign({ instruments: ['bass'], level: 0, hq: false }, loadSettings()),
+    settings: Object.assign({ instruments: ['bass'], level: 0, hq: false, fast: false }, loadSettings()),
   };
   const saveSettings = () => {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch {}
@@ -816,15 +819,20 @@
   // "Without" and "only" add up to the original song only if they stay sample-exact
   // together; two <audio> elements drift, and the drift makes Original sound hollow.
   // So both are decoded into memory and started on the same Web Audio clock. The mode
-  // just fades each one's gain; both together sound like the original song.
+  // just fades each one's gain. Original mode plays the song's saved original file
+  // (started on the same clock), not without + only: those are MP3s made from an often
+  // already lossy source, so adding them up gives a second-generation copy that can
+  // sound swirly. Without a usable original, Original falls back to without + only.
   // 'playback' asks for bigger audio buffers than the default low-latency setting, so a
   // busy machine (e.g. while a song is being separated) doesn't make playback stutter.
   const ctx = new AudioContext({ latencyHint: 'playback' });
   const master = ctx.createGain();
   master.connect(ctx.destination);
-  const gain = { a: ctx.createGain(), b: ctx.createGain() };   // a = without, b = only
-  gain.a.connect(master); gain.b.connect(master);
-  const player = { buffers: null, sources: [], playing: false, startedAt: 0, offset: 0, wantPlay: false, token: 0, headroom: 1 };
+  const gain = { a: ctx.createGain(), b: ctx.createGain(), o: ctx.createGain() };   // without, only, original
+  gain.a.connect(master); gain.b.connect(master); gain.o.connect(master);
+  // original: the decoded original file or null; originalScale matches its volume to the versions.
+  const player = { buffers: null, original: null, originalScale: 1, sources: [], playing: false, startedAt: 0,
+                   offset: 0, wantPlay: false, token: 0, headroom: 1 };
   const seek = $('#seek');
   let seeking = false;
 
@@ -837,6 +845,7 @@
     state.current = { song, version };
     const token = ++player.token;
     player.buffers = null;
+    player.original = null;
     player.offset = at;
     player.wantPlay = autoplay;
     applyMode();
@@ -844,15 +853,20 @@
     renderSongs();
     updateTime();
     const src = (part) => `/api/audio?version=${encodeURIComponent(version.id)}&part=${part}`;
+    const load = async (part) => {
+      const res = await fetch(src(part));
+      if (!res.ok) throw new Error(res.statusText);
+      return ctx.decodeAudioData(await res.arrayBuffer());
+    };
+    // The original is optional (older songs have none): if it fails, Original mode adds up the parts.
+    const original = song.has_original ? load('original').catch(() => null) : Promise.resolve(null);
     try {
-      const buffers = await Promise.all(['without', 'only'].map(async (part) => {
-        const res = await fetch(src(part));
-        if (!res.ok) throw new Error(res.statusText);
-        return ctx.decodeAudioData(await res.arrayBuffer());
-      }));
+      const buffers = await Promise.all([load('without'), load('only')]);
+      const orig = await original;
       if (token !== player.token) return;   // another song was picked meanwhile
       player.buffers = buffers;
-      player.headroom = headroom(buffers);
+      Object.assign(player, matchOriginal(buffers, orig));
+      player.headroom = headroom(buffers, player.original, player.originalScale);
       applyMode();
       player.offset = Math.min(at, duration());
       updateTime();
@@ -862,17 +876,39 @@
     }
   }
 
+  // Use the original only if it really is what the parts add up to, sample-aligned:
+  // the correlation is ~1 then, and anything else (a different file, an offset from how
+  // a browser decodes MP3s) falls back to the parts. Loud songs' versions were turned
+  // down a little to avoid clipping, so the original gets the same turn-down (scale).
+  function matchOriginal([a, b], orig) {
+    if (!orig || orig.numberOfChannels < 2 || orig.sampleRate !== a.sampleRate) return { original: null, originalScale: 1 };
+    let so = 0, ss = 0, oo = 0;
+    for (let c = 0; c < 2; c++) {
+      const x = a.getChannelData(c), y = b.getChannelData(c), o = orig.getChannelData(c);
+      for (let i = 0, n = Math.min(x.length, y.length, o.length); i < n; i++) {
+        const sum = x[i] + y[i];
+        so += sum * o[i]; ss += sum * sum; oo += o[i] * o[i];
+      }
+    }
+    const r = so / Math.sqrt(ss * oo || 1);
+    return r > 0.97 ? { original: orig, originalScale: so / oo } : { original: null, originalScale: 1 };
+  }
+
   // Loud songs go past full scale (in the file, or once both parts are added up), and
   // the speakers clip anything above it, which crackles. Find the loudest sample any
   // mode can play and turn the whole song down just enough; one gain for all modes
   // keeps them level with each other.
-  function headroom([a, b]) {
+  function headroom([a, b], orig, scale) {
     let peak = 0;
     for (let c = 0; c < Math.min(a.numberOfChannels, b.numberOfChannels); c++) {
       const x = a.getChannelData(c), y = b.getChannelData(c);
       for (let i = 0, n = Math.min(x.length, y.length); i < n; i++) {
         const m = Math.max(Math.abs(x[i]), Math.abs(y[i]), Math.abs(x[i] + y[i]));
         if (m > peak) peak = m;
+      }
+      if (orig) {
+        const o = orig.getChannelData(c);
+        for (let i = 0; i < o.length; i++) if (Math.abs(o[i] * scale) > peak) peak = Math.abs(o[i] * scale);
       }
     }
     return peak > 0.98 ? 0.98 / peak : 1;
@@ -882,6 +918,7 @@
     stopSources();
     player.token++;
     player.buffers = null;
+    player.original = null;
     player.offset = 0;
     player.wantPlay = false;
     state.current = null;
@@ -918,11 +955,13 @@
     if (player.playing || !player.buffers) return;
     if (player.offset >= duration()) player.offset = 0;
     const when = ctx.currentTime + 0.03;
-    player.sources = player.buffers.map((buffer, i) => {
+    const tracks = [[player.buffers[0], gain.a], [player.buffers[1], gain.b]];
+    if (player.original) tracks.push([player.original, gain.o]);
+    player.sources = tracks.map(([buffer, g]) => {
       const s = ctx.createBufferSource();
       s.buffer = buffer;
-      s.connect(i === 0 ? gain.a : gain.b);
-      s.start(when, player.offset);
+      s.connect(g);
+      s.start(when, Math.min(player.offset, buffer.duration));
       return s;
     });
     player.sources[0].onended = () => { stopSources(); player.offset = 0; updateTime(); renderPlayer(); renderSongs(); };
@@ -948,8 +987,10 @@
     // A short fade instead of a hard jump, so switching never clicks.
     const now = ctx.currentTime;
     master.gain.setTargetAtTime(state.volume * player.headroom, now, 0.01);
-    gain.a.gain.setTargetAtTime(state.mode === 'only' ? 0 : 1, now, 0.01);
-    gain.b.gain.setTargetAtTime(state.mode === 'without' ? 0 : 1, now, 0.01);
+    const real = state.mode === 'both' && !!player.original;   // Original from the original file
+    gain.a.gain.setTargetAtTime(state.mode === 'only' || real ? 0 : 1, now, 0.01);
+    gain.b.gain.setTargetAtTime(state.mode === 'without' || real ? 0 : 1, now, 0.01);
+    gain.o.gain.setTargetAtTime(real ? player.originalScale : 0, now, 0.01);
     document.querySelectorAll('.segmented button').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
   }
 
@@ -1244,6 +1285,7 @@
       });
       return chip;
     }));
+    updateFastRow();
   }
 
   function renderUploadItems() {
@@ -1339,6 +1381,7 @@
     if (redo) {
       state.settings.instruments = redo.removed.split(/, | & /);
       state.settings.hq = redo.hq;
+      state.settings.fast = !!redo.fast;
       state.settings.level = redo.level ?? 0;
       saveSettings();
     }
@@ -1354,6 +1397,7 @@
     $('#level-out').textContent = `${state.settings.level}%`;
     setFill($('#level-input'));
     $('#hq-input').checked = state.settings.hq;
+    $('#fast-input').checked = state.settings.fast;
     $('#upload-error').classList.add('hidden');
     renderInstrumentChips();
     renderUploadItems();
@@ -1382,7 +1426,13 @@
     state.settings.level = Number(e.target.value); setFill(e.target);
     $('#level-out').textContent = `${e.target.value}%`; saveSettings();
   });
-  $('#hq-input').addEventListener('change', (e) => { state.settings.hq = e.target.checked; saveSettings(); });
+  $('#hq-input').addEventListener('change', (e) => { state.settings.hq = e.target.checked; saveSettings(); updateFastRow(); });
+  $('#fast-input').addEventListener('change', (e) => { state.settings.fast = e.target.checked; saveSettings(); });
+  // Faster only changes high-quality guitar/piano (the RoFormer model), so it only shows then.
+  function updateFastRow() {
+    const roformer = ['guitar', 'lead guitar', 'rhythm guitar', 'piano'].some((n) => state.settings.instruments.includes(n));
+    $('#fast-row').classList.toggle('hidden', !(state.settings.hq && roformer));
+  }
 
   $('#upload-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1396,7 +1446,7 @@
     renderJob(); updateUploadButton();
     try {
       const { job } = await postJSON('/api/process', {
-        items, instruments: state.settings.instruments, level: state.settings.level, hq: state.settings.hq,
+        items, instruments: state.settings.instruments, level: state.settings.level, hq: state.settings.hq, fast: state.settings.fast,
       });
       pollJob(job, submitted, state.upload.redo);
     } catch (err) {
@@ -1420,7 +1470,8 @@
     }
     const overall = job.total ? ((job.index + job.fraction) / job.total) * 100 : 0;
     const title = `Processing “${job.song}”`;
-    const step = job.status === 'queued' ? 'Waiting to start…' : (job.step || 'Starting');
+    const left = timeLeft(job, overall / 100);
+    const step = (job.status === 'queued' ? 'Waiting to start…' : (job.step || 'Starting')) + (left ? ` · ${left}` : '');
     const sub = job.total > 1 ? `Song ${job.index + 1} of ${job.total} · ${step}` : step;
     $('#dlg-progress-title').textContent = title;
     $('#dlg-progress-step').textContent = step;
@@ -1431,6 +1482,24 @@
     $('#banner-bar').style.width = `${overall}%`;
   }
   dlg.addEventListener('close', renderJob);
+
+  // Time left, from how fast the bar has moved since it started moving. That start
+  // comes after any model download or loading, so those don't skew it; for a batch
+  // the reading/saving between songs averages in. Hidden until a few seconds and 3%
+  // of progress give a steady rate, and once the bar is full (only quick steps left).
+  const eta = { job: null, t0: 0, f0: 0 };
+  function timeLeft(job, overall) {
+    if (eta.job !== state.jobId) Object.assign(eta, { job: state.jobId, t0: 0, f0: 0 });
+    if (job.status !== 'running' || overall <= 0 || overall >= 0.995) return '';
+    const now = performance.now() / 1000;
+    if (!eta.t0) { Object.assign(eta, { t0: now, f0: overall }); return ''; }
+    const done = overall - eta.f0, elapsed = now - eta.t0;
+    if (done < 0.03 || elapsed < 4) return '';
+    const s = Math.max(10, Math.round(((elapsed / done) * (1 - overall)) / 10) * 10);   // to 10 s
+    if (s >= 600) return `about ${Math.round(s / 60)} min left`;
+    const min = Math.floor(s / 60), sec = s % 60;
+    return `about ${[min && `${min} min`, sec && `${sec} s`].filter(Boolean).join(' ')} left`;
+  }
 
   // Stop: the song being separated stops within a few seconds; nothing half-made is saved.
   document.querySelectorAll('.stop-job').forEach((b) => b.addEventListener('click', async () => {

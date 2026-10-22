@@ -47,7 +47,7 @@ import yt_dlp
 from demucs.apply import apply_model
 from demucs.pretrained import get_model
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from send2trash import send2trash
@@ -148,31 +148,38 @@ def download_model(url, dest, sha256, on_progress):
     part.replace(dest)
 
 
-def run_roformer(mix, on_progress, device=DEVICE):
+def run_roformer(mix, on_progress, device=DEVICE, fast=False):
     """All six RoFormer stems for mix, shaped (6, 2, samples).
 
-    The song goes through in half-overlapping chunks, crossfaded with a window
-    whose overlapping halves add up to 1, so there are no seams.
+    The song goes through in overlapping chunks, crossfaded with sin² ramps that add
+    up to 1, so there are no seams. Normally chunks overlap by half: every moment is
+    separated twice and blended, as the model's own config does. fast overlaps them
+    by just 1 s: half the work (~2x faster on an M4), output ~-20 dB different.
+    On a GPU the model runs in half precision: ~10% faster, output within -61 dB.
     """
     model = roformer_model(on_progress).to(device)
-    length, step = mix.shape[1], ROFORMER_CHUNK // 2
-    # Pad so every real sample lies under two chunks and the last chunk is full.
-    total = length + 2 * step
+    length = mix.shape[1]
+    fade = SAMPLERATE if fast else ROFORMER_CHUNK // 2
+    step = ROFORMER_CHUNK - fade
+    # Pad so every real sample is fully covered and the last chunk is full.
+    total = length + 2 * fade
     total += -(total - ROFORMER_CHUNK) % step
-    x = np.pad(mix, ((0, 0), (step, total - length - step)))
-    window = np.sin(np.pi * (np.arange(ROFORMER_CHUNK) + 0.5) / ROFORMER_CHUNK) ** 2
+    x = np.pad(mix, ((0, 0), (fade, total - length - fade)))
+    ramp = np.sin(np.pi / 2 * (np.arange(fade) + 0.5) / fade) ** 2
+    window = np.ones(ROFORMER_CHUNK, np.float32)
+    window[:fade], window[ROFORMER_CHUNK - fade:] = ramp, ramp[::-1]
     out = np.zeros((len(ROFORMER_SOURCES), 2, total), np.float32)
     weight = np.zeros(total, np.float32)
     starts = range(0, total - ROFORMER_CHUNK + 1, step)
     for i, s in enumerate(starts):
         chunk = torch.from_numpy(x[:, s:s + ROFORMER_CHUNK].copy())[None].to(device)
-        with torch.no_grad():
-            y = model(chunk)[0].cpu().numpy()
+        with torch.no_grad(), torch.autocast(device, dtype=torch.float16, enabled=device != "cpu"):
+            y = model(chunk)[0].float().cpu().numpy()
         n = min(y.shape[-1], ROFORMER_CHUNK)   # the inverse STFT can come back a little short
         out[..., s:s + n] += y[..., :n] * window[:n]
         weight[s:s + n] += window[:n]
         on_progress((i + 1) / len(starts))
-    return out[..., step:step + length] / np.maximum(weight[step:step + length], 1e-6)
+    return out[..., fade:fade + length] / np.maximum(weight[fade:fade + length], 1e-6)
 
 
 def decode(path, samplerate):
@@ -185,12 +192,12 @@ def decode(path, samplerate):
 
 def encode_mp3(audio, samplerate, dest):
     cmd = [FFMPEG, "-v", "error", "-y", "-f", "f32le", "-ac", "2", "-ar", str(samplerate),
-           "-i", "-", "-b:a", "192k", str(dest)]
+           "-i", "-", "-b:a", "320k", str(dest)]   # most originals are already lossy; keep the 2nd generation clean
     pcm = np.clip(audio, -1.0, 1.0).T.astype(np.float32).tobytes()
     subprocess.run(cmd, input=pcm, check=True)
 
 
-def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=None: None):
+def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=None: None, fast=False):
     """Return the chosen instruments summed together, same shape as mix.
 
     on_progress(fraction, step): how far along (0-1, or None) and what it's doing now.
@@ -217,9 +224,10 @@ def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=No
 
         if model is None:
             roformer_model(progress)   # download/load outside run_model, so a failure there isn't retried
-        progress(0.0, f"Separating {stems_label(wanted)}{' (high quality)' if high_quality else ''}")
+        quality = (" (high quality, faster)" if fast and model is None else " (high quality)") if high_quality else ""
+        progress(0.0, f"Separating {stems_label(wanted)}{quality}")
         if model is None:
-            out = run_model(lambda device: run_roformer(mix, progress, device), progress)
+            out = run_model(lambda device: run_roformer(mix, progress, device, fast), progress)
             for stem in wanted:
                 parts[stem] = out[ROFORMER_SOURCES.index(stem)]
             continue
@@ -390,8 +398,9 @@ def song_info(song_dir):
     for p in song_dir.glob("* (no *).mp3"):
         m = NO_RE.search(p.stem)
         if m:
-            level = settings.get(version_key(song_dir, p.stem), {}).get("level", 0)
-            versions.append({"id": rel(p.with_suffix("")), "removed": m.group(1), "level": level,
+            made = settings.get(version_key(song_dir, p.stem), {})
+            versions.append({"id": rel(p.with_suffix("")), "removed": m.group(1),
+                             "level": made.get("level", 0), "fast": made.get("fast", False),
                              "hq": p.stem[: m.start()].endswith(HQ_TAG), "added": p.stat().st_mtime})
     versions.sort(key=lambda v: v["added"], reverse=True)
     added = meta.get("added") or max((v["added"] for v in versions), default=song_dir.stat().st_mtime)
@@ -496,10 +505,10 @@ jobs = {}
 job_queue = queue.Queue()
 
 
-def make_version(source, song_dir, stems, level, high_quality, on_progress):
+def make_version(source, song_dir, stems, level, high_quality, on_progress, fast=False):
     on_progress(0.0, "Reading the song")
     mix = decode(source, SAMPLERATE)
-    removed = separate(mix, stems, high_quality, on_progress)
+    removed = separate(mix, stems, high_quality, on_progress, fast)
     on_progress(1.0, "Saving")
     # Subtracting the separated parts from the original keeps everything else untouched.
     without = mix - removed * (1.0 - level / 100.0)
@@ -515,9 +524,9 @@ def make_version(source, song_dir, stems, level, high_quality, on_progress):
     without_path, only_path = version_files(version)
     encode_mp3(without, SAMPLERATE, without_path)
     encode_mp3(removed, SAMPLERATE, only_path)
-    # The name records instruments and HQ; keep the level too, so Redo can repeat it exactly.
+    # The name records instruments and HQ; keep the rest too, so Redo can repeat it exactly.
     meta = read_meta(song_dir)
-    meta.setdefault("versions", {})[version_key(song_dir, version)] = {"level": level}
+    meta.setdefault("versions", {})[version_key(song_dir, version)] = {"level": level, "fast": fast}
     write_meta(song_dir, meta)
     return version
 
@@ -556,7 +565,7 @@ def worker():
                     stage = item["stage"]
                     version = make_version(stage["path"], song_dir, settings["stems"],
                                            settings["level"], settings["hq"],
-                                           on_progress=report)
+                                           on_progress=report, fast=settings["fast"])
                     if not original_file(song_dir):
                         shutil.copy2(stage["path"], song_dir / f"original{stage['path'].suffix.lower()}")
                         write_meta(song_dir, {**read_meta(song_dir),   # keeps the version's level
@@ -565,7 +574,7 @@ def worker():
                 else:
                     version = make_version(original_file(song_dir), song_dir, settings["stems"],
                                            settings["level"], settings["hq"],
-                                           on_progress=report)
+                                           on_progress=report, fast=settings["fast"])
                 job["done"].append(version)
             except Stopped:
                 # Nothing is saved before separation finishes, so there's nothing to undo.
@@ -603,7 +612,19 @@ def get_library():
 
 @api.get("/api/audio")
 def audio(version: str, part: str):
-    without, only = version_files(rel(library_path(version, 3)))
+    path = library_path(version, 3)
+    if part == "original":
+        # The song's own original, for the player's Original mode, decoded exactly as
+        # separation does (44.1 kHz) so it lines up with the versions. Float WAV keeps
+        # peaks above full scale (common in lossy files) that 16-bit would clip, and
+        # every browser can decode it.
+        source = original_file(path.parent)
+        if not source:
+            raise HTTPException(404, "This song has no saved original.")
+        cmd = [FFMPEG, "-v", "error", "-i", str(source), "-ac", "2", "-ar", str(SAMPLERATE),
+               "-c:a", "pcm_f32le", "-f", "wav", "-"]
+        return Response(subprocess.run(cmd, capture_output=True, check=True).stdout, media_type="audio/wav")
+    without, only = version_files(rel(path))
     path = without if part == "without" else only
     if not path.exists():
         raise HTTPException(404, "That version doesn't exist.")
@@ -714,6 +735,7 @@ class ProcessRequest(BaseModel):
     instruments: list[str]
     level: int = 0
     hq: bool = False
+    fast: bool = False  # HQ guitar/piano: 1 s crossfade instead of 2x overlap (see run_roformer)
 
 
 @api.post("/api/process")
@@ -757,7 +779,7 @@ def process(req: ProcessRequest):
     job_id = uuid.uuid4().hex
     jobs[job_id] = {"status": "queued", "total": len(items), "index": 0, "song": items[0]["title"],
                     "fraction": 0.0, "done": [], "failed": [], "finished": []}
-    job_queue.put((job_id, {"items": items, "stems": stems, "hq": req.hq,
+    job_queue.put((job_id, {"items": items, "stems": stems, "hq": req.hq, "fast": req.fast,
                             "level": max(0, min(req.level, 100))}))
     return {"job": job_id}
 
@@ -827,17 +849,17 @@ def delete_version(req: IdRequest):
 def redo_version(req: IdRequest):
     """Make a version again with its own settings, replacing its files.
 
-    Instruments and HQ come from its name; the level from .song.json (versions made
-    before levels were recorded count as 0%, which nearly all of them used).
+    Instruments and HQ come from its name; level and fast from .song.json (versions
+    made before those were recorded count as 0% and not fast, as nearly all were).
     """
     path = library_path(req.id, 3)
     song_dir, m = path.parent, NO_RE.search(path.name)
     if not m or not version_files(req.id)[0].exists():
         raise HTTPException(404, "That version doesn't exist.")
-    level = read_meta(song_dir).get("versions", {}).get(version_key(song_dir, req.id), {}).get("level", 0)
+    made = read_meta(song_dir).get("versions", {}).get(version_key(song_dir, req.id), {})
     return process(ProcessRequest(items=[ProcessItem(song=rel(song_dir))],
-                                  instruments=re.split(r", | & ", m.group(1)), level=level,
-                                  hq=path.name[:m.start()].endswith(HQ_TAG)))
+                                  instruments=re.split(r", | & ", m.group(1)), level=made.get("level", 0),
+                                  hq=path.name[:m.start()].endswith(HQ_TAG), fast=made.get("fast", False)))
 
 
 class ArtistEdit(BaseModel):
