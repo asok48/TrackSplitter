@@ -1,0 +1,1389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track Splitter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%238b5cf6'/%3E%3Cpath d='M7 15v-4M10 17V7M13 14v-2M16 16V8' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0d11;
+    --panel: #15151b;
+    --panel-2: #1c1c24;
+    --hover: #23232d;
+    --border: #2a2a35;
+    --text: #ececf1;
+    --muted: #8d8d9c;
+    --faint: #5d5d6b;
+    --accent: #8b5cf6;
+    --accent-hover: #9d74f8;
+    --accent-soft: rgba(139, 92, 246, 0.16);
+    --danger: #f05252;
+    --radius: 12px;
+    --player-h: 92px;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { font-size: 14px; line-height: 1.4; overflow: hidden; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  input, select { font: inherit; color: inherit; }
+  svg { flex-shrink: 0; }
+  .hidden { display: none !important; }
+
+  /* ---------- Layout ---------- */
+  .app {
+    display: grid; height: 100vh;
+    grid-template-columns: 248px 1fr;
+    grid-template-rows: 1fr var(--player-h);
+    grid-template-areas: "side main" "player player";
+  }
+  .sidebar {
+    grid-area: side; display: flex; flex-direction: column; gap: 18px;
+    padding: 20px 14px 14px; background: var(--panel); border-right: 1px solid var(--border);
+    min-height: 0;
+  }
+  .main { grid-area: main; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .player {
+    grid-area: player; display: grid; align-items: center; gap: 20px;
+    grid-template-columns: minmax(160px, 1fr) minmax(240px, 1.5fr) auto;
+    padding: 0 20px; background: var(--panel); border-top: 1px solid var(--border);
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--panel-2); font-weight: 600; transition: background .15s, opacity .15s;
+  }
+  .btn:hover:not(:disabled) { background: var(--hover); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: white; }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn.danger { color: var(--danger); }
+  .btn.danger-fill { background: var(--danger); border-color: transparent; color: white; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.block { width: 100%; }
+  .icon-btn {
+    display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+    border: none; background: transparent; color: var(--muted); transition: color .15s, background .15s;
+  }
+  .icon-btn.sm { width: 26px; height: 26px; }
+  .icon-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- Sidebar ---------- */
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; font-weight: 700; font-size: 16px; }
+  .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); }
+  .nav { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+  .nav-label {
+    display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 10px; margin: 16px 0 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
+  }
+  .nav-label:first-child { margin-top: 0; }
+  .nav-item {
+    position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: none; border-radius: 8px;
+    background: transparent; color: var(--muted); text-align: left; transition: background .15s, color .15s;
+  }
+  .nav-item:hover { background: var(--hover); color: var(--text); }
+  .nav-item.active { background: var(--accent-soft); color: var(--text); }
+  .nav-item.active svg { color: var(--accent); }
+  .nav-item.drop { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); color: var(--text); }
+  .nav-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-item .count { font-size: 12px; color: var(--faint); }
+  .nav-item .icon-btn { display: none; margin: -4px -6px -4px 0; }
+  .nav-item:hover .icon-btn, .nav-item .icon-btn:focus-visible { display: inline-grid; }
+  .nav-item:hover .count { display: none; }
+  .avatar {
+    display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--border); font-size: 10px; font-weight: 700; color: var(--muted);
+  }
+  .nav-item.active .avatar { background: var(--accent); border-color: transparent; color: white; }
+  .nav-empty { padding: 4px 10px; color: var(--faint); font-size: 13px; }
+  .sidebar-foot { display: flex; flex-direction: column; gap: 6px; padding: 10px 6px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--faint); }
+  .link-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: none; background: none; color: var(--muted); font-size: 12px; }
+  .link-btn:hover { color: var(--text); }
+
+  /* ---------- Main ---------- */
+  .main-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 28px 32px 18px; }
+  .main-head h1 { margin: 0; font-size: 28px; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .main-head > div:first-child { min-width: 0; }
+  .main-head p { margin: 4px 0 0; color: var(--muted); }
+  .search { position: relative; width: min(320px, 40%); flex-shrink: 0; }
+  .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); }
+  .search input {
+    width: 100%; height: 38px; padding: 0 12px 0 38px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--panel); outline: none;
+  }
+  .search input:focus { border-color: var(--accent); }
+
+  .job-banner {
+    display: flex; align-items: center; gap: 14px; margin: 0 32px 14px; padding: 12px 16px;
+    border-radius: var(--radius); background: var(--panel); border: 1px solid var(--border);
+  }
+  .job-banner .text { flex: 1; min-width: 0; }
+  .job-banner .text div:first-child { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-banner .text div:last-child { color: var(--muted); font-size: 12px; }
+  .progress { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .4s; }
+  .job-banner .progress { width: 160px; }
+
+  .songs { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 20px; }
+  .song-head, .song-row {
+    display: grid; align-items: center; gap: 14px;
+    grid-template-columns: 36px minmax(160px, 1.6fr) minmax(160px, 2fr) 110px 36px;
+    padding: 0 12px;
+  }
+  .song-head {
+    position: sticky; top: 0; z-index: 1; height: 36px; background: var(--bg);
+    border-bottom: 1px solid var(--border); color: var(--faint); font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .song-row { min-height: 62px; padding-top: 8px; padding-bottom: 8px; border-radius: 8px; cursor: pointer; transition: background .12s; }
+  .song-row:hover { background: var(--panel-2); }
+  .song-row.current { background: var(--accent-soft); }
+  .song-row.dragging { opacity: .5; }
+  .song-row .num { color: var(--faint); text-align: center; font-variant-numeric: tabular-nums; }
+  .song-row.current .num { color: var(--accent); }
+  .song-row .title { min-width: 0; }
+  .song-row .title div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .song-row .title div:first-child { font-weight: 600; }
+  .song-row.current .title div:first-child { color: var(--accent); }
+  .song-row .title div:last-child { color: var(--muted); font-size: 13px; }
+  .versions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .vchip {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 600;
+    transition: all .12s;
+  }
+  .vchip:hover { color: var(--text); border-color: var(--faint); }
+  .vchip.active { background: var(--accent); border-color: transparent; color: white; }
+  .vchip .hq { padding: 0 4px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-hover); font-size: 10px; letter-spacing: .04em; }
+  .vchip.active .hq { background: rgba(255, 255, 255, .22); color: white; }
+  .vchip.add { border-style: dashed; }
+  .no-versions { color: var(--faint); font-size: 13px; }
+  .song-row .date { color: var(--muted); font-size: 13px; }
+  .song-row .more { opacity: 0; }
+  .song-row:hover .more, .song-row .more:focus-visible { opacity: 1; }
+  .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+  .eq span { width: 3px; background: var(--accent); border-radius: 1px; animation: eq 0.9s ease-in-out infinite; }
+  .eq span:nth-child(2) { animation-delay: -.3s; } .eq span:nth-child(3) { animation-delay: -.6s; }
+  .eq.paused span { animation-play-state: paused; }
+  @keyframes eq { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+  .empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); }
+  .empty h2 { margin: 14px 0 6px; color: var(--text); font-size: 18px; }
+  .empty p { margin: 0 0 18px; }
+  .empty-mark { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto; border-radius: 18px; background: var(--panel-2); color: var(--accent); }
+
+  /* ---------- Player ---------- */
+  .now { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .cover { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #4c1d95); color: white; flex-shrink: 0; }
+  .cover.idle { background: var(--panel-2); color: var(--faint); }
+  .now .meta { min-width: 0; }
+  .now .meta div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .now .meta div:first-child { font-weight: 600; }
+  .now .meta div:last-child { color: var(--muted); font-size: 13px; }
+  .transport { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+  .controls { display: flex; align-items: center; gap: 10px; }
+  .play-btn {
+    display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: none;
+    background: var(--text); color: var(--bg); transition: transform .1s, opacity .15s;
+  }
+  .play-btn:hover:not(:disabled) { transform: scale(1.06); }
+  .play-btn:disabled { opacity: .35; cursor: default; }
+  .seek-row { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .seek-row span { width: 40px; flex-shrink: 0; } .seek-row span:first-child { text-align: right; }
+  input[type=range] {
+    /* min-width: 0 lets sliders shrink to their slot; browsers default them to ~130px. */
+    -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; width: 100%; height: 4px; border-radius: 2px; margin: 0;
+    background: linear-gradient(to right, var(--accent) var(--fill, 0%), var(--hover) var(--fill, 0%)); cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); border: none; }
+  input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--text); border: none; }
+  input[type=range]:disabled { opacity: .4; cursor: default; }
+  .player-right { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-width: 0; }
+  .segmented { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); }
+  .segmented button {
+    height: 30px; padding: 0 12px; border: none; border-radius: 7px; background: transparent;
+    color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; transition: background .15s, color .15s;
+  }
+  .segmented button:hover:not(:disabled) { color: var(--text); }
+  .segmented button.active { background: var(--accent); color: white; }
+  .segmented button:disabled { cursor: default; opacity: .5; }
+  .volume { display: flex; align-items: center; gap: 6px; width: 110px; color: var(--muted); }
+  @media (max-width: 1100px) { .volume { width: 34px; } .volume input { display: none; } }
+
+  /* ---------- Dialogs ---------- */
+  dialog {
+    width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; overflow: auto;
+    border: 1px solid var(--border); border-radius: 16px; background: var(--panel); color: var(--text);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  }
+  dialog.narrow { width: min(440px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(5, 5, 8, .65); backdrop-filter: blur(4px); }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px 4px; }
+  .dlg-head h2 { margin: 0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dlg-body { display: flex; flex-direction: column; gap: 18px; padding: 14px 22px 4px; }
+  .dlg-body p { margin: 0; color: var(--muted); }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 18px 22px 20px; }
+  .dlg-foot .spacer { flex: 1; }
+  .field > label, .field > .label { display: block; margin-bottom: 8px; font-weight: 600; }
+  .field .hint { margin-top: 6px; font-size: 12px; color: var(--faint); }
+  .text-input {
+    width: 100%; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--panel-2); outline: none;
+  }
+  .text-input:focus { border-color: var(--accent); }
+  .text-input:disabled { opacity: .55; }
+  .dropzone {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px; border-radius: 12px;
+    border: 1.5px dashed var(--border); background: var(--panel-2); color: var(--muted); text-align: center;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-soft); }
+  .dropzone strong { color: var(--text); }
+  .dropzone .accent { color: var(--accent-hover); font-weight: 600; }
+  .link-row { display: flex; gap: 8px; margin-top: 10px; }
+  .link-row .btn { flex-shrink: 0; height: 40px; }
+  .upload-items { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-height: 260px; overflow-y: auto; }
+  .upload-item { padding: 10px 10px 10px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); }
+  .upload-item .top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--faint); }
+  .upload-item .top .file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upload-item .inputs { display: grid; grid-template-columns: 1.3fr 1fr; gap: 8px; margin-top: 8px; }
+  .upload-item .inputs .text-input { height: 34px; background: var(--panel); }
+  .upload-item .note { margin-top: 6px; font-size: 12px; color: var(--accent-hover); }
+  .upload-item .note.error { color: #fca5a5; }
+  .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--hover); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toggle-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toggle-chip {
+    height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--muted); font-weight: 600; transition: all .15s;
+  }
+  .toggle-chip:hover { color: var(--text); }
+  .toggle-chip[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .range-row { display: flex; align-items: center; gap: 10px; height: 40px; }
+  .range-row output { width: 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .switch { display: flex; align-items: center; gap: 10px; height: 40px; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch .track { position: relative; display: inline-block; flex-shrink: 0; width: 38px; height: 22px; border-radius: 11px; background: var(--hover); border: 1px solid var(--border); transition: background .15s; }
+  .switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); transition: transform .15s; }
+  .switch input:checked + .track { background: var(--accent); border-color: transparent; }
+  .switch input:checked + .track::after { transform: translateX(16px); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dlg-progress { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: var(--panel-2); }
+  .dlg-progress .top { display: flex; justify-content: space-between; gap: 10px; }
+  .dlg-progress .top span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .dlg-progress .top span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .error-box { padding: 10px 12px; border-radius: 10px; background: rgba(240, 82, 82, .12); border: 1px solid rgba(240, 82, 82, .4); color: #fca5a5; }
+  .version-list { display: flex; flex-direction: column; gap: 6px; }
+  .version-item { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: 8px; background: var(--panel-2); }
+  .version-item .name { flex: 1; min-width: 0; text-transform: capitalize; }
+  .version-item .when { color: var(--faint); font-size: 12px; }
+
+  /* ---------- Shortcut welcome card ---------- */
+  dialog.onboard { width: min(400px, calc(100vw - 32px)); }
+  .onboard-body { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 30px 28px 22px; text-align: center; }
+  .onboard-mark {
+    display: grid; place-items: center; width: 64px; height: 64px; border-radius: 18px;
+    background: linear-gradient(135deg, var(--accent), #5b21b6); box-shadow: 0 10px 30px rgba(139, 92, 246, .35);
+  }
+  .onboard-body h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: -.01em; }
+  .onboard-body p { margin: 0; color: var(--muted); }
+  .onboard-points { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 4px 0 0; padding: 14px 16px; list-style: none; text-align: left; border-radius: 12px; background: var(--panel-2); }
+  .onboard-points li { display: flex; align-items: center; gap: 10px; }
+  .onboard-points svg { color: var(--accent-hover); }
+  .onboard-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  .check { display: inline-flex; align-items: center; gap: 8px; color: var(--faint); font-size: 13px; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+
+  /* ---------- Menu + toasts ---------- */
+  .menu {
+    position: fixed; z-index: 50; min-width: 190px; padding: 6px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid var(--border); box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+  }
+  .menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: none; border-radius: 6px; background: none; text-align: left; }
+  .menu button:hover:not(:disabled) { background: var(--hover); }
+  .menu button:disabled { opacity: .45; cursor: default; }
+  .menu button.danger { color: var(--danger); }
+  .menu hr { margin: 4px 2px; border: none; border-top: 1px solid var(--border); }
+  .toasts { position: fixed; right: 20px; bottom: calc(var(--player-h) + 16px); z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    max-width: 380px; padding: 12px 16px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .45); animation: toast-in .2s ease-out;
+  }
+  .toast.error { border-color: rgba(240, 82, 82, .5); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+  /* ---------- Small screens ---------- */
+  @media (max-width: 900px) {
+    .song-head, .song-row { grid-template-columns: 28px minmax(130px, 1.4fr) minmax(130px, 2fr) 36px; }
+    .song-head .c-date, .song-row .date { display: none; }
+    .player { grid-template-columns: 1fr 1.4fr; }
+    .player-right { grid-column: 1 / -1; justify-content: center; padding-bottom: 8px; }
+    :root { --player-h: 140px; }
+    .volume { display: none; }
+  }
+  @media (max-width: 680px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr var(--player-h); grid-template-areas: "side" "main" "player"; }
+    .sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 16px; border-right: none; border-bottom: 1px solid var(--border); }
+    .nav, .sidebar-foot { display: none; }
+    .sidebar .btn.block { width: auto; margin-left: auto; }
+    .main-head { flex-direction: column; align-items: stretch; padding: 18px 16px 12px; }
+    .search { width: 100%; }
+    .songs { padding: 0 8px 12px; }
+    .player { grid-template-columns: 1fr; gap: 8px; padding: 10px 16px; }
+    :root { --player-h: 190px; }
+    .upload-item .inputs, .row-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M5 14v-4M9 18V6M13 15V9M17 17V7M21 13v-2"/></svg></span>
+      Track Splitter
+    </div>
+    <button class="btn primary block" id="add-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add songs
+    </button>
+    <nav class="nav">
+      <div class="nav-label">Library</div>
+      <div id="nav-library"></div>
+      <div class="nav-label">
+        Artists
+        <button class="icon-btn sm" id="new-artist-btn" title="New artist" aria-label="New artist">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div id="nav-artists"></div>
+    </nav>
+    <div class="sidebar-foot">
+      <span id="device-label">Loading…</span>
+      <button class="link-btn" id="open-folder-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Open library folder
+      </button>
+      <button class="link-btn hidden" id="shortcut-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>
+        Create app shortcut
+      </button>
+      <button class="link-btn" id="quit-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>
+        Quit Track Splitter
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="main-head">
+      <div>
+        <h1 id="view-title">All songs</h1>
+        <p id="view-sub"></p>
+      </div>
+      <label class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" placeholder="Search songs, artists, instruments" autocomplete="off" aria-label="Search songs">
+      </label>
+    </header>
+    <div class="job-banner hidden" id="job-banner">
+      <div class="text"><div id="banner-title"></div><div id="banner-sub"></div></div>
+      <div class="progress"><div id="banner-bar"></div></div>
+    </div>
+    <div class="songs" id="songs"></div>
+  </main>
+
+  <footer class="player">
+    <div class="now">
+      <div class="cover idle" id="cover"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+      <div class="meta"><div id="now-title">Nothing playing</div><div id="now-sub">Pick a song from your library</div></div>
+    </div>
+    <div class="transport">
+      <div class="controls">
+        <button class="icon-btn" id="back-btn" title="Back 10 seconds" aria-label="Back 10 seconds" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="7" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
+        </button>
+        <button class="play-btn" id="play-btn" aria-label="Play" disabled>
+          <svg id="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+          <svg id="pause-icon" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
+        <button class="icon-btn" id="fwd-btn" title="Forward 10 seconds" aria-label="Forward 10 seconds" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="7" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
+        </button>
+      </div>
+      <div class="seek-row">
+        <span id="time-cur">0:00</span>
+        <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek" disabled>
+        <span id="time-dur">0:00</span>
+      </div>
+    </div>
+    <div class="player-right">
+      <div class="segmented" role="group" aria-label="What to hear">
+        <button data-mode="without" class="active" disabled>Without</button>
+        <button data-mode="both" disabled>Original</button>
+        <button data-mode="only" disabled>Only</button>
+      </div>
+      <div class="volume">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        <input type="range" id="volume" min="0" max="100" value="100" aria-label="Volume">
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- Add songs / new version -->
+<dialog id="upload-dlg" aria-labelledby="upload-title">
+  <form method="dialog" id="upload-form">
+    <div class="dlg-head">
+      <h2 id="upload-title">Add songs</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dlg-body">
+      <div class="field" id="files-field">
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose songs">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <div><strong>Drop songs here</strong> or <span class="accent">browse</span></div>
+          <div style="font-size:12px">Title and artist are read from each file; you can change them below.</div>
+        </div>
+        <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac" multiple hidden>
+        <div class="link-row">
+          <input class="text-input" id="link-input" type="url" placeholder="…or paste a link (YouTube, SoundCloud, Bandcamp…)" autocomplete="off" aria-label="Song link">
+          <button type="button" class="btn" id="link-add" disabled>Add link</button>
+        </div>
+        <div class="upload-items" id="upload-items"></div>
+      </div>
+      <p id="version-intro" class="hidden"></p>
+      <div class="field">
+        <div class="label">Remove</div>
+        <div class="toggle-chips" id="instrument-chips"></div>
+        <div class="hint">Guitar and piano are separated less precisely than bass, drums and vocals.</div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label for="level-input">Keep some of the removed part</label>
+          <div class="range-row"><input type="range" id="level-input" min="0" max="100" step="5" value="0"><output id="level-out">0%</output></div>
+        </div>
+        <div class="field">
+          <div class="label">High quality</div>
+          <label class="switch"><input type="checkbox" id="hq-input"><span class="track"></span><span style="color:var(--muted);font-size:13px">Cleaner, a bit slower</span></label>
+        </div>
+      </div>
+      <div class="dlg-progress hidden" id="dlg-progress">
+        <div class="top"><span id="dlg-progress-title"></span><span id="dlg-progress-pct"></span></div>
+        <div class="progress"><div id="dlg-progress-bar"></div></div>
+      </div>
+      <div class="error-box hidden" id="upload-error" role="alert"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close id="upload-cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="upload-submit" disabled>Upload</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Edit song -->
+<dialog id="edit-dlg" aria-labelledby="edit-title">
+  <form method="dialog" id="edit-form">
+    <div class="dlg-head">
+      <h2 id="edit-title">Edit song</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dlg-body">
+      <div class="row-2">
+        <div class="field"><label for="edit-name">Title</label><input class="text-input" id="edit-name" autocomplete="off" required></div>
+        <div class="field"><label for="edit-artist">Artist</label><input class="text-input" id="edit-artist" list="artist-options" autocomplete="off"></div>
+      </div>
+      <div class="field">
+        <div class="label">Versions</div>
+        <div class="version-list" id="edit-versions"></div>
+      </div>
+      <div class="error-box hidden" id="edit-error" role="alert"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn danger" id="edit-delete">Delete song</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Generic prompt / confirm -->
+<dialog id="prompt-dlg" class="narrow" aria-labelledby="prompt-title">
+  <form method="dialog" id="prompt-form">
+    <div class="dlg-head"><h2 id="prompt-title"></h2></div>
+    <div class="dlg-body">
+      <p id="prompt-text"></p>
+      <div class="field" id="prompt-field"><label for="prompt-input" id="prompt-label"></label><input class="text-input" id="prompt-input" list="artist-options" autocomplete="off"></div>
+      <div class="error-box hidden" id="prompt-error" role="alert"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn hidden" id="prompt-extra"></button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close id="prompt-cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="prompt-ok">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Offer to create the app shortcut -->
+<dialog id="shortcut-dlg" class="onboard" aria-labelledby="shortcut-title">
+  <div class="onboard-body">
+    <span class="onboard-mark"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M5 14v-4M9 18V6M13 15V9M17 17V7M21 13v-2"/></svg></span>
+    <h2 id="shortcut-title">Open Track Splitter like an app</h2>
+    <p id="shortcut-text"></p>
+    <ul class="onboard-points">
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span id="shortcut-point"></span></li>
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>No Terminal window to keep open</li>
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Stop it any time with Quit in the sidebar</li>
+    </ul>
+    <div class="error-box hidden" id="shortcut-error" role="alert"></div>
+    <div class="onboard-actions">
+      <button type="button" class="btn primary block" id="shortcut-create"></button>
+      <button type="button" class="btn ghost block" id="shortcut-later">Not now</button>
+    </div>
+    <label class="check" id="shortcut-never-row"><input type="checkbox" id="shortcut-never"> Don’t ask me again</label>
+  </div>
+</dialog>
+
+<datalist id="artist-options"></datalist>
+<div class="menu hidden" id="menu" role="menu"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = (sel) => document.querySelector(sel);
+  const el = (tag, props = {}, ...children) => {
+    const node = Object.assign(document.createElement(tag), props);
+    for (const c of children) if (c != null) node.append(c);
+    return node;
+  };
+  const svg = (paths, size = 16, extra = '') =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${paths}</svg>`;
+  const icons = {
+    music: svg('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>', 18),
+    more: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+    moreSm: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+    x: svg('<path d="M6 6l12 12M18 6 6 18"/>', 14, 'stroke-width="2.4"'),
+    plus: svg('<path d="M12 5v14M5 12h14"/>', 14, 'stroke-width="2.4"'),
+    edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+    layers: svg('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>'),
+    trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'),
+    folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  };
+
+  // ---------- State ----------
+  const SETTINGS_KEY = 'track-splitter-settings';
+  const loadSettings = () => {
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || null; } catch { return null; }
+  };
+  const state = {
+    library: { artists: [], songs: [] },
+    instruments: [],
+    unknownArtist: 'Unknown artist',
+    view: 'all',            // 'all' | 'artist:<name>'
+    search: '',
+    current: null,          // { song, version } loaded in the player
+    mode: 'without',        // 'without' | 'both' | 'only'
+    volume: 1,
+    upload: { mode: 'new', items: [], song: null },
+    job: null,
+    dragSong: null,
+    settings: Object.assign({ instruments: ['bass'], level: 0, hq: false }, loadSettings()),
+  };
+  const saveSettings = () => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch {}
+  };
+
+  // ---------- API ----------
+  async function api(path, options = {}) {
+    const res = await fetch(path, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Something went wrong (${res.status}).`);
+    return data;
+  }
+  const postJSON = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  function toast(message, kind = '') {
+    const t = el('div', { className: `toast ${kind}`, textContent: message });
+    $('#toasts').append(t);
+    setTimeout(() => t.remove(), kind === 'error' ? 7000 : 3500);
+  }
+
+  // ---------- Helpers ----------
+  const fmtTime = (s) => {
+    if (!isFinite(s)) return '0:00';
+    s = Math.floor(s);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  const relTime = (epoch) => {
+    const diff = (epoch * 1000 - Date.now()) / 1000;
+    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    for (const [unit, secs] of [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]]) {
+      if (Math.abs(diff) >= secs) return rtf.format(Math.round(diff / secs), unit);
+    }
+    return 'Just now';
+  };
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
+  const setFill = (range) => range.style.setProperty('--fill', `${((range.value - range.min) / (range.max - range.min)) * 100}%`);
+  const findVersion = (versionId) => {
+    for (const song of state.library.songs) {
+      const version = song.versions.find((v) => v.id === versionId);
+      if (version) return { song, version };
+    }
+    return null;
+  };
+  const versionLabel = (v) => `No ${v.removed}`;
+
+  // ---------- Library + sidebar ----------
+  async function refreshLibrary() {
+    state.library = await api('/api/library');
+    if (state.view.startsWith('artist:') && !state.library.artists.includes(state.view.slice(7))) state.view = 'all';
+    if (state.current) {
+      const found = findVersion(state.current.version.id);
+      if (found) state.current = found;
+    }
+    $('#artist-options').replaceChildren(...state.library.artists.map((a) => el('option', { value: a })));
+    renderSidebar();
+    renderSongs();
+  }
+
+  function navItem(view, label, count, leading) {
+    const btn = el('button', { className: `nav-item${state.view === view ? ' active' : ''}` });
+    if (typeof leading === 'string') btn.innerHTML = leading; else btn.append(leading);
+    btn.append(el('span', { className: 'name', textContent: label }), el('span', { className: 'count', textContent: count }));
+    btn.addEventListener('click', () => { state.view = view; renderSidebar(); renderSongs(); });
+    return btn;
+  }
+
+  function renderSidebar() {
+    const { songs, artists } = state.library;
+    $('#nav-library').replaceChildren(navItem('all', 'All songs', songs.length, icons.music));
+    const items = artists.map((name) => {
+      const item = navItem(`artist:${name}`, name, songs.filter((s) => s.artist === name).length,
+        el('span', { className: 'avatar', textContent: initials(name) }));
+      const more = el('span', { className: 'icon-btn sm', role: 'button', tabIndex: 0, title: 'Artist options', ariaLabel: `Options for ${name}` });
+      more.innerHTML = icons.moreSm;
+      const open = (e) => { e.stopPropagation(); openMenu(more, artistMenu(name)); };
+      more.addEventListener('click', open);
+      more.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(e); });
+      item.append(more);
+      // Drop a song here to move it to this artist.
+      item.addEventListener('dragover', (e) => {
+        if (!state.dragSong || state.dragSong.artist === name) return;
+        e.preventDefault(); item.classList.add('drop');
+      });
+      item.addEventListener('dragleave', () => item.classList.remove('drop'));
+      item.addEventListener('drop', (e) => {
+        e.preventDefault(); item.classList.remove('drop');
+        const song = state.dragSong;
+        if (song && song.artist !== name) saveSong(song, song.title, name).catch((err) => toast(err.message, 'error'));
+      });
+      return item;
+    });
+    $('#nav-artists').replaceChildren(...(items.length ? items : [el('div', { className: 'nav-empty', textContent: 'No artists yet' })]));
+  }
+
+  function visibleSongs() {
+    let list = state.library.songs;
+    if (state.view.startsWith('artist:')) list = list.filter((s) => s.artist === state.view.slice(7));
+    const q = state.search.trim().toLowerCase();
+    if (q) list = list.filter((s) => [s.title, s.artist, ...s.versions.map((v) => `no ${v.removed}${v.hq ? ' hq high quality' : ''}`)].join(' ').toLowerCase().includes(q));
+    return list;
+  }
+
+  function renderSongs() {
+    const artistView = state.view.startsWith('artist:');
+    $('#view-title').textContent = artistView ? state.view.slice(7) : 'All songs';
+    const list = visibleSongs();
+    const versions = list.reduce((n, s) => n + s.versions.length, 0);
+    $('#view-sub').textContent = `${list.length} ${list.length === 1 ? 'song' : 'songs'} · ${versions} ${versions === 1 ? 'version' : 'versions'}${state.search.trim() ? ' found' : ''}`;
+    const box = $('#songs');
+
+    if (!state.library.songs.length) {
+      box.innerHTML = `<div class="empty"><div><div class="empty-mark">${icons.music.replace(/18/g, '28')}</div>
+        <h2>Your library is empty</h2><p>Add a song and pick what to take out.</p>
+        <button class="btn primary" id="empty-add">Add songs</button></div></div>`;
+      $('#empty-add').addEventListener('click', () => openUpload());
+      return;
+    }
+    if (!list.length) {
+      box.innerHTML = `<div class="empty"><div><h2>No songs here</h2><p>${state.search.trim() ? 'Nothing matches your search.' : 'Drag songs onto this artist in the sidebar, or add new ones.'}</p></div></div>`;
+      return;
+    }
+
+    const head = el('div', { className: 'song-head' });
+    head.innerHTML = '<span style="text-align:center">#</span><span>Title</span><span>Versions</span><span class="c-date">Added</span><span></span>';
+    const rows = list.map((song, i) => {
+      const isCurrent = state.current && state.current.song.id === song.id;
+      const row = el('div', { className: `song-row${isCurrent ? ' current' : ''}`, tabIndex: 0, draggable: true });
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', `Play ${song.title}`);
+      const num = el('div', { className: 'num' });
+      if (isCurrent) num.innerHTML = `<span class="eq${audio.a.paused ? ' paused' : ''}"><span></span><span></span><span></span></span>`;
+      else num.textContent = i + 1;
+      const title = el('div', { className: 'title' }, el('div', { textContent: song.title }), el('div', { textContent: song.artist }));
+
+      const chips = el('div', { className: 'versions' });
+      for (const v of song.versions) {
+        const active = isCurrent && state.current.version.id === v.id;
+        const chip = el('button', { className: `vchip${active ? ' active' : ''}`, title: `Play “${song.title}” without ${v.removed}` }, versionLabel(v));
+        if (v.hq) chip.append(el('span', { className: 'hq', textContent: 'HQ' }));
+        chip.addEventListener('click', (e) => { e.stopPropagation(); active ? togglePlay() : loadVersion(song, v, true); });
+        chips.append(chip);
+      }
+      if (song.has_original) {
+        const add = el('button', { className: 'vchip add', title: 'Make another version from the saved original' });
+        add.innerHTML = `${icons.plus}`;
+        add.append(song.versions.length ? 'Version' : 'Make a version');
+        add.addEventListener('click', (e) => { e.stopPropagation(); openUpload(song); });
+        chips.append(add);
+      } else if (!song.versions.length) {
+        chips.append(el('span', { className: 'no-versions', textContent: 'No versions' }));
+      }
+
+      const date = el('div', { className: 'date', textContent: relTime(Math.max(song.added, ...song.versions.map((v) => v.added))) });
+      const more = el('button', { className: 'icon-btn more', title: 'More', ariaLabel: `More options for ${song.title}` });
+      more.innerHTML = icons.more;
+      more.addEventListener('click', (e) => { e.stopPropagation(); openMenu(more, songMenu(song)); });
+      row.append(num, title, chips, date, more);
+
+      const play = () => {
+        if (isCurrent) togglePlay();
+        else if (song.versions.length) loadVersion(song, song.versions[0], true);
+        else if (song.has_original) openUpload(song);
+      };
+      row.addEventListener('click', play);
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) play(); });
+      row.addEventListener('dragstart', (e) => {
+        state.dragSong = song;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', song.title);
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', () => { state.dragSong = null; row.classList.remove('dragging'); });
+      return row;
+    });
+    box.replaceChildren(head, ...rows);
+  }
+
+  // ---------- Player ----------
+  // Two players always run in lockstep: "without" and "only". The mode just changes
+  // which one you hear; both together sound like the original song.
+  const audio = { a: new Audio(), b: new Audio() };
+  audio.a.preload = audio.b.preload = 'auto';
+  const seek = $('#seek');
+  let seeking = false;
+
+  function loadVersion(song, version, autoplay = false, at = 0) {
+    state.current = { song, version };
+    const src = (part) => `/api/audio?version=${encodeURIComponent(version.id)}&part=${part}`;
+    audio.a.src = src('without');
+    audio.b.src = src('only');
+    audio.a.currentTime = audio.b.currentTime = at;
+    applyMode();
+    renderPlayer();
+    renderSongs();
+    if (autoplay) play();
+  }
+
+  function clearPlayer() {
+    pause();
+    audio.a.removeAttribute('src'); audio.b.removeAttribute('src');
+    audio.a.load(); audio.b.load();
+    state.current = null;
+    renderPlayer();
+  }
+
+  // Files can't be renamed or trashed while they're streaming (Windows locks them), so
+  // let go of the player first, then pick the same spot back up afterwards.
+  function releasePlayer() {
+    if (!state.current) return null;
+    const saved = { version: state.current.version.id, at: audio.a.currentTime, playing: !audio.a.paused };
+    clearPlayer();
+    return saved;
+  }
+  function restorePlayer(saved, newVersionId) {
+    if (!saved) return;
+    const found = newVersionId && findVersion(newVersionId);
+    if (found) loadVersion(found.song, found.version, saved.playing, saved.at);
+  }
+
+  async function play() {
+    if (!state.current) return;
+    audio.b.currentTime = audio.a.currentTime;
+    try { await Promise.all([audio.a.play(), audio.b.play()]); }
+    catch (e) { if (e.name !== 'AbortError') toast(`Couldn't play this song: ${e.message}`, 'error'); }
+  }
+  function pause() { audio.a.pause(); audio.b.pause(); }
+  function togglePlay() { audio.a.paused ? play() : pause(); }
+  function seekTo(t) {
+    const dur = audio.a.duration || 0;
+    t = Math.max(0, Math.min(t, dur));
+    audio.a.currentTime = audio.b.currentTime = t;
+  }
+
+  function applyMode() {
+    audio.a.volume = state.mode === 'only' ? 0 : state.volume;
+    audio.b.volume = state.mode === 'without' ? 0 : state.volume;
+    document.querySelectorAll('.segmented button').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
+  }
+
+  function renderPlayer() {
+    const cur = state.current;
+    const enabled = !!cur;
+    ['#play-btn', '#back-btn', '#fwd-btn', '#seek'].forEach((s) => { $(s).disabled = !enabled; });
+    document.querySelectorAll('.segmented button').forEach((b) => { b.disabled = !enabled; });
+    $('#cover').classList.toggle('idle', !enabled);
+    $('#now-title').textContent = cur ? cur.song.title : 'Nothing playing';
+    $('#now-sub').textContent = cur ? `${cur.song.artist} · no ${cur.version.removed}${cur.version.hq ? ' · HQ' : ''}` : 'Pick a song from your library';
+    const w = $('.segmented button[data-mode="without"]'), o = $('.segmented button[data-mode="only"]');
+    w.textContent = cur ? `Without ${cur.version.removed}` : 'Without';
+    o.textContent = cur ? `${cap(cur.version.removed)} only` : 'Only';
+    const playing = !audio.a.paused;
+    $('#play-icon').classList.toggle('hidden', playing);
+    $('#pause-icon').classList.toggle('hidden', !playing);
+    $('#play-btn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    if (!cur) { seek.value = 0; setFill(seek); $('#time-cur').textContent = $('#time-dur').textContent = '0:00'; }
+  }
+
+  function updateTime() {
+    const { currentTime, duration } = audio.a;
+    $('#time-cur').textContent = fmtTime(currentTime);
+    $('#time-dur').textContent = fmtTime(duration);
+    if (!seeking && duration) { seek.value = (currentTime / duration) * 1000; setFill(seek); }
+  }
+
+  audio.a.addEventListener('timeupdate', updateTime);
+  audio.a.addEventListener('loadedmetadata', updateTime);
+  audio.a.addEventListener('play', () => { renderPlayer(); renderSongs(); });
+  audio.a.addEventListener('pause', () => { audio.b.pause(); renderPlayer(); renderSongs(); });
+  audio.a.addEventListener('ended', () => { pause(); seekTo(0); });
+  audio.a.addEventListener('error', () => { if (state.current) toast("Couldn't load this song's audio.", 'error'); });
+  // Keep the two players from drifting apart on long songs.
+  setInterval(() => {
+    if (!audio.a.paused && Math.abs(audio.b.currentTime - audio.a.currentTime) > 0.06) audio.b.currentTime = audio.a.currentTime;
+  }, 300);
+
+  $('#play-btn').addEventListener('click', togglePlay);
+  $('#back-btn').addEventListener('click', () => seekTo(audio.a.currentTime - 10));
+  $('#fwd-btn').addEventListener('click', () => seekTo(audio.a.currentTime + 10));
+  seek.addEventListener('input', () => {
+    seeking = true; setFill(seek);
+    $('#time-cur').textContent = fmtTime((seek.value / 1000) * (audio.a.duration || 0));
+  });
+  seek.addEventListener('change', () => { seekTo((seek.value / 1000) * (audio.a.duration || 0)); seeking = false; });
+  document.querySelectorAll('.segmented button').forEach((b) => b.addEventListener('click', () => { state.mode = b.dataset.mode; applyMode(); }));
+  const volume = $('#volume');
+  setFill(volume);
+  volume.addEventListener('input', () => { state.volume = volume.value / 100; setFill(volume); applyMode(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.target.closest('input, button, dialog, .vchip')) return;
+    e.preventDefault();
+    togglePlay();
+  });
+
+  // ---------- Menus ----------
+  const menu = $('#menu');
+  function openMenu(anchor, items) {
+    menu.replaceChildren(...items.map((item) => {
+      if (item === '-') return el('hr');
+      const b = el('button', { className: item.danger ? 'danger' : '', disabled: !!item.disabled, role: 'menuitem' });
+      b.innerHTML = item.icon || '';
+      b.append(item.label);
+      b.addEventListener('click', () => { closeMenu(); item.action(); });
+      return b;
+    }));
+    menu.classList.remove('hidden');
+    const r = anchor.getBoundingClientRect();
+    menu.style.top = `${Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8)}px`;
+    menu.style.left = `${Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8))}px`;
+  }
+  const closeMenu = () => menu.classList.add('hidden');
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) closeMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  $('#songs').addEventListener('scroll', closeMenu);
+
+  const songMenu = (song) => [
+    { label: song.has_original ? 'New version…' : 'New version… (no saved original)', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song) },
+    { label: 'Edit song…', icon: icons.edit, action: () => openEdit(song) },
+    '-',
+    { label: 'Delete song', icon: icons.trash, danger: true, action: () => deleteSong(song) },
+  ];
+  const artistMenu = (name) => [
+    { label: 'Rename artist…', icon: icons.edit, action: () => renameArtist(name) },
+    '-',
+    { label: 'Delete artist', icon: icons.trash, danger: true, action: () => deleteArtist(name) },
+  ];
+
+  // ---------- Prompt / confirm dialog ----------
+  function ask({ title, text = '', label = '', value = null, ok = 'OK', cancel = 'Cancel', danger = false, extra = null, submit }) {
+    const dlg = $('#prompt-dlg');
+    $('#prompt-cancel').textContent = cancel;
+    $('#prompt-extra').classList.toggle('hidden', !extra);
+    if (extra) {
+      $('#prompt-extra').textContent = extra.label;
+      $('#prompt-extra').onclick = () => { dlg.close(); extra.action(); };
+    }
+    $('#prompt-title').textContent = title;
+    $('#prompt-text').textContent = text;
+    $('#prompt-text').classList.toggle('hidden', !text);
+    $('#prompt-field').classList.toggle('hidden', value === null);
+    $('#prompt-label').textContent = label;
+    $('#prompt-input').value = value ?? '';
+    $('#prompt-ok').textContent = ok;
+    $('#prompt-ok').className = `btn ${danger ? 'danger-fill' : 'primary'}`;
+    $('#prompt-error').classList.add('hidden');
+    dlg.onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await submit($('#prompt-input').value.trim());
+        dlg.close();
+      } catch (err) {
+        $('#prompt-error').textContent = err.message;
+        $('#prompt-error').classList.remove('hidden');
+      }
+    };
+    dlg.showModal();
+    if (value !== null) $('#prompt-input').select();
+  }
+
+  // ---------- Song and artist actions ----------
+  async function saveSong(song, title, artist) {
+    const affected = state.current?.song.id === song.id;
+    const saved = affected ? releasePlayer() : null;
+    try {
+      const { song: newId } = await postJSON('/api/song/edit', { song: song.id, title, artist });
+      toast(artist !== song.artist && title === song.title ? `Moved “${title}” to ${artist || state.unknownArtist}.` : `Saved “${title}”.`);
+      await refreshLibrary();
+      if (saved) {
+        const oldName = saved.version.split('/')[2];
+        restorePlayer(saved, `${newId}/${newId.split('/')[1]}${oldName.slice(song.title.length)}`);
+      }
+    } catch (err) {
+      await refreshLibrary();
+      restorePlayer(saved, saved?.version);
+      throw err;
+    }
+  }
+
+  function deleteSong(song) {
+    ask({
+      title: `Delete “${song.title}”?`,
+      text: `This moves the song, its original and all ${song.versions.length} version${song.versions.length === 1 ? '' : 's'} to the Trash.`,
+      ok: 'Delete song', danger: true,
+      submit: async () => {
+        if (state.current?.song.id === song.id) clearPlayer();
+        await postJSON('/api/song/delete', { id: song.id });
+        if ($('#edit-dlg').open) $('#edit-dlg').close();
+        toast(`Moved “${song.title}” to the Trash.`);
+        await refreshLibrary();
+      },
+    });
+  }
+
+  function renameArtist(name) {
+    ask({
+      title: 'Rename artist', label: 'Name', value: name, ok: 'Rename',
+      text: 'Renaming to an artist that already exists merges the two.',
+      submit: async (newName) => {
+        if (!newName || newName === name) return;
+        const affected = state.current?.song.artist === name;
+        const saved = affected ? releasePlayer() : null;
+        try {
+          const { artist } = await postJSON('/api/artist/rename', { artist: name, name: newName });
+          if (state.view === `artist:${name}`) state.view = `artist:${artist}`;
+          toast(`Renamed ${name} to ${artist}.`);
+          await refreshLibrary();
+          restorePlayer(saved, saved && `${artist}/${saved.version.split('/').slice(1).join('/')}`);
+        } catch (err) {
+          restorePlayer(saved, saved?.version);
+          throw err;
+        }
+      },
+    });
+  }
+
+  function deleteArtist(name) {
+    const count = state.library.songs.filter((s) => s.artist === name).length;
+    ask({
+      title: `Delete ${name}?`,
+      text: count ? `This moves ${name} and all ${count} of their song${count === 1 ? '' : 's'} to the Trash.` : `${name} has no songs.`,
+      ok: 'Delete artist', danger: true,
+      submit: async () => {
+        if (state.current?.song.artist === name) clearPlayer();
+        await postJSON('/api/artist/delete', { id: name });
+        toast(`Moved ${name} to the Trash.`);
+        await refreshLibrary();
+      },
+    });
+  }
+
+  $('#new-artist-btn').addEventListener('click', () => ask({
+    title: 'New artist', label: 'Name', value: '', ok: 'Create',
+    submit: async (name) => {
+      if (!name) throw new Error('Give the artist a name.');
+      const { artist } = await postJSON('/api/artist/create', { id: name });
+      state.view = `artist:${artist}`;
+      await refreshLibrary();
+    },
+  }));
+
+  // ---------- Edit song dialog ----------
+  let editing = null;
+  function openEdit(song) {
+    editing = song;
+    $('#edit-title').textContent = `Edit “${song.title}”`;
+    $('#edit-name').value = song.title;
+    $('#edit-artist').value = song.artist;
+    $('#edit-error').classList.add('hidden');
+    renderEditVersions();
+    $('#edit-dlg').showModal();
+  }
+  function renderEditVersions() {
+    const song = editing;
+    const list = song.versions.map((v) => {
+      const del = el('button', { type: 'button', className: 'icon-btn sm', title: 'Move this version to the Trash', ariaLabel: `Delete version without ${v.removed}` });
+      del.innerHTML = icons.trash;
+      del.addEventListener('click', async () => {
+        try {
+          if (state.current?.version.id === v.id) clearPlayer();
+          await postJSON('/api/version/delete', { id: v.id });
+          toast(`Moved the “no ${v.removed}” version to the Trash.`);
+          await refreshLibrary();
+          editing = state.library.songs.find((s) => s.id === song.id) || { ...song, versions: song.versions.filter((x) => x.id !== v.id) };
+          renderEditVersions();
+        } catch (err) { toast(err.message, 'error'); }
+      });
+      return el('div', { className: 'version-item' },
+        el('span', { className: 'name', textContent: versionLabel(v) + (v.hq ? ' · HQ' : '') }),
+        el('span', { className: 'when', textContent: relTime(v.added) }), del);
+    });
+    if (!list.length) list.push(el('div', { className: 'no-versions', textContent: song.has_original ? 'No versions yet. Use “New version” to make one.' : 'No versions.' }));
+    if (!song.has_original) list.push(el('div', { className: 'hint', textContent: 'The original file wasn’t saved for this song (it was added before Track Splitter kept originals). Upload it once more to be able to make new versions.' }));
+    $('#edit-versions').replaceChildren(...list);
+  }
+  $('#edit-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = $('#edit-name').value.trim(), artist = $('#edit-artist').value.trim();
+    if (title === editing.title && (artist || state.unknownArtist) === editing.artist) { $('#edit-dlg').close(); return; }
+    try {
+      await saveSong(editing, title, artist);
+      $('#edit-dlg').close();
+    } catch (err) {
+      $('#edit-error').textContent = err.message;
+      $('#edit-error').classList.remove('hidden');
+    }
+  });
+  $('#edit-delete').addEventListener('click', () => deleteSong(editing));
+
+  // ---------- Add songs / new version dialog ----------
+  const dlg = $('#upload-dlg');
+  const fileInput = $('#file-input');
+  const dropzone = $('#dropzone');
+  let itemKey = 0;
+
+  function renderInstrumentChips() {
+    $('#instrument-chips').replaceChildren(...state.instruments.map((name) => {
+      const chip = el('button', { type: 'button', className: 'toggle-chip', textContent: cap(name) });
+      chip.setAttribute('aria-pressed', state.settings.instruments.includes(name));
+      chip.addEventListener('click', () => {
+        const set = new Set(state.settings.instruments);
+        set.has(name) ? set.delete(name) : set.add(name);
+        state.settings.instruments = state.instruments.filter((n) => set.has(n));
+        saveSettings();
+        renderInstrumentChips();
+        updateUploadButton();
+      });
+      return chip;
+    }));
+  }
+
+  function renderUploadItems() {
+    const items = state.upload.items;
+    $('#upload-items').replaceChildren(...items.map((item) => {
+      const remove = el('button', { type: 'button', className: 'icon-btn sm', ariaLabel: `Remove ${item.filename}` });
+      remove.innerHTML = icons.x;
+      remove.addEventListener('click', () => {
+        state.upload.items = state.upload.items.filter((x) => x !== item);
+        renderUploadItems(); updateUploadButton();
+      });
+      const top = el('div', { className: 'top' });
+      if (item.status === 'staging') top.append(el('span', { className: 'spinner' }));
+      top.append(el('span', { className: 'file', textContent: item.filename }), remove);
+      const box = el('div', { className: 'upload-item' }, top);
+      if (item.status === 'staging') {
+        box.append(el('div', { className: 'note', textContent: item.link ? 'Downloading…' : 'Reading title and artist…' }));
+      } else if (item.status === 'error') {
+        box.append(el('div', { className: 'note error', textContent: item.error }));
+      } else if (item.duplicate) {
+        box.append(el('div', { className: 'note', textContent: `Already in your library as “${item.duplicate.title}” by ${item.duplicate.artist}. A new version will be added to it.` }));
+      } else {
+        const title = el('input', { className: 'text-input', value: item.title, placeholder: 'Title', ariaLabel: `Title for ${item.filename}` });
+        const artist = el('input', { className: 'text-input', value: item.artist, placeholder: 'Artist', ariaLabel: `Artist for ${item.filename}` });
+        artist.setAttribute('list', 'artist-options');
+        title.addEventListener('input', () => { item.title = title.value; updateUploadButton(); });
+        artist.addEventListener('input', () => { item.artist = artist.value; });
+        box.append(el('div', { className: 'inputs' }, title, artist));
+      }
+      return box;
+    }));
+  }
+
+  async function addFiles(list) {
+    const files = [...list].filter((f) => f.type.startsWith('audio/') || /\.(mp3|wav|m4a|flac|ogg|aac|aiff?|wma|opus)$/i.test(f.name));
+    if (files.length < list.length) toast('Some files were skipped because they are not audio.', 'error');
+    if (!files.length) return;
+    const items = files.map((f) => ({ key: ++itemKey, filename: f.name, status: 'staging' }));
+    state.upload.items.push(...items);
+    renderUploadItems(); updateUploadButton();
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f, f.name));
+    try {
+      const results = await api('/api/stage', { method: 'POST', body: form });
+      results.forEach((r, i) => {
+        Object.assign(items[i], r.error ? { status: 'error', error: r.error } : { status: 'ready', ...r });
+      });
+    } catch (err) {
+      items.forEach((it) => Object.assign(it, { status: 'error', error: err.message }));
+    }
+    renderUploadItems(); updateUploadButton();
+  }
+
+  async function addLink() {
+    const url = $('#link-input').value.trim();
+    if (!url) return;
+    $('#link-input').value = '';
+    $('#link-add').disabled = true;
+    const item = { key: ++itemKey, filename: url, status: 'staging', link: true };
+    state.upload.items.push(item);
+    renderUploadItems(); updateUploadButton();
+    try {
+      Object.assign(item, { status: 'ready' }, await postJSON('/api/stage-link', { url }));
+    } catch (err) {
+      Object.assign(item, { status: 'error', error: err.message });
+    }
+    renderUploadItems(); updateUploadButton();
+  }
+  $('#link-input').addEventListener('input', (e) => { $('#link-add').disabled = !e.target.value.trim(); });
+  $('#link-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } });
+  $('#link-add').addEventListener('click', addLink);
+
+  const busy = () => state.job && state.job.status !== 'done';
+  const readyItems = () => state.upload.items.filter((i) => i.status === 'ready');
+  function updateUploadButton() {
+    const items = state.upload.items;
+    let ok = !busy() && state.settings.instruments.length > 0;
+    if (state.upload.mode === 'new') {
+      ok = ok && readyItems().length > 0 && !items.some((i) => i.status === 'staging')
+        && readyItems().every((i) => i.duplicate || (i.title || '').trim());
+    }
+    $('#upload-submit').disabled = !ok;
+  }
+
+  function openUpload(song = null) {
+    if (busy() && dlg.open) return;
+    const versionMode = !!song;
+    state.upload.mode = versionMode ? 'version' : 'new';
+    state.upload.song = song;
+    $('#upload-title').textContent = versionMode ? `New version of “${song.title}”` : 'Add songs';
+    $('#files-field').classList.toggle('hidden', versionMode);
+    $('#version-intro').classList.toggle('hidden', !versionMode);
+    $('#version-intro').textContent = versionMode ? `Made from the saved original by ${song.artist}. Pick what to take out this time.` : '';
+    $('#upload-submit').textContent = versionMode ? 'Create version' : 'Upload';
+    $('#level-input').value = state.settings.level;
+    $('#level-out').textContent = `${state.settings.level}%`;
+    setFill($('#level-input'));
+    $('#hq-input').checked = state.settings.hq;
+    $('#upload-error').classList.add('hidden');
+    renderInstrumentChips();
+    renderUploadItems();
+    renderJob();
+    updateUploadButton();
+    if (!dlg.open) dlg.showModal();
+  }
+
+  $('#add-btn').addEventListener('click', () => openUpload());
+  document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+  ['dragenter', 'dragover'].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => dropzone.addEventListener(ev, () => dropzone.classList.remove('over')));
+  dropzone.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); addFiles(e.dataTransfer.files); });
+  // Dropping files anywhere else would make the browser open them; send them to the dialog instead.
+  window.addEventListener('dragover', (e) => { if (!state.dragSong) e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    if (state.dragSong || !e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    if (!dlg.open || state.upload.mode !== 'new') openUpload();
+    addFiles(e.dataTransfer.files);
+  });
+  $('#level-input').addEventListener('input', (e) => {
+    state.settings.level = Number(e.target.value); setFill(e.target);
+    $('#level-out').textContent = `${e.target.value}%`; saveSettings();
+  });
+  $('#hq-input').addEventListener('change', (e) => { state.settings.hq = e.target.checked; saveSettings(); });
+
+  $('#upload-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if ($('#upload-submit').disabled) return;
+    $('#upload-error').classList.add('hidden');
+    const items = state.upload.mode === 'version'
+      ? [{ song: state.upload.song.id }]
+      : readyItems().map((i) => ({ stage_id: i.stage_id, title: (i.title || '').trim(), artist: (i.artist || '').trim() }));
+    const submitted = state.upload.mode === 'version' ? [] : readyItems();
+    state.job = { status: 'queued', total: items.length, index: 0, song: state.upload.song?.title || submitted[0]?.title || '', fraction: 0 };
+    renderJob(); updateUploadButton();
+    try {
+      const { job } = await postJSON('/api/process', {
+        items, instruments: state.settings.instruments, level: state.settings.level, hq: state.settings.hq,
+      });
+      pollJob(job, submitted);
+    } catch (err) {
+      state.job = null;
+      renderJob(); updateUploadButton();
+      $('#upload-error').textContent = err.message;
+      $('#upload-error').classList.remove('hidden');
+    }
+  });
+
+  function renderJob() {
+    const job = state.job;
+    const active = !!job && job.status !== 'done';
+    $('#dlg-progress').classList.toggle('hidden', !active);
+    $('#job-banner').classList.toggle('hidden', !active || dlg.open);
+    $('#upload-cancel').textContent = active ? 'Hide' : 'Cancel';
+    if (!active) return;
+    const overall = job.total ? ((job.index + job.fraction) / job.total) * 100 : 0;
+    const title = `Processing “${job.song}”`;
+    const sub = job.total > 1 ? `Song ${job.index + 1} of ${job.total}` : (job.status === 'queued' ? 'Waiting…' : 'Separating instruments');
+    $('#dlg-progress-title').textContent = title;
+    $('#dlg-progress-pct').textContent = `${job.total > 1 ? `${job.index + 1}/${job.total} · ` : ''}${Math.round(overall)}%`;
+    $('#dlg-progress-bar').style.width = `${overall}%`;
+    $('#banner-title').textContent = title;
+    $('#banner-sub').textContent = `${sub} · ${Math.round(overall)}%`;
+    $('#banner-bar').style.width = `${overall}%`;
+  }
+  dlg.addEventListener('close', renderJob);
+
+  async function pollJob(jobId, submitted) {
+    try {
+      state.job = await api(`/api/jobs/${jobId}`);
+    } catch (err) {
+      state.job = null; renderJob(); updateUploadButton();
+      toast(err.message, 'error');
+      return;
+    }
+    renderJob();
+    if (state.job.status !== 'done') { setTimeout(() => pollJob(jobId, submitted), 600); return; }
+
+    const { done, failed } = state.job;
+    state.job = null;
+    renderJob();
+    if (failed.length) toast(`Couldn't process: ${failed.join(', ')}`, 'error');
+    if (done.length) {
+      // Success: clear the songs that went in (settings stay for next time) and show the result.
+      state.upload.items = state.upload.items.filter((i) => !submitted.includes(i));
+      renderUploadItems();
+      if (dlg.open && !state.upload.items.length) dlg.close();
+      toast(done.length === 1 ? 'Added to your library.' : `${done.length} versions added to your library.`);
+      await refreshLibrary();
+      const newest = findVersion(done[done.length - 1]);
+      if (newest) {
+        if (state.view !== 'all' && state.view !== `artist:${newest.song.artist}`) state.view = `artist:${newest.song.artist}`;
+        renderSidebar(); renderSongs();
+        if (audio.a.paused) loadVersion(newest.song, newest.version);
+      }
+    }
+    updateUploadButton();
+  }
+
+  // ---------- App shortcut + quit ----------
+  const SHORTCUT_KEY = 'track-splitter-shortcut-prompt';
+  function offerShortcut(status, fromSidebar = false) {
+    const mac = status.where.includes('Applications');
+    $('#shortcut-text').textContent = mac
+      ? 'Add Track Splitter to your Applications folder and start it like any other app.'
+      : 'Add a Track Splitter shortcut to your Desktop and start it with a double-click.';
+    $('#shortcut-point').textContent = mac ? 'Open it from Spotlight, Launchpad or the Dock' : 'Open it from your Desktop';
+    $('#shortcut-create').textContent = mac ? 'Add to Applications' : 'Add to Desktop';
+    $('#shortcut-create').disabled = false;
+    $('#shortcut-never').checked = false;
+    $('#shortcut-never-row').classList.toggle('hidden', fromSidebar);
+    $('#shortcut-error').classList.add('hidden');
+    $('#shortcut-dlg').showModal();
+    $('#shortcut-create').focus();
+  }
+  $('#shortcut-create').addEventListener('click', async () => {
+    $('#shortcut-create').disabled = true;
+    try {
+      await postJSON('/api/shortcut', {});
+      $('#shortcut-dlg').close();
+      $('#shortcut-btn').classList.add('hidden');
+      toast('Shortcut created. Open Track Splitter from there next time.');
+    } catch (err) {
+      $('#shortcut-create').disabled = false;
+      $('#shortcut-error').textContent = err.message;
+      $('#shortcut-error').classList.remove('hidden');
+    }
+  });
+  $('#shortcut-later').addEventListener('click', () => $('#shortcut-dlg').close());
+  // Closing the card any way (Not now, Esc) honours "Don't ask me again".
+  $('#shortcut-dlg').addEventListener('close', () => {
+    if ($('#shortcut-never').checked) { try { localStorage.setItem(SHORTCUT_KEY, 'never'); } catch {} }
+  });
+  async function checkShortcut() {
+    const status = await api('/api/shortcut');
+    if (!status.supported || status.exists) return;
+    $('#shortcut-btn').classList.remove('hidden');
+    $('#shortcut-btn').onclick = () => offerShortcut(status, true);
+    let never = false;
+    try { never = localStorage.getItem(SHORTCUT_KEY) === 'never'; } catch {}
+    if (!never) offerShortcut(status);
+  }
+
+  $('#quit-btn').addEventListener('click', () => ask({
+    title: 'Quit Track Splitter?',
+    text: busy() ? 'A song is still being processed and will be stopped.' : 'You can open it again from its shortcut or start.sh.',
+    ok: 'Quit', danger: busy(),
+    submit: async () => {
+      pause();
+      await postJSON('/api/quit', {});
+      document.body.innerHTML = '<div class="empty" style="height:100vh"><div><h2>Track Splitter has stopped</h2><p>You can close this tab.</p></div></div>';
+    },
+  }));
+
+  // ---------- Start ----------
+  $('#search').addEventListener('input', (e) => { state.search = e.target.value; renderSongs(); });
+  $('#open-folder-btn').addEventListener('click', () => postJSON('/api/open-folder', {}).catch((err) => toast(err.message, 'error')));
+
+  (async () => {
+    try {
+      const info = await api('/api/info');
+      state.instruments = info.instruments;
+      state.unknownArtist = info.unknown_artist;
+      $('#device-label').textContent = `Processing on your ${info.device}`;
+      $('#open-folder-btn').title = info.library;
+      await refreshLibrary();
+      renderPlayer();
+      checkShortcut().catch(() => {});
+    } catch (err) {
+      toast(`Couldn't reach Track Splitter: ${err.message}`, 'error');
+    }
+  })();
+})();
+</script>
+</body>
+</html>

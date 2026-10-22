@@ -1,0 +1,11 @@
+torch
+torchaudio
+demucs
+fastapi
+uvicorn
+python-multipart
+imageio-ffmpeg
+numpy
+send2trash
+yt-dlp
+truststore
