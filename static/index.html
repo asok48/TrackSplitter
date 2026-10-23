@@ -91,6 +91,10 @@
   .tab-tools select { height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font: inherit; font-size: 13px; }
   .tab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 14px; overflow: hidden; }
   .tab-body.advance { animation: tab-advance .3s ease-out; }
+  /* Highway (Guitar Hero-like, sideways like tab): the strings as lanes, notes coming
+     right to left toward a hit line. The far end recedes a little, like the game. */
+  .tab-body.highway { justify-content: stretch; perspective: 1100px; }
+  .highway { flex: 1; min-height: 0; width: 100%; transform: rotateY(-12deg); transform-origin: 0 50%; }
   @keyframes tab-advance { from { transform: translateY(var(--advance, 60px)); } to { transform: none; } }
   .tab-line { cursor: pointer; transition: opacity .25s; }
   .tab-line.prev { opacity: .3; } .tab-line.next { opacity: .7; } .tab-line.next2 { opacity: .45; }
@@ -104,6 +108,10 @@
   .tab-line .note.playing rect { fill: var(--accent); }
   .tab-line .note.playing text { fill: white; }
   .tab-line .note.done text { fill: var(--muted); }
+  /* How long to hold (like Guitar Hero sustains): a bar along the string to the note's
+     end, filling up behind the playhead while it sounds. */
+  .tab-line .tail { fill: var(--accent); opacity: .28; }
+  .tab-line .tail-fill { fill: var(--accent); opacity: .85; }
   .tab-line .playhead { stroke: var(--accent-hover); stroke-width: 2; }
   .tab-empty { margin: auto; max-width: 420px; text-align: center; color: var(--muted); }
   .tab-empty h3 { margin: 0 0 6px; color: var(--text); font-size: 17px; }
@@ -140,6 +148,9 @@
   .nav-item.active .avatar { background: var(--accent); border-color: transparent; color: white; }
   .nav-empty { padding: 4px 10px; color: var(--faint); font-size: 13px; }
   .sidebar-foot { display: flex; flex-direction: column; gap: 6px; padding: 10px 6px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--faint); }
+  .learn-status { display: flex; flex-direction: column; gap: 3px; line-height: 1.35; }
+  .learn-title { color: var(--muted); }
+  .learn-status .progress { height: 4px; margin-top: 2px; }
   .link-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: none; background: none; color: var(--muted); font-size: 12px; }
   .link-btn:hover { color: var(--text); }
 
@@ -420,6 +431,11 @@
     </nav>
     <div class="sidebar-foot">
       <span id="device-label">Loading…</span>
+      <div class="learn-status hidden" id="learn-status">
+        <span class="learn-title" id="learn-title"></span>
+        <span id="learn-step"></span>
+        <div class="progress hidden" id="learn-bar"><div id="learn-fill"></div></div>
+      </div>
       <button class="link-btn" id="open-folder-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
         Open library folder
@@ -459,6 +475,10 @@
           <div class="segmented hidden" id="tab-source" role="group" aria-label="Which tab">
             <button type="button" data-source="imported">Imported</button>
             <button type="button" data-source="auto">Automatic</button>
+          </div>
+          <div class="segmented hidden" id="tab-mode" role="group" aria-label="View">
+            <button type="button" data-mode="lines">Lines</button>
+            <button type="button" data-mode="highway">Highway</button>
           </div>
           <select id="tab-tuning" aria-label="Tuning"></select>
           <label class="switch hidden" id="tab-split-row" title="Driving parts: show repeated plucks of a note as separate notes (split on the beat). Off: notes as heard, best for held notes.">
@@ -1644,6 +1664,7 @@
     if (kind === 'tab' || kind === 'import') {
       if (done.length) {
         toast(kind === 'import' ? 'Tab imported and lined up with the song.' : 'Bass tab ready.');
+        if (kind === 'import') setTimeout(pollLearning, 1000);   // it starts learning from it
         if (tabView.open) loadTab();
       }
       updateUploadButton();
@@ -1672,6 +1693,33 @@
   // The song's bass part as tab, a few lines at a time like a lyrics view: the line
   // being played large with a playhead, the one before dimmed, the next two below.
   // The server works out notes, lines (bars) and fingering (tab.py); this just draws.
+  // Learning from imported tabs (sidebar): what it's doing now, or what it learned last.
+  let learnTimer = null, wasLearning = false;
+  async function pollLearning() {
+    clearTimeout(learnTimer);
+    let d = null;
+    try { d = await api('/api/learning'); } catch { /* try again later */ }
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    const tabs = (n) => `${n} imported tab${n === 1 ? '' : 's'}`;
+    $('#learn-status').classList.toggle('hidden', !d || (!d.running && !d.last && !d.error));
+    $('#learn-bar').classList.toggle('hidden', !d?.running);
+    if (d?.running) {
+      $('#learn-title').textContent = `Learning from your ${tabs(d.tabs)}…`;
+      $('#learn-step').textContent = `${d.step} · ${pct(d.fraction)}`;
+      $('#learn-fill').style.width = pct(d.fraction);
+    } else if (d?.last || d?.error) {
+      const part = (label, x) => !x ? '' : x.used ? `${label} ${pct(x.before)} → ${pct(x.after)}` : `${label}: built-in still better`;
+      $('#learn-title').textContent = d.error ? 'Learning from your tabs failed'
+        : `Learned from ${tabs(d.last.tabs)} · ${new Date(d.last.made * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      $('#learn-step').textContent = d.error || [part('Notes', d.last.notes), part('Fingering', d.last.fingering)].filter(Boolean).join(' · ');
+      $('#learn-status').title = d.error ? '' : 'How often the automatic tab matches your imported tabs, before → after learning, '
+        + 'checked on songs or parts it didn\'t learn from. Redo a tab to use what was learned.';
+      if (wasLearning && tabView.open) loadTab();   // shows "Redo tab to use what was learned"
+    }
+    wasLearning = !!d?.running;
+    learnTimer = setTimeout(pollLearning, d?.running ? 1500 : 15000);
+  }
+
   const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1 };
   const TAB_PREFS = 'track-splitter-tab-tuning';
   const tabPrefs = () => { try { return JSON.parse(localStorage.getItem(TAB_PREFS)) || {}; } catch { return {}; } };
@@ -1757,6 +1805,8 @@
     $('#tab-source').classList.toggle('hidden', !tabView.hasImport);
     document.querySelectorAll('#tab-source button').forEach((b) => b.classList.toggle('active', b.dataset.source === (imported ? 'imported' : 'auto')));
     $('#tab-tuning').classList.toggle('hidden', !d);
+    $('#tab-mode').classList.toggle('hidden', !d);
+    document.querySelectorAll('#tab-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === tabMode));
     $('#tab-tuning').disabled = imported;               // an imported tab keeps its own tuning
     $('#tab-remake').classList.toggle('hidden', !d || imported);
     $('#tab-remove-import').classList.toggle('hidden', !imported);
@@ -1776,7 +1826,9 @@
     ].filter(Boolean).join(' · ') : !d.notes.length ? 'No bass found in this song (only other instruments leaking into the bass track).' : [
       d.bpm ? `${Math.round(d.bpm)} bpm · lines follow the bars` : 'No steady tempo found · 4-second lines',
       d.dropped ? `${d.dropped} notes too low for this tuning` : '',
-      d.tuned?.used ? `Notes tuned to your imported tabs (${Math.round(d.tuned.before * 100)}% → ${Math.round(d.tuned.after * 100)}% on parts it didn't learn from)` : '',
+      d.relearned ? 'Redo tab to use what was learned from your imported tabs' : '',
+      d.learning ? 'Learning from your imported tabs…' : '',
+      d.tuned?.used ? `Notes tuned to your imported tabs (${Math.round(d.tuned.before * 100)}% → ${Math.round(d.tuned.after * 100)}% on what it didn't learn from)` : '',
       d.style?.used ? `Fingering learned from your ${d.style.tabs === 1 ? 'imported tab' : `${d.style.tabs} imported tabs`} (matches ${d.style.tabs === 1 ? 'it' : 'them'} ${Math.round(d.style.after * 100)}%, was ${Math.round(d.style.before * 100)}%)` : '',
       showRaised() ? 'Song raised a half step: play these shapes on a standard-tuned bass' : '',
       'Click a line to jump there',
@@ -1841,6 +1893,29 @@
     }
     const notes = [];
     const [from, to] = tabView.lineNotes[i];
+    // Hold bars first, so the fret numbers sit on top. Each runs to the note's end, or
+    // to the next note on its string, within this line; notes from the line before that
+    // are still ringing continue here without a number.
+    const tails = svgEl('g');
+    svg.append(tails);
+    const holdEnd = (k) => {
+      const [t, te, s] = d.notes[k];
+      let e = Math.max(te, t);
+      for (let j = k + 1; j < d.notes.length && d.notes[j][0] < e; j++) if (d.notes[j][2] === s) { e = d.notes[j][0]; break; }
+      return Math.min(e, end);
+    };
+    const tail = (k, t0) => {
+      const s = d.notes[k][2], x0 = x(Math.max(t0, start)), x1 = x(holdEnd(k)), h = Math.max(4, gap * 0.3);
+      if (x1 - x0 < 10) return null;
+      const bar = svgEl('rect', { class: 'tail', x: x0, y: y(s) - h / 2, width: x1 - x0, height: h, rx: h / 2 });
+      const fill = svgEl('rect', { class: 'tail-fill', x: x0, y: y(s) - h / 2, width: 0, height: h, rx: h / 2 });
+      tails.append(bar, fill);
+      return { fill, x0, x1, until: holdEnd(k) };
+    };
+    for (let k = from - 1; k >= 0 && d.notes[k][0] > start - 30; k--) {   // still ringing from before
+      const [t, te] = d.notes[k];
+      if (holdEnd(k) > start + 0.05 && te > start) notes.push([t, te, null, tail(k, start)]);
+    }
     // Numbers squeezed between close neighbours (fast notes, two-digit frets) shrink just
     // enough not to overlap; the rest stay full size.
     const room = (k) => Math.min(k > from ? x(d.notes[k][0]) - x(d.notes[k - 1][0]) : Infinity,
@@ -1853,7 +1928,7 @@
       g.append(svgEl('rect', { x: x(t) - w / 2, y: y(s) - size * 0.62, width: w, height: size * 1.24, rx: 3 }));
       g.append(svgEl('text', { x: x(t), y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size }, f));
       svg.append(g);
-      notes.push([t, te, g]);
+      notes.push([t, te, g, tail(k, t)]);
     }
     const playhead = big ? svgEl('line', { class: 'playhead', x1: 0, x2: 0, y1: pad * 0.3, y2: height - pad * 0.3 }) : null;
     if (playhead) svg.append(playhead);
@@ -1912,6 +1987,8 @@
     if (!tabView.open) return;
     if (!tabView.data) { if (force) renderTabEmpty(); return; }
     const t = Math.max(0, currentTime() - (player.playing ? outputDelay() - syncMs / 1000 : 0));
+    if (tabMode === 'highway') { drawHighway(t, force); return; }
+    if ($('#tab-body').classList.contains('highway')) { $('#tab-body').classList.remove('highway'); force = true; }
     const i = lineAt(t);
     if (i !== tabView.line || force) {
       if (force) tabView.scale = 1;                       // new tab, tuning or window size: fit again
@@ -1921,11 +1998,110 @@
     const cur = tabView.slots[1]?.line;
     if (!cur) return;
     cur.playhead.setAttribute('x1', cur.x(t)); cur.playhead.setAttribute('x2', cur.x(t));
-    for (const [ns, ne, g] of cur.notes) {
-      g.classList.toggle('playing', ns <= t && t < Math.max(ne, ns + 0.12));
-      g.classList.toggle('done', t >= Math.max(ne, ns + 0.12));
+    for (const [ns, ne, g, hold] of cur.notes) {
+      g?.classList.toggle('playing', ns <= t && t < Math.max(ne, ns + 0.12));
+      g?.classList.toggle('done', t >= Math.max(ne, ns + 0.12));
+      if (hold) hold.fill.setAttribute('width', ns <= t && t < hold.until ? Math.max(0, Math.min(hold.x1, cur.x(t)) - hold.x0) : 0);
     }
   }
+  // --- Highway view ------------------------------------------------------------------
+  const MODE_KEY = 'track-splitter-tab-mode';   // Lines or Highway, kept per computer
+  let tabMode = (() => { try { return localStorage.getItem(MODE_KEY) || 'lines'; } catch { return 'lines'; } })();
+  function setTabMode(mode) {
+    tabMode = mode;
+    try { localStorage.setItem(MODE_KEY, mode); } catch { /* not kept */ }
+    document.querySelectorAll('#tab-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+    tabFrame(true);
+  }
+  document.querySelectorAll('#tab-mode button').forEach((b) => b.addEventListener('click', () => setTabMode(b.dataset.mode)));
+
+  const LANE_COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa', '#fb923c'];   // low string first, like the game's
+  const AHEAD = 3, BEHIND = 0.4;   // seconds of notes shown ahead of / past the hit line
+
+  function drawHighway(t, force) {
+    const body = $('#tab-body');
+    let cv = tabView.canvas;
+    if (force || !cv || !body.contains(cv)) {
+      cv = tabView.canvas = el('canvas', { className: 'highway' });
+      cv.addEventListener('click', () => togglePlay());
+      body.classList.add('highway');
+      body.replaceChildren(cv);
+    }
+    const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (!W || !H) return;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const css = getComputedStyle(document.documentElement);
+    const color = (name) => css.getPropertyValue(name).trim();
+    const d = tabView.data;
+    const names = showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : d.tunings.find((x) => x.key === d.tuning).strings;
+    // Like tab: highest string on top, notes travel right to left to a hit line on the left.
+    const n = names.length, rowH = Math.min(70, (H - 16) / n), top = (H - rowH * n) / 2;
+    const gemH = Math.min(30, rowH * 0.62), gemW = gemH * 1.25;
+    // Speed: 3 s of notes ahead, but fast enough that this song's quick notes (its 20th
+    // percentile gap between notes) don't overlap; then less time fits in narrow windows.
+    if (d.quickGap === undefined) {
+      const gaps = d.notes.slice(1).map((x, k) => x[0] - d.notes[k][0]).filter((x) => x > 0.03).sort((a, b) => a - b);
+      d.quickGap = gaps.length ? gaps[Math.floor(gaps.length * 0.2)] : 0.25;
+    }
+    const hitX = 64, perSec = Math.max((W - hitX) / AHEAD, (gemW + 6) / d.quickGap);
+    const x = (time) => hitX + (time - t) * perSec;
+    const cy = (s) => top + rowH * (n - 1 - s + 0.5);
+
+    // Lanes, string names left of the hit line, bar lines drifting left.
+    for (let s = 0; s < n; s++) {
+      g.fillStyle = s % 2 ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.02)';
+      g.fillRect(0, cy(s) - rowH / 2, W, rowH);
+      g.strokeStyle = 'rgba(255,255,255,0.12)';
+      g.beginPath(); g.moveTo(hitX - 30, cy(s)); g.lineTo(W, cy(s)); g.stroke();
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1;
+    for (const [start, , bars] of d.lines) {
+      for (const b of [start, ...bars]) {
+        const bx = x(b);
+        if (bx < -2 || bx > W + 2) continue;
+        g.beginPath(); g.moveTo(bx, top); g.lineTo(bx, top + rowH * n); g.stroke();
+      }
+    }
+    g.lineWidth = 3; g.strokeStyle = color('--accent');
+    g.beginPath(); g.moveTo(hitX, top - 6); g.lineTo(hitX, top + rowH * n + 6); g.stroke();
+    g.lineWidth = 1;
+    g.font = '600 13px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    names.forEach((name, s) => { g.fillStyle = color('--muted'); g.fillText(name, 18, cy(s)); });
+
+    // Notes: a gem with the fret number, a tail as long as it rings. A note being held
+    // sits on the hit line and glows while its tail runs into the line.
+    const notes = d.notes;
+    let lo = 0, hi = notes.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (notes[mid][0] < t - 10) lo = mid + 1; else hi = mid; }
+    for (let k = lo; k < notes.length && notes[k][0] < t + (W - hitX) / perSec + 0.5; k++) {
+      const [ns, ne, s, f] = notes[k];
+      let end = Math.max(ne, ns);
+      for (let j = k + 1; j < notes.length && notes[j][0] < end; j++) if (notes[j][2] === s) { end = notes[j][0]; break; }
+      const holding = ns <= t && t < Math.max(end, ns + 0.12);
+      if (!holding && ns < t - BEHIND) continue;
+      const lane = LANE_COLORS[s % LANE_COLORS.length];
+      if (end - ns > 0.15 && end > t) {                    // tail
+        const from = holding ? hitX : x(ns), to = x(end), th = gemH * 0.36;
+        g.globalAlpha = holding ? 0.85 : 0.4; g.fillStyle = lane;
+        g.beginPath(); g.roundRect(from, cy(s) - th / 2, to - from, th, th / 2); g.fill();
+      }
+      const gx = holding ? hitX : x(ns);
+      g.globalAlpha = ns < t && !holding ? Math.max(0, 1 - (t - ns) / BEHIND) * 0.6 : 1;
+      if (holding) { g.shadowColor = lane; g.shadowBlur = 22; }
+      const w = String(f).length > 1 ? gemW * 1.2 : gemW;
+      g.fillStyle = lane;
+      g.beginPath(); g.roundRect(gx - w / 2, cy(s) - gemH / 2, w, gemH, 8); g.fill();
+      g.shadowBlur = 0;
+      g.fillStyle = '#111';
+      g.font = `700 ${Math.round(gemH * 0.6)}px system-ui, sans-serif`;
+      g.fillText(f, gx, cy(s) + 1);
+      g.globalAlpha = 1;
+    }
+  }
+
   function tabLoop() {
     if (!tabView.open) return;
     tabFrame();
@@ -2074,6 +2250,7 @@
       await refreshLibrary();
       renderPlayer();
       checkShortcut().catch(() => {});
+      pollLearning();
     } catch (err) {
       toast(`Couldn't reach Track Splitter: ${err.message}`, 'error');
     }

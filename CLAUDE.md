@@ -18,6 +18,13 @@ Primary user runs it on a MacBook Pro (M4); it was developed and tested on Windo
   step, no external downloads so it works offline).
 - `start.sh` (Mac/Linux) / `start.bat` (Windows): create `.venv` on first run, reinstall
   packages whenever `requirements.txt` is newer than `.venv/.installed`, then start.
+  Both pick Python 3.10-3.13 (newest first; start.sh also looks in python.org's and
+  Homebrew's folders) and remake a `.venv` built with anything else. The user's
+  brother got "No matching distribution found for truststore": a Mac's built-in
+  python3 is 3.9 and truststore needs 3.10. With none found they say to install 3.13
+  from python.org. start.bat once lost its backslashes, slashes and `||` (it went
+  through an .rtf in git history; restored from the first commit's start.bat.txt).
+  It's untested on a real Windows machine since; keep it CRLF.
 - `roformer/`: BS-RoFormer model code copied from the `BS-RoFormer` package v0.4.1
   (lucidrains, MIT, see `roformer/LICENSE`), only the import made relative. That
   version matches the BS-Roformer-SW checkpoint exactly (newer ones changed the
@@ -182,10 +189,13 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   the user found its standard-tuning tab "off" vs tab videos). Bump `TUNING_RULES` in
   app.py when the suggestion changes; saved tabs then get re-suggested on open.
 - Learning from imported tabs (the user wants tab making to get smarter over time):
-  every imported tab is a right answer for its song, so after each import job (and in
-  a background "learn" job at startup or after Remove import, when the set of imported
-  tabs changed) `learn_from_imports()` fits two things to all of them and saves them in
-  `<library>/.learned-from-tabs.json` with held-out before/after scores. Each is used
+  every imported tab is a right answer for its song, so `learn_from_imports()` fits two
+  things to all of them and saves them in `<library>/.learned-from-tabs.json` (written
+  to a .tmp and swapped in) with held-out before/after scores. It runs on its own
+  `learner` thread, not the job queue: after an import, after Remove import, and at
+  startup, whenever the set of imported tabs changed (`queue_learning()` sets an
+  Event; tabs imported meanwhile cause one more round). On the queue it made tabs sit
+  at "waiting to start" for minutes, which the user took for a hang. 4 tabs: ~2 min. Each is used
   only if it beats the built-in settings on the half of each tab it wasn't fitted on.
   - Fingering: the hand-position costs (`tab.STYLE`) via a structured perceptron
     (`tab.learn_style`: hand positions that explain the tab's own fingering vs the ones
@@ -199,11 +209,54 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     melodia, octave fix, and `grid_split` = split repeated notes on by default with its
     strength) by trying each value in `tab.NOTE_CHOICES` (2 rounds, F1 by pitch within
     70 ms; reruns the model on each imported song with a "bass only" track, ~1 s each).
+    Speed: the melodia step in `_note_events` walks cells strongest first instead of
+    an argmax over the whole grid per note (identical notes, 10-15x faster), and
+    `_fix_octaves(memo=...)` keeps each note's answer across settings: ~5 s per song
+    for all three fits (was ~45 s).
     Must beat the built-in settings by 0.5 points held out. On Cry Baby Cry alone the
     hand-set values were already near best (F1 0.866; held-out 0.859, so not used);
-    most misses were re-plucks inside one long note. Automatic tabs store
-    `note_settings`; when the learned ones differ, the tab shows "can be made better".
+    most misses were re-plucks inside one long note. With 4 tabs (Cry Baby Cry,
+    Electra, Wow! Wow! Wow!, You Only Live Once) it was used: 0.748 -> 0.776; fingering
+    0.622 -> 0.784. Automatic tabs store `note_settings`; when the learned ones differ,
+    the tab is still shown, with "Redo tab to use what was learned from your imported
+    tabs" (hiding it behind "can be made better" looked like Redo did nothing).
     `split_default` sets the split switch until the user flips it for that song.
+  - Note models (`tab.learn_note_models`, needs 2+ tabbed songs with a "bass only"
+    track): the setting search couldn't tell real re-plucks from ringing/leakage (user:
+    fake notes, e.g. a held F#2 in You Only Live Once came out as three A9s and a stray
+    B3 as G16; and missing 8ths). On 4 songs the misses were mostly re-plucks heard as
+    one note (280), wrong octaves (136) and nothing heard (186); fakes were mostly wrong
+    octaves (Wow! Wow! Wow!: 99). Three logistic regressions (numpy, saved as JSON in
+    the learned file) labelled by the tabs, applied after detection: octave (move a note
+    down/up, energy at f/4..3f vs f), pluck (split a long note at a beat-grid point:
+    attack, onset, loudness/overtone rise), keep (drop a likely-fake note). Cuts
+    0.5/0.4/0.3. Leave-one-song-out: found 2068 -> 2213 of 2802 tab notes, fake 417 ->
+    431, F1 per song +0.02-0.04 (Wow! 0.676 -> 0.712); the old split switch added
+    hundreds of fakes. Used only if leave-one-out F1 improves by 0.5 points (4 tabs:
+    0.782 -> 0.813). With models, "Split repeated notes" = the pluck model, on by default.
+    Not perfect: that F#2 still has one extra note. ~6 s to fit.
+    Same-pitch notes that touch are joined first (`_join_repeats`) and the pluck model
+    also decides at those joins (with the split switch off, only there): found 2238,
+    fake 436. You Only Live Once ~0:54-1:08 (user: "still doesn't look right"): the
+    8ths at 54-58 s now mostly come out, but held D4/D2 notes at 60-65 s still get
+    extra re-plucks. Measured: real plucks there rise +5-16 dB / overtones +8-20 dB,
+    the extras <= +4 dB; but the muted picked 8ths just before don't rise either, so
+    per moment they look alike. Tried and dropped: overtone rise in the keep model (no
+    change); attack strength at the 4 beats each side as context (no fix there, Wow!
+    521 -> 462 found: drums leak into the bass track). In the same passage the learned
+    fingering plays A7/A9 where the tab moves down to D2/D4/D6 (the costs prefer the
+    song's usual 7th position, 90% right for the song; not the usual-place rounds).
+  - `LEARN_RULES` in app.py: bump when learning changes; saved learning is redone at the
+    next start (learning otherwise reruns only when the imported tabs change, so the
+    note models never got learned in the user's library after the update).
+  - Status (user asked to see what it's doing): the learner fills `learning` (step,
+    fraction, tabs, error), `GET /api/learning` returns that plus a summary of the
+    saved learning; the sidebar under the device label shows "Learning from your 4
+    imported tabs…" with the step and a bar (polled every 1.5 s while running, 15 s
+    otherwise, and right after an import), then "Learned from 4 imported tabs · 1:55 PM
+    / Notes 78% → 82% · Fingering 62% → 78%" (hover explains the numbers). Timing on an
+    idle M4 with 4 tabs: reading 7 s, notes 38 s, fingering ~100 s (the slow part); a
+    run alongside other heavy work took 22 min.
   - The tab view's subtitle says what's in use ("Fingering learned from your imported
     tab (matches it 99%, was 79%)", "Notes tuned to your imported tabs (...)").
 - Page: Tab button in the player opens the view over the song list: previous line
@@ -224,6 +277,22 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   `matchOriginal(..., shifted)` then trusts the original by length and matches loudness.
 - Line timing (user: the line lagged): Earlier/Later in 20 ms steps (+-600 ms), on top
   of the output-delay correction, kept per computer (`track-splitter-line-sync`).
+- Hold bars (user: "show how long to hold notes, like Guitar Hero"): each note has a
+  soft accent bar along its string from its start to its end (or the next note on that
+  string, or the line's end), behind the fret number; notes still ringing from the line
+  before continue on the next line without a number. While a note sounds its bar fills
+  up to the playhead; finished bars go back to dim. Imported tabs: lengths from the
+  tab's rhythm (ties merged); automatic: as heard.
+- Highway (user: "a Guitar Hero-like mode", chose view only, no scoring; and "a
+  separate mode, not replace what we have"): a Lines | Highway switch in the tab view
+  (Lines is the default; choice kept per computer, `track-splitter-tab-mode`). Drawn
+  on a canvas each frame (`drawHighway`). Sideways like tab (the user found that
+  better than the game's falling notes): one lane per string, highest on top, in the
+  game's colours; gems with the fret number travel right to left to a hit line on the
+  left, tails as long as the note rings; a held note sits on the line and glows; bar
+  lines drift left; the far end recedes a little (CSS rotateY). Speed: 3 s ahead, but
+  at least fast enough that the song's quick notes (20th percentile gap) don't overlap,
+  so narrow windows show less time. Clicking the highway plays/pauses.
 - Crowded notes: each fret number shrinks by its own room to its neighbours (down to
   55%), so fast passages don't overlap while the rest stay full size.
 
@@ -310,7 +379,7 @@ synthetic 15 s clip (sine bass line + chords + clicks) was used, measuring how m
 
 ## Open ideas / to do
 
-- Windows polish: accept any recent Python (start.bat hard-codes `py -3.13`), make the
+- Windows polish: make the
   desktop shortcut install package updates like the Mac one, use an NVIDIA GPU (needs
   the CUDA build of torch; the default Windows build is CPU-only).
 - Playlists / practice sets that pull songs from any artist.

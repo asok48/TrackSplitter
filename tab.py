@@ -122,8 +122,16 @@ def _note_events(frames, onsets, onset_thresh=0.6, frame_thresh=0.3, min_note_le
         remaining[start:i, max(0, f - 1):min(MAX_FREQ_IDX, f + 1) + 1] = 0
         events.append((start, i, f + MIDI_OFFSET, float(np.mean(frames[start:i, f])), False))
     # Melodia trick: notes without a clear onset, grown from the strongest leftover energy.
-    while melodia and remaining.max() > frame_thresh:
-        mid, f = np.unravel_index(np.argmax(remaining), remaining.shape)
+    # Cells only ever get cleared, so walking them strongest first (ties in array order,
+    # like argmax) picks the same cells as searching for the maximum each time, but fast.
+    if melodia:
+        flat = remaining.ravel()
+        above = np.nonzero(flat > frame_thresh)[0]
+        order = above[np.argsort(-flat[above], kind="stable")]
+    for cell in (order if melodia else ()):
+        if flat[cell] <= frame_thresh:
+            continue   # cleared since
+        mid, f = divmod(int(cell), 88)
         remaining[mid, f] = 0
         band = slice(max(0, f - 1), min(MAX_FREQ_IDX, f + 1) + 1)
         i, k = mid + 1, 0
@@ -218,15 +226,20 @@ def _split_replucks(events, onsets, thresh, min_gap=6):
     return out
 
 
-def _fix_octaves(notes, bass, level=0.25, lowest=23, half_level=None):
+def _fix_octaves(notes, bass, level=0.25, lowest=23, half_level=None, memo=None):
     """Move notes down an octave when the bass track says the real note is lower.
 
     The transcriber reports low notes (low E, F, G: fundamentals ~41-49 Hz) an octave or
     two too high (on a known line, most of its pitch mistakes). A note really at f has
     nothing at f/2 or 3f/2; a note at f/2 has overtones exactly there. So if the track
-    has clear energy at both, compared with f, the note is an octave lower."""
+    has clear energy at both, compared with f, the note is an octave lower. memo: a dict
+    that keeps each note's answer (learning tries many settings on the same notes)."""
     out = []
     for s, e, p, a in notes:
+        key = (s, e, p, level, half_level)
+        if memo is not None and key in memo:
+            out.append((s, e, memo[key], a))
+            continue
         seg = bass[int(s * SAMPLERATE):int(min(e, s + 0.4) * SAMPLERATE)]
         while len(seg) >= SAMPLERATE // 10 and p - 12 >= lowest:
             spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), 1 << 15))
@@ -242,6 +255,8 @@ def _fix_octaves(notes, bass, level=0.25, lowest=23, half_level=None):
             if at(hz * 1.5) < level * at(hz) or at(hz / 2) < (level if half_level is None else half_level) * at(hz):
                 break
             p -= 12
+        if memo is not None:
+            memo[key] = p
         out.append((s, e, p, a))
     return out
 
@@ -254,7 +269,7 @@ def transcribe(bass, on_progress=lambda fraction: None, mix=None, min_amp=0.0, m
     frames, onsets = _model_output(bass, on_progress)
     times = _frames_to_time(frames.shape[0])
     if keep is not None:
-        keep.update(onsets=onsets, times=times)
+        keep.update(onsets=onsets, times=times, frames=frames)
     events = _note_events(frames, onsets, melodia=bool(melodia), **options)
     if melodia == "gaps":
         events = _gap_fillers(events)
@@ -722,7 +737,7 @@ def note_example(bass, mix, truth):
     frames, onsets = _model_output(bass, lambda fraction: None)
     times = _frames_to_time(frames.shape[0])
     ex = {"bass": bass, "mix": mix, "frames": frames, "onsets": onsets, "times": times,
-          "truth": sorted(truth), "cache": {}}
+          "truth": sorted(truth), "cache": {}, "octaves": {}}
     ex["grid"] = lines_for(mix if mix is not None else bass, detect(ex, NOTES), len(bass) / SAMPLERATE)["grid"]
     return ex
 
@@ -740,7 +755,7 @@ def detect(ex, settings):
         notes = sorted((float(times[a]), float(times[b]), int(p), amp) for a, b, p, amp, _ in events if 23 <= p <= 67)
         notes = _one_at_a_time(_audible(notes, ex["bass"], ex["mix"]))
         if s["octaves"]:
-            notes = _fix_octaves(notes, ex["bass"], s["octaves"], half_level=s["half_level"])
+            notes = _fix_octaves(notes, ex["bass"], s["octaves"], half_level=s["half_level"], memo=ex["octaves"])
         if s["grid_split"] and ex.get("grid") is not None:
             ratio, level = s["grid_split"]
             notes = split_on_grid(notes, ex["grid"], ex["bass"], ratio=ratio, onset_level=level,
@@ -792,3 +807,235 @@ def learn_notes(examples, part=None, on_progress=lambda fraction: None):
                 done += 1
                 on_progress(done / steps)
     return best
+
+
+# Note models learned from imported tabs. The setting search above can't tell a real
+# re-pluck from a ringing or leaking sound, so the user still saw fake notes (a held
+# F#2 in You Only Live Once came out as three, and a stray B3 shown on G16) and missed
+# 8ths. Three small logistic models judge each case from measurements the app already
+# makes, labelled by the imported tabs:
+#   octave: move a note down or up an octave (wrong-octave notes were 99 of Wow! Wow!
+#           Wow!'s fake notes);
+#   pluck:  split a long note at a beat-grid point (re-plucks heard as one note were
+#           the biggest group of missed notes, 280 in 4 songs);
+#   keep:   drop a note that's likely not played.
+# Each song tested with models trained on the other three (4 tabs): see CLAUDE.md.
+OCTAVE_CUT, PLUCK_CUT, KEEP_CUT = 0.5, 0.4, 0.3
+
+
+def _fit(X, y, l2=1.0, steps=3000, rate=0.1):
+    """Logistic regression (standardized features, L2) by gradient descent."""
+    X, y = np.asarray(X, float), np.asarray(y, float)
+    mu, sd = X.mean(0), X.std(0) + 1e-9
+    Z = np.hstack([(X - mu) / sd, np.ones((len(X), 1))])
+    w = np.zeros(Z.shape[1])
+    for _ in range(steps):
+        p = 1 / (1 + np.exp(-Z @ w))
+        w -= rate * (Z.T @ (p - y) / len(y) + l2 * np.r_[w[:-1], 0] / len(y))
+    return {"mu": mu.tolist(), "sd": sd.tolist(), "w": w.tolist()}
+
+
+def _prob(model, X):
+    X = np.asarray(X, float).reshape(len(X), -1)
+    Z = np.hstack([(X - np.array(model["mu"])) / np.array(model["sd"]), np.ones((len(X), 1))])
+    return 1 / (1 + np.exp(-Z @ np.array(model["w"])))
+
+
+def _keep_features(ctx, notes):
+    """Per note: overtone rise, model confidence, onset strength, length, attack
+    sharpness, loudness rise, whether it just continues the same pitch, pitch, levels."""
+    flux, fps = ctx["flux"]
+    times, on, fr, bass = ctx["times"], ctx["onsets"], ctx["frames"], ctx["bass"]
+    lv = _levels(bass, len(bass) // (SAMPLERATE // 20))
+    mixlv = _levels(ctx["mix"], len(lv)) if ctx.get("mix") is not None else lv
+    loud = np.percentile(lv, 95)
+    mid = np.median([n[2] for n in notes])
+    X = []
+    for k, (s, e, p, a) in enumerate(notes):
+        i, j, f = int(np.searchsorted(times, s)), int(s * fps), min(int(s * 20), len(lv) - 1)
+        prev = notes[k - 1] if k else None
+        rise, between = _overtone_jump(bass, s, p)   # a ringing note's "re-start" barely rises (You Only Live Once)
+        X.append([
+            rise, rise - between,
+            a, on[max(0, i - 3):i + 4, p - MIDI_OFFSET].max(), np.log(max(e - s, 0.02)),
+            np.log1p(flux[max(0, j - 3):j + 4].max() / (np.median(flux[max(0, j - 40):j + 40]) + 1e-9)),
+            _low_bump(bass, s), float(prev is not None and prev[2] == p and s - prev[1] < 0.03),
+            (p - mid) / 12, float(p >= 52), (lv[f] - loud) / 10, (lv[f] - mixlv[f]) / 10,
+            fr[i:i + 6, p - MIDI_OFFSET].mean() - (fr[i:i + 6, p - 12 - MIDI_OFFSET].mean() if p - 12 >= MIDI_OFFSET else 0),
+        ])
+    return X
+
+
+def _octave_features(ctx, notes):
+    """Per note: energy at f/4, f/2, 3f/2, 2f, 3f vs f in the bass track, and the
+    model's activation an octave below/above."""
+    bass, fr, times = ctx["bass"], ctx["frames"], ctx["times"]
+    X = []
+    for s, e, p, a in notes:
+        a0 = int(s * SAMPLERATE)
+        seg = bass[a0:max(int(min(e, s + 0.4) * SAMPLERATE), a0 + SAMPLERATE // 20)]
+        spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), 1 << 15)) if len(seg) > 8 else np.zeros((1 << 14) + 1)
+        hz = 440 * 2 ** ((p - 69) / 12)
+
+        def at(f):
+            i = f * (1 << 15) / SAMPLERATE
+            return spec[int(i * 0.97):int(i * 1.03) + 2].max() + 1e-9 if i * 1.03 + 2 < len(spec) else 1e-9
+
+        ref = at(hz)
+        i = int(np.searchsorted(times, s))
+        act = lambda q: fr[i:i + 6, q - MIDI_OFFSET].mean() if 0 <= q - MIDI_OFFSET < 88 else 0.0
+        X.append([np.log(at(hz / 2) / ref), np.log(at(hz * 1.5) / ref), np.log(at(hz * 2) / ref),
+                  np.log(at(hz * 3) / ref), np.log(at(hz / 4) / ref) if hz / 4 > 25 else -5.0,
+                  act(p) - act(p - 12), act(p) - act(p + 12), act(p - 24), (p - 40) / 12, a])
+    return X
+
+
+def _join_repeats(notes):
+    """Same-pitch notes that touch, joined into one: (notes, [times they were split at]).
+    Detection also re-starts a ringing note (a held F#2 in You Only Live Once came out as
+    three notes, without the loudness/overtone rise of a pluck), so whether such a point
+    is a re-pluck is left to the pluck model too."""
+    joined, at = [], []
+    for n in notes:
+        if joined and n[2] == joined[-1][2] and n[0] - joined[-1][1] < 0.03:
+            s, e, p, a = joined[-1]
+            joined[-1] = (s, n[1], p, a)
+            at[-1].append(n[0])
+        else:
+            joined.append(n)
+            at.append([])
+    return joined, at
+
+
+def _pluck_points(ctx, notes, at, grid=True):
+    """Where a long note might be re-plucked: where detection split it (`at`), and (with
+    `grid`) beat-grid points inside it away from those: (note index, time)."""
+    beats = np.asarray(ctx.get("grid") or []) if grid else np.zeros(0)
+    out = []
+    for k, (s, e, p, a) in enumerate(notes):
+        here = [float(t) for t in at[k]]
+        here += [float(g) for g in beats[(beats > s + 0.06) & (beats < e - 0.06)] if all(abs(g - t) > 0.06 for t in at[k])]
+        out += [(k, t) for t in sorted(here)]
+    return out
+
+
+def _pluck_features(ctx, notes, points):
+    """Per point: attack sharpness vs the note, onset strength for the pitch, loudness
+    and overtone rise, activation rise, time into/left of the note in grid steps."""
+    flux, fps = ctx["flux"]
+    times, on, fr, bass = ctx["times"], ctx["onsets"], ctx["frames"], ctx["bass"]
+    grid = np.asarray(ctx["grid"])
+    step = float(np.median(np.diff(grid))) if len(grid) > 1 else 0.25
+    X = []
+    for k, g in points:
+        s, e, p, a = notes[k]
+        base = np.median(flux[int(s * fps):max(int(s * fps) + 1, int(e * fps))]) + 1e-9
+        j, i = int(g * fps), int(np.searchsorted(times, g))
+        rise, between = _overtone_jump(bass, g, p)
+        X.append([np.log1p(flux[max(0, j - 3):j + 4].max() / base), on[max(0, i - 3):i + 4, p - MIDI_OFFSET].max(),
+                  _low_bump(bass, g), rise, rise - between,
+                  fr[i:i + 4, p - MIDI_OFFSET].mean() - fr[max(0, i - 6):max(1, i - 2), p - MIDI_OFFSET].mean(),
+                  np.log((g - s) / step), np.log((e - g) / step), a])
+    return X
+
+
+def note_context(bass, mix, activations, grid):
+    """What the note models measure, for one song."""
+    return {"bass": bass, "mix": mix, "frames": activations["frames"], "onsets": activations["onsets"],
+            "times": activations["times"], "grid": list(grid or []), "flux": _attack_strength(bass)}
+
+
+def _octave_step(models, ctx, notes):
+    if not notes:
+        return notes
+    X = _octave_features(ctx, notes)
+    down, up = _prob(models["down"], X), _prob(models["up"], X)
+    return [(s, e, p - 12 if d >= OCTAVE_CUT and d >= u else p + 12 if u >= OCTAVE_CUT else p, a)
+            for (s, e, p, a), d, u in zip(notes, down, up)]
+
+
+def _pluck_step(model, ctx, notes, grid=True):
+    notes, at = _join_repeats(notes)
+    points = _pluck_points(ctx, notes, at, grid)
+    if not points:
+        return notes
+    cuts = defaultdict(list)
+    for (k, g), yes in zip(points, _prob(model, _pluck_features(ctx, notes, points)) >= PLUCK_CUT):
+        if yes:
+            cuts[k].append(g)
+    out = []
+    for k, (s, e, p, a) in enumerate(notes):
+        edges = [s, *cuts[k], e]
+        out += [(a0, a1, p, a) for a0, a1 in zip(edges, edges[1:])]
+    return out
+
+
+def _keep_step(model, ctx, notes):
+    if not notes:
+        return notes
+    return [n for n, ok in zip(notes, _prob(model, _keep_features(ctx, notes)) >= KEEP_CUT) if ok]
+
+
+def apply_note_models(models, ctx, notes, split=True):
+    """Notes after the learned octave fix, re-pluck decisions (at the beat grid too if
+    `split`) and fake-note filter."""
+    notes = _octave_step(models["octave"], ctx, notes)
+    if models.get("pluck"):
+        notes = _pluck_step(models["pluck"], ctx, notes, grid=split)
+    return _keep_step(models["keep"], ctx, notes)
+
+
+def _match(truth, notes):
+    """For each note: the tab's pitch at that moment (within 70 ms) relative to it:
+    0 same, -12/-24/+12 octave off, None nothing there."""
+    tt = np.array([t for t, p in truth])
+    tp = np.array([p for t, p in truth])
+    out = []
+    for s, e, p, a in notes:
+        near = tp[np.abs(tt - s) < 0.07]
+        out.append(0 if p in near else -12 if (p - 12 in near or p - 24 in near) else 12 if p + 12 in near else None)
+    return out
+
+
+def learn_note_models(examples):
+    """Fit the three models to examples [(context, notes as detected, tab [(time, pitch)])]."""
+    Xo, yo = [], []
+    for ctx, notes, truth in examples:
+        for x, m in zip(_octave_features(ctx, notes), _match(truth, notes)):
+            if m is not None:
+                Xo.append(x)
+                yo.append(m)
+    yo = np.array(yo)
+    octave = {"down": _fit(Xo, yo < 0), "up": _fit(Xo, yo > 0)}
+    stage = [(ctx, _octave_step(octave, ctx, notes), truth) for ctx, notes, truth in examples]
+    Xp, yp = [], []
+    for ctx, notes, truth in stage:
+        notes, at = _join_repeats(notes)
+        points = _pluck_points(ctx, notes, at)
+        if points:
+            Xp += _pluck_features(ctx, notes, points)
+            tt, tp = np.array([t for t, p in truth]), np.array([p for t, p in truth])
+            yp += [bool(np.any((np.abs(tt - g) < 0.07) & (tp == notes[k][2]))) for k, g in points]
+    pluck = _fit(Xp, yp) if len(set(yp)) == 2 else None
+    if pluck:
+        stage = [(ctx, _pluck_step(pluck, ctx, notes), truth) for ctx, notes, truth in stage]
+    Xk, yk = [], []
+    for ctx, notes, truth in stage:
+        Xk += _keep_features(ctx, notes)
+        yk += [m == 0 for m in _match(truth, notes)]
+    return {"octave": octave, "pluck": pluck, "keep": _fit(Xk, yk)}
+
+
+def model_counts(truth, notes):
+    """(matched, detected, in the tab) over the tab's span."""
+    lo, hi = truth[0][0] - 1, truth[-1][0] + 1
+    notes = [n for n in notes if lo <= n[0] <= hi]
+    tt, tp = np.array([t for t, p in truth]), np.array([p for t, p in truth])
+    used = np.zeros(len(tt), bool)
+    hit = 0
+    for s, e, p, a in notes:
+        k = np.nonzero((np.abs(tt - s) < 0.07) & (tp == p) & ~used)[0]
+        if len(k):
+            used[k[0]] = True
+            hit += 1
+    return hit, len(notes), len(tt)

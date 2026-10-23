@@ -590,10 +590,10 @@ def make_tab(song_dir, report):
             report(None if fraction is None else 0.7 * fraction, step and step.replace("Separating", "Isolating"))
         bass = half_rate(separate(mix, ["bass"], True, separating))
     report(0.7, "Writing out the notes")
-    settings = note_settings()
+    settings, models = note_settings(), note_models()
     activations = {}
     notes = tab.transcribe(bass, lambda f: report(0.7 + 0.2 * f), mix=song, keep=activations,
-                           **{k: v for k, v in settings.items() if k != "grid_split"})
+                           **{k: v for k, v in settings.items() if k not in ("grid_split", "models")})
     report(0.9, "Finding the beat")
     grid = tab.lines_for(song if song is not None else bass, notes, len(bass) / tab.SAMPLERATE)
     # Repeated plucks of one note can come out as one long note. Splitting them on the
@@ -601,8 +601,14 @@ def make_tab(song_dir, report):
     # notes where drums leak into the bass track (Electra, checked against the user's
     # Songsterr tab); no audio test told the two apart, so both are kept and the page
     # has a per-song "Split repeated notes" switch.
-    ratio, level = settings["grid_split"] or (1.35, 0.2)   # learned from imported tabs: also on by default
-    split = tab.split_on_grid(notes, grid.pop("grid"), bass, ratio=ratio, activations=activations, onset_level=level)
+    beat_grid = grid.pop("grid")
+    if models:   # learned from imported tabs: octaves, re-plucks (the split version) and fake notes
+        ctx = tab.note_context(bass, song, activations, beat_grid)
+        split = tab.apply_note_models(models, ctx, notes, split=True)
+        notes = tab.apply_note_models(models, ctx, notes, split=False)
+    else:
+        ratio, level = settings["grid_split"] or (1.35, 0.2)   # learned from imported tabs: also on by default
+        split = tab.split_on_grid(notes, beat_grid, bass, ratio=ratio, activations=activations, onset_level=level)
     report(0.95, "Working out the fingering")
     suggested = tab.suggest_tuning(notes)
     rows = lambda ns: [[round(s, 3), round(e, 3), p, round(a, 2)] for s, e, p, a in ns]
@@ -610,7 +616,7 @@ def make_tab(song_dir, report):
             "notes": rows(notes), "notes_split": rows(split),
             **grid, "suggested": suggested, "maybe_half_down": tab.maybe_half_down(notes),
             "tuning_rules": TUNING_RULES, "notes_rules": NOTES_RULES, "note_settings": settings,
-            "split_default": bool(settings["grid_split"]),
+            "split_default": bool(settings["grid_split"] or (models and models.get("pluck"))),
             "fingering": {suggested: tab.fingering(notes, suggested, learned_style()[0])},
             "fingering_style": learned_style()[1]}
     (song_dir / TAB_FILE).write_text(json.dumps(data), encoding="utf-8")
@@ -666,6 +672,7 @@ def import_tab(song_dir, source, report):
 # automatic tabs made with other note settings ask to be made again.
 
 LEARNED_FILE = OUTPUT_DIR / ".learned-from-tabs.json"
+LEARN_RULES = 2   # bump when learning changes, so saved learning is redone at the next start
 
 
 def read_learned():
@@ -691,9 +698,10 @@ def learn_sources():
 
 def learn_from_imports(report=lambda fraction=None, step=None: None):
     """Fit the note settings and the fingering costs to all imported tabs and save them."""
-    report(0.0, "Learning from your imported tabs")
+    report(0.0, "Reading your imported tabs")
     fingers, songs = [], []
     for song_dir, data in imported_tabs().items():
+        report(None, f"Reading {song_dir.name}")
         strings = data.get("open") or (tab.TUNINGS[data["tuning"]][1] if data["tuning"] in tab.TUNINGS else None)
         if not strings:
             continue
@@ -702,7 +710,7 @@ def learn_from_imports(report=lambda fraction=None, step=None: None):
         track = bass_track(song_dir)
         if track and played:   # note learning reruns detection, so it needs the bass on its own
             bass, song = tab_audio(song_dir, track)
-            songs.append(tab.note_example(bass, song, [(t, p) for t, p, _, _ in played]))
+            songs.append({**tab.note_example(bass, song, [(t, p) for t, p, _, _ in played]), "name": song_dir.name})
         report(0.2 * len(fingers) / max(1, len(imported_tabs())))
 
     notes = None
@@ -714,8 +722,23 @@ def learn_from_imports(report=lambda fraction=None, step=None: None):
         before = (tab.f1(tab.note_counts(songs, tab.NOTES, 1)) + tab.f1(tab.note_counts(songs, tab.NOTES, 0))) / 2
         after = (tab.f1(tab.note_counts(songs, a, 1)) + tab.f1(tab.note_counts(songs, b, 0))) / 2
         better = after > before + 0.005   # one song can't show a smaller gain is real
-        notes = {"settings": tab.learn_notes(songs, None, lambda f: report(0.5 + 0.15 * f)) if better else None,
+        notes = {"settings": tab.learn_notes(songs, None, lambda f: report(0.5 + 0.1 * f)) if better else None,
                  "tabs": len(songs), "before": round(before, 3), "after": round(after, 3)}
+
+    models = None
+    if len(songs) >= 2:   # each song is checked with models trained on the other songs
+        report(0.6, "Learning which sounds are real notes")
+        used = {**((notes or {}).get("settings") or tab.NOTES), "grid_split": None}
+        items = [(tab.note_context(ex["bass"], ex["mix"], ex, ex["grid"]), tab.detect(ex, used), ex["truth"]) for ex in songs]
+        before, after = np.zeros(3), np.zeros(3)
+        for k, (ctx, found, truth) in enumerate(items):
+            report(0.6 + 0.05 * k / len(items), f"Checking what it learned on {songs[k]['name']}")
+            trial = tab.learn_note_models(items[:k] + items[k + 1:])
+            before += tab.model_counts(truth, found)
+            after += tab.model_counts(truth, tab.apply_note_models(trial, ctx, found))
+        before, after = tab.f1(before), tab.f1(after)
+        models = {"models": tab.learn_note_models(items) if after > before + 0.005 else None,
+                  "tabs": len(items), "before": round(before, 3), "after": round(after, 3)}
 
     report(0.65, "Learning how your tabs finger the notes")
     halves = [[(s, ns[:len(ns) // 2]) for s, ns in fingers], [(s, ns[len(ns) // 2:]) for s, ns in fingers]]
@@ -725,10 +748,12 @@ def learn_from_imports(report=lambda fraction=None, step=None: None):
     before = (tab.style_match(halves[1]) * n1 + tab.style_match(halves[0]) * n0) / (n0 + n1)
     after = (tab.style_match(halves[1], first) * n1 + tab.style_match(halves[0], second) * n0) / (n0 + n1)
     style = tab.learn_style(fingers, on_progress=lambda f: report(0.85 + 0.15 * f)) if after > before else None
-    LEARNED_FILE.write_text(json.dumps({
-        "made": time.time(), "sources": learn_sources(), "notes": notes,
+    temp = LEARNED_FILE.with_suffix(".tmp")   # written whole, then swapped in: tabs read it meanwhile
+    temp.write_text(json.dumps({
+        "made": time.time(), "sources": learn_sources(), "rules": LEARN_RULES, "notes": notes, "note_models": models,
         "fingering": {"style": style, "tabs": len(fingers), "before": round(before, 3), "after": round(after, 3)}}),
         encoding="utf-8")
+    temp.replace(LEARNED_FILE)
 
 
 def learned_style():
@@ -739,9 +764,18 @@ def learned_style():
 
 
 def note_settings():
-    """The note settings automatic tabs are made with: learned, or tab.NOTES."""
-    saved = read_learned()
-    return ((saved or {}).get("notes") or {}).get("settings") or dict(tab.NOTES)
+    """The note settings automatic tabs are made with: learned, or tab.NOTES; plus which
+    learned note models ("models": when they were made), if any."""
+    saved = read_learned() or {}
+    settings = dict((saved.get("notes") or {}).get("settings") or tab.NOTES)
+    if note_models():
+        settings["models"] = saved["made"]
+    return settings
+
+
+def note_models():
+    """The learned note models (tab.apply_note_models), or None."""
+    return ((read_learned() or {}).get("note_models") or {}).get("models")
 
 
 class Stopped(Exception):
@@ -778,17 +812,9 @@ def worker():
                     job["done"].append(rel(song_dir))
                     continue
                 if settings.get("kind") == "import":
-                    import_tab(song_dir, item["path"], lambda f=None, step=None: report(None if f is None else 0.7 * f, step))
-                    try:   # the import is saved either way; a failed fit is retried at the next start
-                        learn_from_imports(lambda f=None, step=None: report(None if f is None else 0.7 + 0.3 * f, step))
-                    except Stopped:
-                        raise
-                    except Exception as e:
-                        print(f"Couldn't learn from the imported tabs: {e}")
+                    import_tab(song_dir, item["path"], report)
                     job["done"].append(rel(song_dir))
-                    continue
-                if settings.get("kind") == "learn":
-                    learn_from_imports(report)
+                    queue_learning()
                     continue
                 if item.get("stage"):
                     # New song: separate first, so a failed file leaves no empty song behind.
@@ -1129,9 +1155,11 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
                 "dropped": 0, "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings,
                 "notes": [[n[0], n[1], n[2], "x" if n[4] else n[3]] for n in imported["notes"]]}
     data = read_tab(song_dir)
-    if (data is None or data.get("notes_rules") != NOTES_RULES   # none yet, or made the old way
-            or data.get("note_settings", tab.NOTES) != note_settings()):   # or before learning from imported tabs
+    if data is None or data.get("notes_rules") != NOTES_RULES:   # none yet, or made the old way
         return {**about, "exists": False, "outdated": data is not None}
+    # Made before (or with other) note settings learned from imported tabs: still shown,
+    # with a suggestion to redo it.
+    relearned = data.get("note_settings", tab.NOTES) != note_settings()
     if split is None:
         split = data.get("split_default", False)
     notes = [tuple(n) for n in data["notes_split" if split else "notes"]]
@@ -1154,8 +1182,11 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
         (song_dir / TAB_FILE).write_text(json.dumps(data), encoding="utf-8")
     saved = read_learned()
     style = saved and {**saved["fingering"], "used": bool(learned), "style": None}
-    tuned = saved and saved.get("notes") and {**saved["notes"], "used": bool(saved["notes"]["settings"]), "settings": None}
-    return {**about, "exists": True, "source": "auto", "style": style, "tuned": tuned, "tuning": tuning, "suggested": data["suggested"], "bpm": data["bpm"],
+    tuned = saved and (saved.get("note_models") if note_models() else saved.get("notes"))
+    tuned = tuned and {"used": bool(tuned.get("models") or tuned.get("settings")), "tabs": tuned["tabs"],
+                       "before": tuned["before"], "after": tuned["after"]}
+    return {**about, "exists": True, "source": "auto", "style": style, "tuned": tuned,
+            "relearned": relearned, "learning": learning["running"], "tuning": tuning, "suggested": data["suggested"], "bpm": data["bpm"],
             "split": split, "maybe_half_down": data.get("maybe_half_down", False),
             "lines": data["lines"], "dropped": len(notes) - len(data["fingering"][key]),
             "tunings": [{"key": k, "label": label, "strings": names} for k, (label, _, names) in tab.TUNINGS.items()],
@@ -1201,6 +1232,18 @@ async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(
     return {"job": job_id}
 
 
+@api.get("/api/learning")
+def learning_status():
+    """What learning from imported tabs is doing now, and what it learned last time."""
+    saved = read_learned() or {}
+    summary = lambda part: part and {"used": bool(part.get("models") or part.get("settings") or part.get("style")),
+                                     "before": part["before"], "after": part["after"], "tabs": part["tabs"]}
+    return {**{k: v for k, v in learning.items()},
+            "last": {"made": saved["made"], "tabs": len(saved.get("sources", {})),
+                     "notes": summary(saved.get("note_models") if note_models() else saved.get("notes")),
+                     "fingering": summary(saved.get("fingering"))} if saved else None}
+
+
 @api.post("/api/tab/import/remove")
 def remove_import(req: IdRequest):
     """Move a song's imported tab (file and synced copy) to the Trash."""
@@ -1213,13 +1256,38 @@ def remove_import(req: IdRequest):
 
 
 def queue_learning():
-    """Refit the learned fingering in the background when the imported tabs changed."""
-    saved = read_learned()
-    if (saved or {}).get("sources", {}) != learn_sources():
-        job_id = uuid.uuid4().hex
-        jobs[job_id] = {"status": "queued", "total": 1, "index": 0, "song": "Learning from imported tabs",
-                        "fraction": 0.0, "done": [], "failed": [], "finished": []}
-        job_queue.put((job_id, {"kind": "learn", "items": [{"song_dir": OUTPUT_DIR, "title": "Learning from imported tabs"}]}))
+    """Refit what's learned from imported tabs when they changed, on the learner thread
+    (not the job queue: with several tabs it takes a minute or more, and tabs and
+    versions shouldn't wait for it)."""
+    learn_wanted.set()
+
+
+learn_wanted = threading.Event()
+learning = {"running": False}   # what the learner is doing, for GET /api/learning
+
+
+def learner():
+    while True:
+        learn_wanted.wait()
+        learn_wanted.clear()   # tabs imported while learning set it again: one more round
+        saved = read_learned() or {}
+        if saved.get("sources", {}) == learn_sources() and saved.get("rules") == LEARN_RULES:
+            continue
+        learning.clear()
+        learning.update(running=True, fraction=0.0, step="Starting", started=time.time(), tabs=len(learn_sources()))
+
+        def report(fraction=None, step=None):
+            if fraction is not None:
+                learning["fraction"] = fraction
+            if step:
+                learning["step"] = step
+        try:
+            learn_from_imports(report)
+        except Exception as e:   # tried again at the next start or import
+            print(f"Couldn't learn from the imported tabs: {e}")
+            learning["error"] = str(e)
+        finally:
+            learning["running"] = False
 
 
 @api.post("/api/tab")
@@ -1434,6 +1502,7 @@ def main(port=PORT, open_browser=True):
     if open_browser:
         threading.Timer(1.5, webbrowser.open, [url]).start()
     threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=learner, daemon=True).start()
     queue_learning()   # tabs imported before the app learned fingering, or removed by hand
     print(f"Track Splitter is running at {url} (use Quit in the app, or press Ctrl+C)")
     server = uvicorn.Server(uvicorn.Config(api, host=HOST, port=port, log_level="warning"))
