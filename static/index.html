@@ -71,6 +71,44 @@
   .icon-btn.sm { width: 26px; height: 26px; }
   .icon-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
   .icon-btn:disabled { opacity: .35; cursor: default; }
+  .icon-btn[aria-pressed="true"] { color: var(--accent-hover); background: var(--accent-soft); }
+
+  /* ---------- Bass tab (replaces the song list while open) ---------- */
+  .main.tab-open .main-head, .main.tab-open .songs { display: none; }
+  .tab-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 22px 32px 16px; }
+  .tab-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .tab-titles { min-width: 0; }
+  .tab-head h2 { margin: 0; font-size: 22px; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .tab-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tab-tools .switch { height: 30px; gap: 8px; white-space: nowrap; font-size: 13px; color: var(--muted); }
+  .import-intro { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .import-text { width: 100%; height: auto; min-height: 150px; padding: 10px; resize: vertical; font: 12px/1.35 ui-monospace, Menlo, monospace; white-space: pre; }
+  .tab-hint { margin: -6px 0 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .tab-sync { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .tab-sync .btn.sm { padding: 0 9px; }
+  #sync-value { min-width: 76px; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
+  .tab-tools select { height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font: inherit; font-size: 13px; }
+  .tab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 14px; overflow: hidden; }
+  .tab-body.advance { animation: tab-advance .3s ease-out; }
+  @keyframes tab-advance { from { transform: translateY(var(--advance, 60px)); } to { transform: none; } }
+  .tab-line { cursor: pointer; transition: opacity .25s; }
+  .tab-line.prev { opacity: .3; } .tab-line.next { opacity: .7; } .tab-line.next2 { opacity: .45; }
+  .tab-line:hover { opacity: 1; }
+  .tab-line svg { display: block; width: 100%; overflow: visible; }
+  .tab-line .string { stroke: var(--faint); stroke-width: 1; }
+  .tab-line .bar { stroke: var(--muted); stroke-width: 1.2; }
+  .tab-line .name { fill: var(--muted); font-weight: 600; }
+  .tab-line .note rect { fill: var(--bg); }
+  .tab-line .note text { fill: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tab-line .note.playing rect { fill: var(--accent); }
+  .tab-line .note.playing text { fill: white; }
+  .tab-line .note.done text { fill: var(--muted); }
+  .tab-line .playhead { stroke: var(--accent-hover); stroke-width: 2; }
+  .tab-empty { margin: auto; max-width: 420px; text-align: center; color: var(--muted); }
+  .tab-empty h3 { margin: 0 0 6px; color: var(--text); font-size: 17px; }
+  .tab-empty p { margin: 0 0 16px; font-size: 14px; }
+  .tab-empty-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* ---------- Sidebar ---------- */
@@ -414,6 +452,37 @@
       <button type="button" class="btn sm danger stop-job">Stop</button>
     </div>
     <div class="songs" id="songs"></div>
+    <section class="tab-view hidden" id="tab-view" aria-label="Bass tab">
+      <div class="tab-head">
+        <div class="tab-titles"><h2 id="tab-title">Bass tab</h2><p id="tab-sub"></p></div>
+        <div class="tab-tools">
+          <div class="segmented hidden" id="tab-source" role="group" aria-label="Which tab">
+            <button type="button" data-source="imported">Imported</button>
+            <button type="button" data-source="auto">Automatic</button>
+          </div>
+          <select id="tab-tuning" aria-label="Tuning"></select>
+          <label class="switch hidden" id="tab-split-row" title="Driving parts: show repeated plucks of a note as separate notes (split on the beat). Off: notes as heard, best for held notes.">
+            <input type="checkbox" id="tab-split"><span class="track"></span><span>Split repeated notes</span>
+          </label>
+          <label class="switch hidden" id="tab-raise-row" title="Plays the song a half step higher (same tempo), so the half-step-down shapes fit a bass in standard tuning">
+            <input type="checkbox" id="tab-raise"><span class="track"></span><span>Standard-tuned bass: raise ½ step</span>
+          </label>
+          <div class="tab-sync" title="Move the line if it runs ahead of or behind the music (kept on this computer)">
+            <span>Line timing</span>
+            <button type="button" class="btn sm" id="sync-earlier">Earlier</button>
+            <span id="sync-value">on time</span>
+            <button type="button" class="btn sm" id="sync-later">Later</button>
+          </div>
+          <button type="button" class="btn sm" id="tab-remake" title="Make this song's tab again">Redo tab</button>
+          <button type="button" class="btn sm" id="tab-import" title="Bring in a tab you trust (Guitar Pro, MusicXML, or pasted text)">Import tab…</button>
+          <button type="button" class="btn sm danger hidden" id="tab-remove-import" title="Move the imported tab to the Trash">Remove import</button>
+          <button type="button" class="icon-btn" id="tab-close" title="Close the tab" aria-label="Close the tab"></button>
+        </div>
+      </div>
+      <p class="tab-hint hidden" id="tab-hint">Lots of these notes would be open strings in half step down: the band may be tuned down.
+        <button type="button" class="btn sm" id="tab-hint-use">Use half step down</button></p>
+      <div class="tab-body" id="tab-body"></div>
+    </section>
   </main>
 
   <footer class="player">
@@ -441,6 +510,9 @@
       </div>
     </div>
     <div class="player-right">
+      <button class="icon-btn" id="tab-btn" title="Bass tab" aria-label="Bass tab" aria-pressed="false" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M3 10h18M3 14h18M3 18h18"/><circle cx="8" cy="10" r="2.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="2.2" fill="currentColor" stroke="none"/></svg>
+      </button>
       <div class="segmented" role="group" aria-label="What to hear">
         <button data-mode="without" class="active" disabled>Without</button>
         <button data-mode="both" disabled>Original</button>
@@ -506,6 +578,31 @@
     <div class="dlg-foot">
       <button type="button" class="btn" data-close id="upload-cancel">Cancel</button>
       <button type="submit" class="btn primary" id="upload-submit" disabled>Upload</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Import a tab -->
+<dialog id="import-dlg" aria-labelledby="import-title">
+  <form method="dialog" id="import-form">
+    <div class="dlg-head">
+      <h2 id="import-title">Import a tab</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dlg-body">
+      <p class="import-intro">Bring in a bass tab you trust; the app lines it up with this recording. A file keeps the exact
+        rhythm: Guitar Pro (.gp, .gp5 …) or MusicXML (.musicxml, .mxl), which tab sites and Guitar Pro can export. Or copy a
+        text tab from a tab site and paste it below.</p>
+      <div class="field"><label for="import-file">Tab file</label><input type="file" id="import-file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl,.txt"></div>
+      <div class="field"><label for="import-text">…or paste a text tab</label>
+        <textarea class="text-input import-text" id="import-text" rows="9" spellcheck="false" placeholder="G|------------------|&#10;D|------------------|&#10;A|------2--4--------|&#10;E|--0--3-----5--3---|"></textarea></div>
+      <div class="error-box hidden" id="import-error" role="alert"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="submit" class="btn primary" id="import-submit">Import</button>
     </div>
   </form>
 </dialog>
@@ -831,8 +928,9 @@
   const gain = { a: ctx.createGain(), b: ctx.createGain(), o: ctx.createGain() };   // without, only, original
   gain.a.connect(master); gain.b.connect(master); gain.o.connect(master);
   // original: the decoded original file or null; originalScale matches its volume to the versions.
+  // shift: semitones the song is raised by (1 = a half-step-down song on a standard bass).
   const player = { buffers: null, original: null, originalScale: 1, sources: [], playing: false, startedAt: 0,
-                   offset: 0, wantPlay: false, token: 0, headroom: 1 };
+                   offset: 0, wantPlay: false, token: 0, headroom: 1, shift: 0 };
   const seek = $('#seek');
   let seeking = false;
 
@@ -843,16 +941,18 @@
   async function loadVersion(song, version, autoplay = false, at = 0) {
     stopSources();
     state.current = { song, version };
+    if (tabView.open && tabView.song !== song.id) loadTab();   // the tab follows the song
     const token = ++player.token;
     player.buffers = null;
     player.original = null;
     player.offset = at;
     player.wantPlay = autoplay;
+    player.shift = isRaised(song.id) ? 1 : 0;
     applyMode();
     renderPlayer();
     renderSongs();
     updateTime();
-    const src = (part) => `/api/audio?version=${encodeURIComponent(version.id)}&part=${part}`;
+    const src = (part) => `/api/audio?version=${encodeURIComponent(version.id)}&part=${part}${player.shift ? `&shift=${player.shift}` : ''}`;
     const load = async (part) => {
       const res = await fetch(src(part));
       if (!res.ok) throw new Error(res.statusText);
@@ -865,7 +965,7 @@
       const orig = await original;
       if (token !== player.token) return;   // another song was picked meanwhile
       player.buffers = buffers;
-      Object.assign(player, matchOriginal(buffers, orig));
+      Object.assign(player, matchOriginal(buffers, orig, player.shift !== 0));
       player.headroom = headroom(buffers, player.original, player.originalScale);
       applyMode();
       player.offset = Math.min(at, duration());
@@ -880,8 +980,12 @@
   // the correlation is ~1 then, and anything else (a different file, an offset from how
   // a browser decodes MP3s) falls back to the parts. Loud songs' versions were turned
   // down a little to avoid clipping, so the original gets the same turn-down (scale).
-  function matchOriginal([a, b], orig) {
+  // Pitch-shifted audio is stretched file by file, so the parts no longer add up to the
+  // original sample for sample (they stay within ~1 ms): then trust the original if it's
+  // the same length, and match its loudness to the parts instead.
+  function matchOriginal([a, b], orig, shifted = false) {
     if (!orig || orig.numberOfChannels < 2 || orig.sampleRate !== a.sampleRate) return { original: null, originalScale: 1 };
+    if (shifted && Math.abs(orig.length - a.length) > a.sampleRate * 0.5) return { original: null, originalScale: 1 };
     let so = 0, ss = 0, oo = 0;
     for (let c = 0; c < 2; c++) {
       const x = a.getChannelData(c), y = b.getChannelData(c), o = orig.getChannelData(c);
@@ -890,6 +994,7 @@
         so += sum * o[i]; ss += sum * sum; oo += o[i] * o[i];
       }
     }
+    if (shifted) return { original: orig, originalScale: Math.sqrt(ss / (oo || 1)) };
     const r = so / Math.sqrt(ss * oo || 1);
     return r > 0.97 ? { original: orig, originalScale: so / oo } : { original: null, originalScale: 1 };
   }
@@ -922,6 +1027,7 @@
     player.offset = 0;
     player.wantPlay = false;
     state.current = null;
+    if (tabView.open) openTab(false);
     renderPlayer();
   }
 
@@ -997,11 +1103,11 @@
   function renderPlayer() {
     const cur = state.current;
     const enabled = !!cur;
-    ['#play-btn', '#back-btn', '#fwd-btn', '#seek'].forEach((s) => { $(s).disabled = !enabled; });
+    ['#play-btn', '#back-btn', '#fwd-btn', '#seek', '#tab-btn'].forEach((s) => { $(s).disabled = !enabled; });
     document.querySelectorAll('.segmented button').forEach((b) => { b.disabled = !enabled; });
     $('#cover').classList.toggle('idle', !enabled);
     $('#now-title').textContent = cur ? cur.song.title : 'Nothing playing';
-    $('#now-sub').textContent = cur ? `${cur.song.artist} · no ${cur.version.removed}${cur.version.hq ? ' · HQ' : ''}` : 'Pick a song from your library';
+    $('#now-sub').textContent = cur ? `${cur.song.artist} · no ${cur.version.removed}${cur.version.hq ? ' · HQ' : ''}${player.shift ? ' · raised ½ step' : ''}` : 'Pick a song from your library';
     const w = $('.segmented button[data-mode="without"]'), o = $('.segmented button[data-mode="only"]');
     w.textContent = cur ? `Without ${cur.version.removed}` : 'Without';
     o.textContent = cur ? `${cap(cur.version.removed)} only` : 'Only';
@@ -1063,6 +1169,8 @@
   const songMenu = (song) => [
     { label: song.has_original ? 'New version…' : 'New version… (no saved original)', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song) },
     { label: 'Edit song & versions…', icon: icons.edit, action: () => openEdit(song) },
+    { label: 'Import bass tab…', icon: icons.music, disabled: !song.has_original && !song.versions.some((v) => v.removed === 'bass'),
+      action: () => importFromMenu(song) },
     '-',
     { label: 'Delete song', icon: icons.trash, danger: true, action: () => deleteSong(song) },
   ];
@@ -1081,7 +1189,7 @@
     renderJob(); updateUploadButton();
     try {
       const { job } = await postJSON('/api/version/redo', { id: v.id });
-      pollJob(job, [], true);
+      pollJob(job, [], 'redo');
     } catch (err) {
       state.job = null; renderJob(); updateUploadButton();
       toast(err.message, 'error');
@@ -1448,7 +1556,7 @@
       const { job } = await postJSON('/api/process', {
         items, instruments: state.settings.instruments, level: state.settings.level, hq: state.settings.hq, fast: state.settings.fast,
       });
-      pollJob(job, submitted, state.upload.redo);
+      pollJob(job, submitted, state.upload.redo ? 'redo' : 'version');
     } catch (err) {
       state.job = null;
       renderJob(); updateUploadButton();
@@ -1483,15 +1591,21 @@
   }
   dlg.addEventListener('close', renderJob);
 
-  // Time left, from how fast the bar has moved since it started moving. That start
+  // Time left, from how fast the bar has moved since separating started. That start
   // comes after any model download or loading, so those don't skew it; for a batch
   // the reading/saving between songs averages in. Hidden until a few seconds and 3%
   // of progress give a steady rate, and once the bar is full (only quick steps left).
   const eta = { job: null, t0: 0, f0: 0 };
   function timeLeft(job, overall) {
     if (eta.job !== state.jobId) Object.assign(eta, { job: state.jobId, t0: 0, f0: 0 });
-    if (job.status !== 'running' || overall <= 0 || overall >= 0.995) return '';
     const now = performance.now() / 1000;
+    // Start timing when separating starts, not when the bar first moves: high-quality
+    // guitar moves in big steps (a chunk at a time), so waiting for the first step put
+    // the first estimate halfway through.
+    if (!eta.t0 && job.status === 'running' && /^(Separating|Isolating|Writing)/.test(job.step || '')) {
+      Object.assign(eta, { t0: now, f0: overall });
+    }
+    if (job.status !== 'running' || overall <= 0 || overall >= 0.995) return '';
     if (!eta.t0) { Object.assign(eta, { t0: now, f0: overall }); return ''; }
     const done = overall - eta.f0, elapsed = now - eta.t0;
     if (done < 0.03 || elapsed < 4) return '';
@@ -1509,7 +1623,8 @@
     catch (err) { toast(err.message, 'error'); }
   }));
 
-  async function pollJob(jobId, submitted, redo = false) {
+  // kind: 'version' (new versions), 'redo' (a version made again), 'tab' (a bass tab) or 'import' (an imported tab).
+  async function pollJob(jobId, submitted, kind = 'version') {
     state.jobId = jobId;
     try {
       state.job = await api(`/api/jobs/${jobId}`);
@@ -1519,13 +1634,21 @@
       return;
     }
     renderJob();
-    if (state.job.status !== 'done') { setTimeout(() => pollJob(jobId, submitted, redo), 600); return; }
+    if (state.job.status !== 'done') { setTimeout(() => pollJob(jobId, submitted, kind), 600); return; }
 
     const { done, failed, finished, stopped } = state.job;
     state.job = null;
     renderJob();
     if (stopped) toast(done.length ? 'Stopped. The songs already finished were kept.' : 'Stopped. Nothing was saved.');
     if (failed.length) toast(`Couldn't process: ${failed.join(', ')}`, 'error');
+    if (kind === 'tab' || kind === 'import') {
+      if (done.length) {
+        toast(kind === 'import' ? 'Tab imported and lined up with the song.' : 'Bass tab ready.');
+        if (tabView.open) loadTab();
+      }
+      updateUploadButton();
+      return;
+    }
     if (done.length) {
       // Success: clear the songs that went in (settings stay for next time) and show the result.
       // After a Stop, only the ones that finished; the rest stay so they can be started again.
@@ -1533,7 +1656,7 @@
       state.upload.items = state.upload.items.filter((i) => !gone.includes(i));
       renderUploadItems();
       if (dlg.open && !state.upload.items.length) dlg.close();
-      toast(redo ? 'Version redone.' : done.length === 1 ? 'Added to your library.' : `${done.length} versions added to your library.`);
+      toast(kind === 'redo' ? 'Version redone.' : done.length === 1 ? 'Added to your library.' : `${done.length} versions added to your library.`);
       await refreshLibrary();
       const newest = findVersion(done[done.length - 1]);
       if (newest) {
@@ -1544,6 +1667,343 @@
     }
     updateUploadButton();
   }
+
+  // ---------- Bass tab ----------
+  // The song's bass part as tab, a few lines at a time like a lyrics view: the line
+  // being played large with a playhead, the one before dimmed, the next two below.
+  // The server works out notes, lines (bars) and fingering (tab.py); this just draws.
+  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1 };
+  const TAB_PREFS = 'track-splitter-tab-tuning';
+  const tabPrefs = () => { try { return JSON.parse(localStorage.getItem(TAB_PREFS)) || {}; } catch { return {}; } };
+  function saveTabPref(song, tuning) {
+    try { localStorage.setItem(TAB_PREFS, JSON.stringify({ ...tabPrefs(), [song]: tuning })); } catch { /* not kept */ }
+  }
+  // "Raise the song a half step": per song, so a half-step-down song can be played on a
+  // standard-tuned bass with the same (easy) shapes. The audio is shifted on the server.
+  const RAISE_PREFS = 'track-splitter-raise';
+  const raisedSongs = () => { try { return JSON.parse(localStorage.getItem(RAISE_PREFS)) || {}; } catch { return {}; } };
+  const isRaised = (song) => !!raisedSongs()[song];
+  // Imported or automatic tab, per song (imported by default once there is one).
+  const SOURCE_PREFS = 'track-splitter-tab-source';
+  const sourcePrefs = () => { try { return JSON.parse(localStorage.getItem(SOURCE_PREFS)) || {}; } catch { return {}; } };
+  function setSource(song, source) {
+    try { localStorage.setItem(SOURCE_PREFS, JSON.stringify({ ...sourcePrefs(), [song]: source })); } catch { /* not kept */ }
+  }
+  // "Split repeated notes": per song once flipped (on for driving 8ths, off for held
+  // notes); until then the server's default, learned from imported tabs.
+  const SPLIT_PREFS = 'track-splitter-split';
+  const splitSongs = () => { try { return JSON.parse(localStorage.getItem(SPLIT_PREFS)) || {}; } catch { return {}; } };
+  const splitParam = (song) => (song in splitSongs() ? `&split=${splitSongs()[song]}` : '');
+  function setSplit(song, on) {
+    try { localStorage.setItem(SPLIT_PREFS, JSON.stringify({ ...splitSongs(), [song]: on })); } catch { /* not kept */ }
+  }
+  function setRaised(song, on) {
+    try { const r = raisedSongs(); if (on) r[song] = true; else delete r[song]; localStorage.setItem(RAISE_PREFS, JSON.stringify(r)); } catch { /* not kept */ }
+  }
+  // Reload the current song's audio (raised or not), keeping the spot and play state.
+  function reloadAudio() {
+    const cur = state.current;
+    if (cur) loadVersion(cur.song, cur.version, player.playing || player.wantPlay, currentTime());
+  }
+  const showRaised = () => player.shift === 1 && tabView.data?.tuning === 'half-down';
+  const svgEl = (tag, attrs = {}, text) => {
+    const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  $('#tab-close').innerHTML = icons.x;
+
+  function openTab(open = !tabView.open) {
+    tabView.open = open && !!state.current;
+    $('.main').classList.toggle('tab-open', tabView.open);
+    $('#tab-view').classList.toggle('hidden', !tabView.open);
+    $('#tab-btn').setAttribute('aria-pressed', tabView.open);
+    if (tabView.open) { loadTab(); requestAnimationFrame(tabLoop); }
+  }
+
+  async function loadTab(tuning) {
+    const song = state.current?.song;
+    if (!song) return openTab(false);
+    tabView.song = song.id;
+    $('#tab-title').textContent = `${song.title} · bass tab`;
+    const pick = tuning || tabPrefs()[song.id];
+    try {
+      const data = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${splitParam(song.id)}`
+        + `&source=${sourcePrefs()[song.id] || 'imported'}`);   // an imported tab wins when there is one
+      if (tabView.song !== song.id) return;               // another song was picked meanwhile
+      tabView.data = data.exists ? data : null;
+      tabView.canMake = !!data.can_make;
+      tabView.hasImport = !!data.has_import;
+      tabView.outdated = !!data.outdated;
+      if (tabView.data) {
+        // Which notes fall in each line (notes are sorted by time).
+        let k = 0;
+        tabView.lineNotes = data.lines.map(([, end]) => {
+          const from = k;
+          while (k < data.notes.length && data.notes[k][0] < end) k++;
+          return [from, k];
+        });
+      }
+      renderTabHead();
+      tabView.line = -1;
+      tabFrame(true);
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  function renderTabHead() {
+    const d = tabView.data;
+    const imported = d?.source === 'imported';
+    $('#tab-source').classList.toggle('hidden', !tabView.hasImport);
+    document.querySelectorAll('#tab-source button').forEach((b) => b.classList.toggle('active', b.dataset.source === (imported ? 'imported' : 'auto')));
+    $('#tab-tuning').classList.toggle('hidden', !d);
+    $('#tab-tuning').disabled = imported;               // an imported tab keeps its own tuning
+    $('#tab-remake').classList.toggle('hidden', !d || imported);
+    $('#tab-remove-import').classList.toggle('hidden', !imported);
+    $('#tab-raise-row').classList.toggle('hidden', !d || d.tuning !== 'half-down');
+    $('#tab-split-row').classList.toggle('hidden', !d || imported);
+    $('#tab-split').checked = !!d?.split;
+    $('#tab-hint').classList.toggle('hidden', !d || imported || !d.maybe_half_down || d.tuning !== 'standard');
+    $('#tab-raise').checked = player.shift === 1;
+    if (!d) { $('#tab-sub').textContent = ''; return; }
+    $('#tab-tuning').replaceChildren(...d.tunings.map((t) =>
+      el('option', { value: t.key, textContent: t.label + (t.key === d.suggested ? ' (suggested)' : ''), selected: t.key === d.tuning })));
+    $('#tab-sub').textContent = imported ? [
+      `Imported: ${d.import_name}${d.track && d.track !== d.import_name && d.track !== 'Pasted tab' ? ` (${d.track})` : ''}`,
+      d.quality < 0.35 ? `only ${Math.round(d.quality * 100)}% of its notes matched the recording: it may be for another version or tuning` : '',
+      showRaised() ? 'Song raised a half step: play these shapes on a standard-tuned bass' : '',
+      'Click a line to jump there',
+    ].filter(Boolean).join(' · ') : !d.notes.length ? 'No bass found in this song (only other instruments leaking into the bass track).' : [
+      d.bpm ? `${Math.round(d.bpm)} bpm · lines follow the bars` : 'No steady tempo found · 4-second lines',
+      d.dropped ? `${d.dropped} notes too low for this tuning` : '',
+      d.tuned?.used ? `Notes tuned to your imported tabs (${Math.round(d.tuned.before * 100)}% → ${Math.round(d.tuned.after * 100)}% on parts it didn't learn from)` : '',
+      d.style?.used ? `Fingering learned from your ${d.style.tabs === 1 ? 'imported tab' : `${d.style.tabs} imported tabs`} (matches ${d.style.tabs === 1 ? 'it' : 'them'} ${Math.round(d.style.after * 100)}%, was ${Math.round(d.style.before * 100)}%)` : '',
+      showRaised() ? 'Song raised a half step: play these shapes on a standard-tuned bass' : '',
+      'Click a line to jump there',
+    ].filter(Boolean).join(' · ');
+  }
+
+  function renderTabEmpty() {
+    const wrap = el('div', { className: 'tab-empty' });
+    wrap.append(el('h3', { textContent: tabView.outdated ? 'This tab can be made better now' : 'No bass tab for this song yet' }));
+    wrap.append(el('p', { textContent: tabView.outdated
+      ? 'It was made before repeated notes and low notes were handled better. Making it again takes a few seconds.'
+      : tabView.canMake
+        ? 'It takes a few seconds if the song has a "no bass" version, or about a minute to isolate the bass first. Notes are worked out by ear, so expect some mistakes.'
+        : 'This song has no saved original or bass track to work from. Attach the original first (+ Version).' }));
+    const make = el('button', { type: 'button', className: 'btn primary', textContent: tabView.outdated ? 'Make it again' : 'Make bass tab', disabled: !tabView.canMake });
+    make.addEventListener('click', makeTab);
+    const imp = el('button', { type: 'button', className: 'btn', textContent: 'Import a tab instead', disabled: !tabView.canMake });
+    imp.addEventListener('click', () => openImport());
+    wrap.append(el('div', { className: 'tab-empty-actions' }, make, imp));
+    $('#tab-body').replaceChildren(wrap);
+  }
+
+  async function makeTab() {
+    const song = state.current?.song;
+    if (!song) return;
+    if (busy()) { toast('Wait for the current processing to finish, or stop it first.'); return; }
+    state.job = { status: 'queued', total: 1, index: 0, song: song.title, fraction: 0 };
+    renderJob(); updateUploadButton();
+    try {
+      const { job } = await postJSON('/api/tab', { id: song.id });
+      pollJob(job, [], 'tab');
+    } catch (err) {
+      state.job = null; renderJob(); updateUploadButton();
+      toast(err.message, 'error');
+    }
+  }
+
+  const lineAt = (t) => {
+    const lines = tabView.data.lines;
+    let lo = 0, hi = lines.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lines[mid][0] <= t) lo = mid; else hi = mid - 1; }
+    return lo;
+  };
+
+  // One line as an SVG tab staff: string names, strings, bar lines, fret numbers placed by time.
+  function tabLineSvg(i, big) {
+    const d = tabView.data, [start, end, bars] = d.lines[i];
+    // Lowest string first. Raised, the half-step-down shapes are played on standard strings.
+    const names = showRaised() ? d.tunings.find((t) => t.key === 'standard').strings : d.tunings.find((t) => t.key === d.tuning).strings;
+    const k = tabView.scale;                                            // shrinks to fit the window
+    const n = names.length, gap = (big ? 30 : 18) * k, font = Math.max(9, (big ? 18 : 12) * k), pad = gap * 0.75, left = big ? 30 : 24;
+    const width = Math.max(300, $('#tab-body').clientWidth), height = pad * 2 + gap * (n - 1);
+    const x = (t) => left + 12 + ((t - start) / (end - start)) * (width - left - 24);
+    const y = (s) => pad + gap * (n - 1 - s);                            // highest string on top
+    const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, height });
+    names.forEach((name, s) => {
+      svg.append(svgEl('line', { class: 'string', x1: left, x2: width, y1: y(s), y2: y(s) }));
+      svg.append(svgEl('text', { class: 'name', x: left - 8, y: y(s), 'text-anchor': 'end', 'dominant-baseline': 'central', 'font-size': font * 0.8 }, name));
+    });
+    for (const b of [start, ...bars.filter((b) => b > start + 0.05), end]) {
+      svg.append(svgEl('line', { class: 'bar', x1: b === start ? left : x(b) - (b === end ? 0 : 6), x2: b === start ? left : x(b) - (b === end ? 0 : 6), y1: y(n - 1), y2: y(0) }));
+    }
+    const notes = [];
+    const [from, to] = tabView.lineNotes[i];
+    // Numbers squeezed between close neighbours (fast notes, two-digit frets) shrink just
+    // enough not to overlap; the rest stay full size.
+    const room = (k) => Math.min(k > from ? x(d.notes[k][0]) - x(d.notes[k - 1][0]) : Infinity,
+                                 k < to - 1 ? x(d.notes[k + 1][0]) - x(d.notes[k][0]) : Infinity);
+    for (let k = from; k < to; k++) {
+      const [t, te, s, f] = d.notes[k];
+      const size = Math.max(font * 0.55, Math.min(font, (room(k) - 2) / (String(f).length * 0.62 + 0.25)));
+      const g = svgEl('g', { class: 'note' });
+      const w = String(f).length * size * 0.62 + 4;
+      g.append(svgEl('rect', { x: x(t) - w / 2, y: y(s) - size * 0.62, width: w, height: size * 1.24, rx: 3 }));
+      g.append(svgEl('text', { x: x(t), y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size }, f));
+      svg.append(g);
+      notes.push([t, te, g]);
+    }
+    const playhead = big ? svgEl('line', { class: 'playhead', x1: 0, x2: 0, y1: pad * 0.3, y2: height - pad * 0.3 }) : null;
+    if (playhead) svg.append(playhead);
+    return { svg, notes, playhead, x, start, end, width, left };
+  }
+
+  // Lay out previous / current / next / next-but-one, sliding up when moving forward.
+  function buildSlots(i, advanced) {
+    const body = $('#tab-body');
+    const slots = [['prev', i - 1, false], ['cur', i, true], ['next', i + 1, false], ['next2', i + 2, false]];
+    tabView.slots = slots.map(([cls, k, big]) => {
+      const div = el('div', { className: `tab-line ${cls}` });
+      if (k < 0 || k >= tabView.data.lines.length) { div.style.visibility = 'hidden'; div.append(tabLineSvg(Math.max(0, Math.min(k, tabView.data.lines.length - 1)), big).svg); return { div }; }
+      const line = tabLineSvg(k, big);
+      div.append(line.svg);
+      div.addEventListener('click', (e) => {           // jump to where on the line was clicked
+        const r = line.svg.getBoundingClientRect();
+        const px = ((e.clientX - r.left) / r.width) * line.width;
+        const t = line.start + ((px - line.left - 12) / (line.width - line.left - 24)) * (line.end - line.start);
+        seekTo(Math.max(line.start, Math.min(line.end, t)));
+        tabFrame(true);
+      });
+      return { div, line };
+    });
+    body.replaceChildren(...tabView.slots.map((s) => s.div));
+    // Too tall for the space (5 strings, a small window)? Shrink everything and lay out again.
+    const needed = tabView.slots.reduce((h, s) => h + s.div.offsetHeight, 0) + 14 * (tabView.slots.length - 1);
+    if (needed > body.clientHeight + 1 && tabView.scale > 0.4) {
+      tabView.scale *= (body.clientHeight / needed) * 0.97;
+      return buildSlots(i, advanced);
+    }
+    if (advanced) {                                     // slide up by one line
+      body.style.setProperty('--advance', `${tabView.slots[0].div.offsetHeight + 14}px`);
+      body.classList.remove('advance'); void body.offsetWidth; body.classList.add('advance');
+    }
+  }
+
+  // What you hear lags the audio clock by the output delay (larger with the 'playback'
+  // latency setting, and ~0.15-0.3 s on Bluetooth headphones); the tab follows what you hear.
+  const outputDelay = () => (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+  // On top of that, the user's own correction ("Line timing"): ms the line is moved
+  // earlier (+) or later (-). Speakers and Bluetooth headphones don't always report
+  // their delay accurately, so it's adjustable and kept per computer.
+  const SYNC_KEY = 'track-splitter-line-sync';
+  let syncMs = (() => { try { return Number(localStorage.getItem(SYNC_KEY)) || 0; } catch { return 0; } })();
+  function setSync(ms) {
+    syncMs = Math.max(-600, Math.min(600, ms));
+    try { localStorage.setItem(SYNC_KEY, String(syncMs)); } catch { /* not kept */ }
+    $('#sync-value').textContent = syncMs === 0 ? 'on time' : `${Math.abs(syncMs)} ms ${syncMs > 0 ? 'earlier' : 'later'}`;
+    tabFrame();
+  }
+  $('#sync-earlier').addEventListener('click', () => setSync(syncMs + 20));
+  $('#sync-later').addEventListener('click', () => setSync(syncMs - 20));
+
+  function tabFrame(force = false) {
+    if (!tabView.open) return;
+    if (!tabView.data) { if (force) renderTabEmpty(); return; }
+    const t = Math.max(0, currentTime() - (player.playing ? outputDelay() - syncMs / 1000 : 0));
+    const i = lineAt(t);
+    if (i !== tabView.line || force) {
+      if (force) tabView.scale = 1;                       // new tab, tuning or window size: fit again
+      buildSlots(i, !force && i === tabView.line + 1);
+      tabView.line = i;
+    }
+    const cur = tabView.slots[1]?.line;
+    if (!cur) return;
+    cur.playhead.setAttribute('x1', cur.x(t)); cur.playhead.setAttribute('x2', cur.x(t));
+    for (const [ns, ne, g] of cur.notes) {
+      g.classList.toggle('playing', ns <= t && t < Math.max(ne, ns + 0.12));
+      g.classList.toggle('done', t >= Math.max(ne, ns + 0.12));
+    }
+  }
+  function tabLoop() {
+    if (!tabView.open) return;
+    tabFrame();
+    requestAnimationFrame(tabLoop);
+  }
+
+  $('#tab-btn').addEventListener('click', () => openTab());
+  $('#tab-close').addEventListener('click', () => openTab(false));
+  setSync(syncMs);   // show the saved setting
+  $('#tab-remake').addEventListener('click', makeTab);
+  $('#tab-tuning').addEventListener('change', (e) => {
+    saveTabPref(tabView.song, e.target.value);
+    if (e.target.value !== 'half-down' && isRaised(tabView.song)) { setRaised(tabView.song, false); reloadAudio(); }   // raising only fits half step down
+    loadTab(e.target.value);
+  });
+  document.querySelectorAll('#tab-source button').forEach((b) => b.addEventListener('click', () => {
+    setSource(tabView.song, b.dataset.source);
+    loadTab();
+  }));
+  const importDlg = $('#import-dlg');
+  let importSong = null;
+  function openImport(song = state.current?.song) {
+    if (!song) return;
+    importSong = song;
+    $('#import-file').value = '';
+    $('#import-text').value = '';
+    $('#import-error').classList.add('hidden');
+    $('#import-title').textContent = `Import a tab for “${song.title}”`;
+    importDlg.showModal();
+  }
+  // From a song's ... menu: load the song (if it has a version to play) and open its tab
+  // view behind the import box, so the imported tab shows as soon as it's lined up.
+  function importFromMenu(song) {
+    if (song.versions.length && state.current?.song.id !== song.id) loadVersion(song, song.versions[0]);
+    if (song.versions.length) openTab(true);
+    openImport(song);
+  }
+  $('#tab-import').addEventListener('click', () => openImport());
+  $('#import-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const song = importSong;
+    if (!song) return;
+    const file = $('#import-file').files[0], text = $('#import-text').value;
+    const fail = (message) => { $('#import-error').textContent = message; $('#import-error').classList.remove('hidden'); };
+    if (!file && !text.trim()) return fail('Choose a tab file or paste a tab.');
+    if (busy()) return fail('Wait for the current processing to finish, or stop it first.');
+    const form = new FormData();
+    form.append('song', song.id);
+    if (file) form.append('file', file); else form.append('text', text);
+    try {
+      const { job } = await api('/api/tab/import', { method: 'POST', body: form });
+      importDlg.close();
+      setSource(song.id, 'imported');
+      state.job = { status: 'queued', total: 1, index: 0, song: song.title, fraction: 0 };
+      renderJob(); updateUploadButton();
+      pollJob(job, [], 'import');
+    } catch (err) { fail(err.message); }
+  });
+  $('#tab-remove-import').addEventListener('click', async () => {
+    try {
+      await postJSON('/api/tab/import/remove', { id: tabView.song });
+      setSource(tabView.song, 'auto');
+      toast('Moved the imported tab to the Trash.');
+      loadTab();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+  $('#tab-split').addEventListener('change', (e) => { setSplit(tabView.song, e.target.checked); loadTab($('#tab-tuning').value); });
+  $('#tab-hint-use').addEventListener('click', () => {
+    $('#tab-tuning').value = 'half-down';
+    $('#tab-tuning').dispatchEvent(new Event('change'));
+  });
+  $('#tab-raise').addEventListener('change', (e) => {
+    setRaised(tabView.song, e.target.checked);
+    reloadAudio();
+    renderTabHead();
+    tabFrame(true);
+  });
+  window.addEventListener('resize', () => { if (tabView.open && tabView.data) tabFrame(true); });
 
   // ---------- App shortcut + quit ----------
   const SHORTCUT_KEY = 'track-splitter-shortcut-prompt';

@@ -12,3 +12,5 @@ truststore
 einops
 beartype
 rotary-embedding-torch
+onnxruntime
+PyGuitarPro

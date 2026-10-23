@@ -46,11 +46,14 @@ import uvicorn
 import yt_dlp
 from demucs.apply import apply_model
 from demucs.pretrained import get_model
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from send2trash import send2trash
+
+import tab
+import tabimport
 
 HOST, PORT = "127.0.0.1", 7860
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -58,8 +61,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 # Kept in the user's Music folder so the library survives re-copying the app.
 OUTPUT_DIR = Path.home() / "Music" / "Track Splitter"
 # Where earlier versions kept the library, back when the app was called Bass Remover.
-OLD_LIBRARY_DIRS = [Path.home() / "Music" / "Bass Remover", Path(__file__).parent / "output"]
+OLD_OUTPUT_DIRS = [Path.home() / "Music" / "Bass Remover", Path(__file__).parent / "output"]
 STAGE_DIR = Path(tempfile.gettempdir()) / "track-splitter-uploads"
+SHIFT_DIR = Path(tempfile.gettempdir()) / "track-splitter-shifted"   # pitch-shifted audio cache
 SAMPLERATE = 44100  # all Demucs v4 models use this
 INSTRUMENTS = ["bass", "drums", "vocals", "guitar", "lead guitar", "rhythm guitar", "piano"]
 GUITAR_PARTS = {"lead guitar", "rhythm guitar"}  # split out of the guitar stem by stereo position
@@ -472,7 +476,7 @@ def restructure_flat_library():
 
 def migrate_old_library():
     """Move tracks and artist folders from earlier library locations into this one."""
-    for old in OLD_LIBRARY_DIRS:
+    for old in OLD_OUTPUT_DIRS:
         if not old.is_dir():
             continue
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -531,6 +535,215 @@ def make_version(source, song_dir, stems, level, high_quality, on_progress, fast
     return version
 
 
+# --- Bass tab ---------------------------------------------------------------------
+# Per song, in <song>/.bass-tab.json: the bass notes, the lines (bars), and fingerings
+# per tuning (made on first request, they take under a second). See tab.py.
+
+TAB_FILE = ".bass-tab.json"
+TUNING_RULES = 3   # bump when tab.suggest_tuning changes, so saved tabs get a new suggestion
+NOTES_RULES = 4    # bump when the notes would come out differently; older tabs ask to be remade
+
+
+def bass_track(song_dir):
+    """An existing "bass only" file for exactly bass (HQ preferred), or None."""
+    tracks = [p for p in song_dir.glob("* (bass only).mp3")]
+    return min(tracks, key=lambda p: HQ_TAG not in p.name, default=None)
+
+
+def read_tab(song_dir):
+    try:
+        return json.loads((song_dir / TAB_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def half_rate(x):
+    """44.1 kHz stereo -> 22.05 kHz mono (what tab.py works at)."""
+    return (x[:, 0::2][:, :x.shape[1] // 2] + x[:, 1::2][:, :x.shape[1] // 2]).mean(0) / 2
+
+
+def tab_audio(song_dir, track):
+    """(bass, whole song or None) at tab.SAMPLERATE, from a "bass only" track."""
+    source = original_file(song_dir)
+    song = half_rate(decode(source, SAMPLERATE)) if source else None
+    bass = decode(track, tab.SAMPLERATE).mean(0)
+    partner = track.with_name(track.name.replace("(bass only)", "(no bass)"))
+    if song is None and partner.exists():
+        # No saved original: its "no bass" version plus the bass add up to the song.
+        rest = decode(partner, tab.SAMPLERATE).mean(0)
+        n = min(len(rest), len(bass))
+        song = rest[:n] + bass[:n]
+    return bass, song
+
+
+def make_tab(song_dir, report):
+    """Isolate the bass (or reuse a bass track), transcribe it, find the bars, save."""
+    report(0.0, "Reading the song")
+    track = bass_track(song_dir)
+    if track:
+        bass, song = tab_audio(song_dir, track)
+    else:
+        mix = decode(original_file(song_dir), SAMPLERATE)
+        song = half_rate(mix)
+
+        def separating(fraction=None, step=None):
+            report(None if fraction is None else 0.7 * fraction, step and step.replace("Separating", "Isolating"))
+        bass = half_rate(separate(mix, ["bass"], True, separating))
+    report(0.7, "Writing out the notes")
+    settings = note_settings()
+    activations = {}
+    notes = tab.transcribe(bass, lambda f: report(0.7 + 0.2 * f), mix=song, keep=activations,
+                           **{k: v for k, v in settings.items() if k != "grid_split"})
+    report(0.9, "Finding the beat")
+    grid = tab.lines_for(song if song is not None else bass, notes, len(bass) / tab.SAMPLERATE)
+    # Repeated plucks of one note can come out as one long note. Splitting them on the
+    # beat grid helps driving 8ths (Getting Along, You Only Live Once) but chops held
+    # notes where drums leak into the bass track (Electra, checked against the user's
+    # Songsterr tab); no audio test told the two apart, so both are kept and the page
+    # has a per-song "Split repeated notes" switch.
+    ratio, level = settings["grid_split"] or (1.35, 0.2)   # learned from imported tabs: also on by default
+    split = tab.split_on_grid(notes, grid.pop("grid"), bass, ratio=ratio, activations=activations, onset_level=level)
+    report(0.95, "Working out the fingering")
+    suggested = tab.suggest_tuning(notes)
+    rows = lambda ns: [[round(s, 3), round(e, 3), p, round(a, 2)] for s, e, p, a in ns]
+    data = {"source": "bass track" if track else "separated", "made": time.time(),
+            "notes": rows(notes), "notes_split": rows(split),
+            **grid, "suggested": suggested, "maybe_half_down": tab.maybe_half_down(notes),
+            "tuning_rules": TUNING_RULES, "notes_rules": NOTES_RULES, "note_settings": settings,
+            "split_default": bool(settings["grid_split"]),
+            "fingering": {suggested: tab.fingering(notes, suggested, learned_style()[0])},
+            "fingering_style": learned_style()[1]}
+    (song_dir / TAB_FILE).write_text(json.dumps(data), encoding="utf-8")
+
+
+# --- Imported tabs ------------------------------------------------------------------
+# A tab the user trusts (Guitar Pro / MusicXML file, or text pasted from a tab site),
+# synced to the recording (tabimport.py). Kept next to the song: the file as given
+# (imported-tab.<ext>) and the synced result (.bass-tab-imported.json).
+
+IMPORT_FILE = ".bass-tab-imported.json"
+TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
+
+
+def note_name(p):
+    return ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"][p % 12]
+
+
+def import_tab(song_dir, source, report):
+    report(0.0, "Reading the tab")
+    tracks = tabimport.read_file(source)
+    if not tracks:
+        raise ValueError("no tab notes found in it")
+    track = tracks[0]                               # bass-looking tracks come first
+    data = read_tab(song_dir)
+    if data is None or data.get("notes_rules") != NOTES_RULES:
+        # The sync needs the notes heard in the recording: make the automatic tab first.
+        make_tab(song_dir, lambda f=None, step=None: report(None if f is None else 0.8 * f, step))
+        data = read_tab(song_dir)
+    report(0.85, "Lining the tab up with the recording")
+    synced = tabimport.sync(track, [tuple(n) for n in data["notes"]], 60 / data["bpm"] if data.get("bpm") else None)
+    bars = synced["bars"]
+    end = max((n[1] for n in synced["notes"]), default=bars[-1] if bars else 0.0)
+    bar_len = float(np.median(np.diff(bars))) if len(bars) > 1 else 2.0
+    per_line = int(np.clip(round(5.0 / max(bar_len, 0.1)), 1, 4))
+    edges = bars[::per_line] + [max(end, bars[-1] + bar_len)]
+    lines = [[float(a), float(b), [float(x) for x in bars if a <= x < b]] for a, b in zip(edges, edges[1:]) if b > a]
+    key = next((k for k, (_, strings, _) in tab.TUNINGS.items() if strings == track.strings), None)
+    names = tab.TUNINGS[key][2] if key else [note_name(p) for p in track.strings]
+    out = {"name": "Pasted tab" if source.name == "imported-tab.txt" else source.name.replace("imported-tab - ", ""),
+           "track": track.name, "made": time.time(), "quality": synced["quality"], "tuning": key or "custom",
+           "label": tab.TUNINGS[key][0] if key else "Tab's tuning (" + " ".join(names) + ")",
+           "strings": names, "open": track.strings, "notes": synced["notes"], "lines": lines, "bpm": data.get("bpm")}
+    (song_dir / IMPORT_FILE).write_text(json.dumps(out), encoding="utf-8")
+
+
+# --- Learning from imported tabs ---------------------------------------------------
+# Every imported tab is a right answer for its song: which notes are played (tuning the
+# note detection, tab.learn_notes) and where (the fingering costs, tab.learn_style).
+# Both are fitted to all imported tabs and kept in the library. Each is used only when
+# it beats the built-in settings on the half of every tab it wasn't fitted on. Saved
+# fingerings remember which learned costs made them and are redone when those change;
+# automatic tabs made with other note settings ask to be made again.
+
+LEARNED_FILE = OUTPUT_DIR / ".learned-from-tabs.json"
+
+
+def read_learned():
+    try:
+        return json.loads(LEARNED_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def imported_tabs():
+    """{song folder: its imported tab} for every song with one."""
+    out = {}
+    for f in OUTPUT_DIR.glob(f"*/*/{IMPORT_FILE}"):
+        data = read_import(f.parent)
+        if data:
+            out[f.parent] = data
+    return out
+
+
+def learn_sources():
+    return {rel(song_dir): data["made"] for song_dir, data in imported_tabs().items()}
+
+
+def learn_from_imports(report=lambda fraction=None, step=None: None):
+    """Fit the note settings and the fingering costs to all imported tabs and save them."""
+    report(0.0, "Learning from your imported tabs")
+    fingers, songs = [], []
+    for song_dir, data in imported_tabs().items():
+        strings = data.get("open") or (tab.TUNINGS[data["tuning"]][1] if data["tuning"] in tab.TUNINGS else None)
+        if not strings:
+            continue
+        played = [(n[0], strings[n[2]] + n[3], n[2], n[3]) for n in data["notes"] if not n[4]]
+        fingers.append((strings, played))
+        track = bass_track(song_dir)
+        if track and played:   # note learning reruns detection, so it needs the bass on its own
+            bass, song = tab_audio(song_dir, track)
+            songs.append(tab.note_example(bass, song, [(t, p) for t, p, _, _ in played]))
+        report(0.2 * len(fingers) / max(1, len(imported_tabs())))
+
+    notes = None
+    if songs:
+        report(0.2, "Learning which notes your tabs play")
+        a = tab.learn_notes(songs, 0, lambda f: report(0.2 + 0.15 * f))
+        b = tab.learn_notes(songs, 1, lambda f: report(0.35 + 0.15 * f))
+        # Each half scored with the settings fitted on the other one, vs the built-in ones.
+        before = (tab.f1(tab.note_counts(songs, tab.NOTES, 1)) + tab.f1(tab.note_counts(songs, tab.NOTES, 0))) / 2
+        after = (tab.f1(tab.note_counts(songs, a, 1)) + tab.f1(tab.note_counts(songs, b, 0))) / 2
+        better = after > before + 0.005   # one song can't show a smaller gain is real
+        notes = {"settings": tab.learn_notes(songs, None, lambda f: report(0.5 + 0.15 * f)) if better else None,
+                 "tabs": len(songs), "before": round(before, 3), "after": round(after, 3)}
+
+    report(0.65, "Learning how your tabs finger the notes")
+    halves = [[(s, ns[:len(ns) // 2]) for s, ns in fingers], [(s, ns[len(ns) // 2:]) for s, ns in fingers]]
+    first = tab.learn_style(halves[0], on_progress=lambda f: report(0.65 + 0.1 * f))
+    second = tab.learn_style(halves[1], on_progress=lambda f: report(0.75 + 0.1 * f))
+    n0, n1 = (max(1, sum(len(ns) for _, ns in h)) for h in halves)
+    before = (tab.style_match(halves[1]) * n1 + tab.style_match(halves[0]) * n0) / (n0 + n1)
+    after = (tab.style_match(halves[1], first) * n1 + tab.style_match(halves[0], second) * n0) / (n0 + n1)
+    style = tab.learn_style(fingers, on_progress=lambda f: report(0.85 + 0.15 * f)) if after > before else None
+    LEARNED_FILE.write_text(json.dumps({
+        "made": time.time(), "sources": learn_sources(), "notes": notes,
+        "fingering": {"style": style, "tabs": len(fingers), "before": round(before, 3), "after": round(after, 3)}}),
+        encoding="utf-8")
+
+
+def learned_style():
+    """(learned fingering costs or None, their id) for fingering the automatic tabs."""
+    saved = read_learned()
+    style = saved and saved.get("fingering", {}).get("style")
+    return (style, saved["made"]) if style else (None, None)
+
+
+def note_settings():
+    """The note settings automatic tabs are made with: learned, or tab.NOTES."""
+    saved = read_learned()
+    return ((saved or {}).get("notes") or {}).get("settings") or dict(tab.NOTES)
+
+
 class Stopped(Exception):
     """The user pressed Stop. Deliberately not a RuntimeError, so run_model doesn't retry."""
 
@@ -560,6 +773,23 @@ def worker():
             job.update(index=i, song=item["title"], fraction=0.0, step="Starting")
             try:
                 song_dir = item["song_dir"]
+                if settings.get("kind") == "tab":
+                    make_tab(song_dir, report)
+                    job["done"].append(rel(song_dir))
+                    continue
+                if settings.get("kind") == "import":
+                    import_tab(song_dir, item["path"], lambda f=None, step=None: report(None if f is None else 0.7 * f, step))
+                    try:   # the import is saved either way; a failed fit is retried at the next start
+                        learn_from_imports(lambda f=None, step=None: report(None if f is None else 0.7 + 0.3 * f, step))
+                    except Stopped:
+                        raise
+                    except Exception as e:
+                        print(f"Couldn't learn from the imported tabs: {e}")
+                    job["done"].append(rel(song_dir))
+                    continue
+                if settings.get("kind") == "learn":
+                    learn_from_imports(report)
+                    continue
                 if item.get("stage"):
                     # New song: separate first, so a failed file leaves no empty song behind.
                     stage = item["stage"]
@@ -610,9 +840,34 @@ def get_library():
     return library()
 
 
+def shifted(source, semitones):
+    """source raised/lowered by whole semitones at the same tempo, as a cached float WAV.
+
+    Played faster by the pitch ratio (resample), then stretched back to the original
+    length (ffmpeg's atempo; this ffmpeg has no rubberband). For playing along on a bass
+    tuned differently from the record, e.g. a half-step-down song on a standard bass.
+    The stretch works on each file separately, so shifted parts no longer add up to the
+    shifted original sample for sample (they stay within ~1 ms); the player knows."""
+    stat = source.stat()
+    key = hashlib.sha1(f"{source}|{stat.st_mtime_ns}|{semitones}".encode()).hexdigest()
+    dest = SHIFT_DIR / f"{key}.wav"
+    if not dest.exists():
+        SHIFT_DIR.mkdir(parents=True, exist_ok=True)
+        r = 2 ** (semitones / 12)
+        f = f"aresample={SAMPLERATE},asetrate={SAMPLERATE * r:.4f},aresample={SAMPLERATE},atempo={1 / r:.6f}"
+        part = dest.with_suffix(".part")
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(source), "-ac", "2", "-af", f,
+                        "-c:a", "pcm_f32le", "-f", "wav", str(part)], check=True)
+        part.replace(dest)
+    return dest
+
+
 @api.get("/api/audio")
-def audio(version: str, part: str):
+def audio(version: str, part: str, shift: int = 0):
+    """A version's without/only file or the song's original; shift: semitones (-2..2)."""
     path = library_path(version, 3)
+    if not -2 <= shift <= 2:
+        raise HTTPException(400, "The pitch can be moved by up to 2 semitones.")
     if part == "original":
         # The song's own original, for the player's Original mode, decoded exactly as
         # separation does (44.1 kHz) so it lines up with the versions. Float WAV keeps
@@ -621,6 +876,8 @@ def audio(version: str, part: str):
         source = original_file(path.parent)
         if not source:
             raise HTTPException(404, "This song has no saved original.")
+        if shift:
+            return FileResponse(shifted(source, shift), media_type="audio/wav")
         cmd = [FFMPEG, "-v", "error", "-i", str(source), "-ac", "2", "-ar", str(SAMPLERATE),
                "-c:a", "pcm_f32le", "-f", "wav", "-"]
         return Response(subprocess.run(cmd, capture_output=True, check=True).stdout, media_type="audio/wav")
@@ -628,6 +885,8 @@ def audio(version: str, part: str):
     path = without if part == "without" else only
     if not path.exists():
         raise HTTPException(404, "That version doesn't exist.")
+    if shift:
+        return FileResponse(shifted(path, shift), media_type="audio/wav")
     return FileResponse(path, media_type="audio/mpeg")
 
 
@@ -845,6 +1104,139 @@ def delete_version(req: IdRequest):
     return {"ok": True}
 
 
+def read_import(song_dir):
+    try:
+        return json.loads((song_dir / IMPORT_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+@api.get("/api/tab")
+def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = None, source: str = "auto"):
+    """A song's bass tab: the automatic one in a tuning (default: the suggested one), with
+    repeated notes split on the beat or as heard; or the imported one (source=imported);
+    or, without a tab, what's possible. split: None = as learned from imported tabs."""
+    song_dir = library_path(song, 2)
+    imported = read_import(song_dir)
+    about = {"has_import": imported is not None, "import_name": imported and imported["name"],
+             "can_make": bool(original_file(song_dir) or bass_track(song_dir))}
+    if source == "imported" and imported:
+        tunings = [{"key": k, "label": label, "strings": names} for k, (label, _, names) in tab.TUNINGS.items()]
+        if imported["tuning"] == "custom":
+            tunings.append({"key": "custom", "label": imported["label"], "strings": imported["strings"]})
+        return {**about, "exists": True, "source": "imported", "tuning": imported["tuning"], "suggested": imported["tuning"],
+                "bpm": imported.get("bpm"), "split": False, "maybe_half_down": False, "lines": imported["lines"],
+                "dropped": 0, "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings,
+                "notes": [[n[0], n[1], n[2], "x" if n[4] else n[3]] for n in imported["notes"]]}
+    data = read_tab(song_dir)
+    if (data is None or data.get("notes_rules") != NOTES_RULES   # none yet, or made the old way
+            or data.get("note_settings", tab.NOTES) != note_settings()):   # or before learning from imported tabs
+        return {**about, "exists": False, "outdated": data is not None}
+    if split is None:
+        split = data.get("split_default", False)
+    notes = [tuple(n) for n in data["notes_split" if split else "notes"]]
+    changed = False
+    if data.get("tuning_rules") != TUNING_RULES:   # saved before the suggestion improved
+        held = [tuple(n) for n in data["notes"]]
+        data.update(suggested=tab.suggest_tuning(held), maybe_half_down=tab.maybe_half_down(held),
+                    tuning_rules=TUNING_RULES)
+        changed = True
+    learned, style_id = learned_style()
+    if data.get("fingering_style") != style_id:   # fingered before the learned costs changed
+        data.update(fingering={}, fingering_style=style_id)
+        changed = True
+    tuning = tuning if tuning in tab.TUNINGS else data["suggested"]
+    key = tuning + ("|split" if split else "")
+    if key not in data["fingering"]:   # first time in this tuning/version: work it out and keep it
+        data["fingering"][key] = tab.fingering(notes, tuning, learned)
+        changed = True
+    if changed:
+        (song_dir / TAB_FILE).write_text(json.dumps(data), encoding="utf-8")
+    saved = read_learned()
+    style = saved and {**saved["fingering"], "used": bool(learned), "style": None}
+    tuned = saved and saved.get("notes") and {**saved["notes"], "used": bool(saved["notes"]["settings"]), "settings": None}
+    return {**about, "exists": True, "source": "auto", "style": style, "tuned": tuned, "tuning": tuning, "suggested": data["suggested"], "bpm": data["bpm"],
+            "split": split, "maybe_half_down": data.get("maybe_half_down", False),
+            "lines": data["lines"], "dropped": len(notes) - len(data["fingering"][key]),
+            "tunings": [{"key": k, "label": label, "strings": names} for k, (label, _, names) in tab.TUNINGS.items()],
+            "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in data["fingering"][key]]}
+
+
+@api.post("/api/tab/import")
+async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(None), text: str = Form("")):
+    """Bring in a tab file or pasted text tab and queue syncing it to the recording."""
+    song_dir = library_path(song, 2)
+    if not song_dir.is_dir():
+        raise HTTPException(404, "That song doesn't exist.")
+    if not (original_file(song_dir) or bass_track(song_dir)):
+        raise HTTPException(400, "This song has no saved original or bass track to line the tab up with.")
+    if file is not None and file.filename:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in TAB_EXTENSIONS:
+            raise HTTPException(400, "That isn't a tab file. Use Guitar Pro (.gp, .gp3-.gp5), MusicXML (.musicxml, .mxl), or paste a text tab.")
+        content = await file.read()
+        name = file.filename
+    elif text.strip():
+        ext, content, name = ".txt", text.encode("utf-8"), "imported-tab.txt"
+    else:
+        raise HTTPException(400, "Choose a tab file or paste a tab.")
+    final = f"imported-tab{ext}" if ext == ".txt" else f"imported-tab - {clean_name(Path(name).stem) or 'tab'}{ext}"
+    trial = STAGE_DIR / f"{uuid.uuid4().hex}-{final}"
+    STAGE_DIR.mkdir(parents=True, exist_ok=True)
+    trial.write_bytes(content)
+    try:   # read it first: a file the app can't read is reported at once, the old import kept
+        if not tabimport.read_file(trial):
+            raise ValueError("No tab notes found in it.")
+    except Exception as e:
+        trial.unlink(missing_ok=True)
+        raise HTTPException(400, f"Couldn't read that tab: {e}")
+    for old in song_dir.glob("imported-tab*"):   # replacing an earlier import: to the Trash
+        send2trash(str(old))
+    path = song_dir / final
+    shutil.move(str(trial), str(path))
+    job_id = uuid.uuid4().hex
+    jobs[job_id] = {"status": "queued", "total": 1, "index": 0, "song": song_dir.name,
+                    "fraction": 0.0, "done": [], "failed": [], "finished": []}
+    job_queue.put((job_id, {"kind": "import", "items": [{"song_dir": song_dir, "title": song_dir.name, "path": path}]}))
+    return {"job": job_id}
+
+
+@api.post("/api/tab/import/remove")
+def remove_import(req: IdRequest):
+    """Move a song's imported tab (file and synced copy) to the Trash."""
+    song_dir = library_path(req.id, 2)
+    for f in [song_dir / IMPORT_FILE, *song_dir.glob("imported-tab*")]:
+        if f.exists():
+            send2trash(str(f))
+    queue_learning()
+    return {"ok": True}
+
+
+def queue_learning():
+    """Refit the learned fingering in the background when the imported tabs changed."""
+    saved = read_learned()
+    if (saved or {}).get("sources", {}) != learn_sources():
+        job_id = uuid.uuid4().hex
+        jobs[job_id] = {"status": "queued", "total": 1, "index": 0, "song": "Learning from imported tabs",
+                        "fraction": 0.0, "done": [], "failed": [], "finished": []}
+        job_queue.put((job_id, {"kind": "learn", "items": [{"song_dir": OUTPUT_DIR, "title": "Learning from imported tabs"}]}))
+
+
+@api.post("/api/tab")
+def start_tab(req: IdRequest):
+    """Queue making a song's bass tab (replacing an existing one)."""
+    song_dir = library_path(req.id, 2)
+    if not song_dir.is_dir():
+        raise HTTPException(404, "That song doesn't exist.")
+    if not (original_file(song_dir) or bass_track(song_dir)):
+        raise HTTPException(400, "This song has no saved original or bass track to work from.")
+    job_id = uuid.uuid4().hex
+    jobs[job_id] = {"status": "queued", "total": 1, "index": 0, "song": song_dir.name,
+                    "fraction": 0.0, "done": [], "failed": [], "finished": []}
+    job_queue.put((job_id, {"kind": "tab", "items": [{"song_dir": song_dir, "title": song_dir.name}]}))
+    return {"job": job_id}
+
+
 @api.post("/api/version/redo")
 def redo_version(req: IdRequest):
     """Make a version again with its own settings, replacing its files.
@@ -1002,8 +1394,18 @@ def create_shortcut():
     return {"path": str(path)}
 
 
+class FreshStaticFiles(StaticFiles):
+    """Makes the browser check for a newer page every time, so app updates show up
+    without a hard reload (it still gets a quick "not modified" when nothing changed)."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serves the page itself; mounted last because it answers every path not matched above.
-api.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+api.mount("/", FreshStaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 
 def already_running(port):
@@ -1028,9 +1430,11 @@ def main(port=PORT, open_browser=True):
     migrate_old_library()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(STAGE_DIR, ignore_errors=True)  # uploads from a previous run can't be used anymore
+    shutil.rmtree(SHIFT_DIR, ignore_errors=True)
     if open_browser:
         threading.Timer(1.5, webbrowser.open, [url]).start()
     threading.Thread(target=worker, daemon=True).start()
+    queue_learning()   # tabs imported before the app learned fingering, or removed by hand
     print(f"Track Splitter is running at {url} (use Quit in the app, or press Ctrl+C)")
     server = uvicorn.Server(uvicorn.Config(api, host=HOST, port=port, log_level="warning"))
     _server.append(server)
