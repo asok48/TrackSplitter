@@ -293,6 +293,88 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   lines drift left; the far end recedes a little (CSS rotateY). Speed: 3 s ahead, but
   at least fast enough that the song's quick notes (20th percentile gap) don't overlap,
   so narrow windows show less time. Clicking the highway plays/pauses.
+  User: "sort of hard to read" (too fast, too small): lanes now fill the height (up to
+  120 px), gems up to 52 px with numbers ~0.62 of that, string names 13-22 px; a
+  Slow-Fast slider (0.4-1.6 x 3 s ahead, 120-420 px/s; `track-splitter-highway-speed`)
+  replaced the speed-from-the-quickest-notes rule above. (Crowded gems used to get
+  narrower; now every gem in a song is one size, see "Gem size".)
+- Header (user: "really crowded", "put the game in a different section", "make the input
+  a bubble popup"): title + subtitle, and top right [Tab | Game] (`#tab-section`,
+  `tabView.section`, `#tab-view[data-section]`; `.only-tab` / `.only-game` elements) and
+  close. One row of tools: which tab, Lines/Highway (Tab), speed (Highway or Game),
+  tuning, raise ½ step (when it applies), Delete note/Undo (when a Mine note is
+  selected), "Your best" (Game), Bass input, More ▾ (`#tab-more`: Timing, Split
+  repeated notes, Import tab…, Redo tab, Remove import/mine; an action closes it),
+  Start (Game). The Game section always draws the Highway without changing the Tab
+  section's Lines/Highway choice.
+  - Bass input is a bubble (`#input-bar`, absolutely positioned under its button) so it
+    can't push the tab around (as an inline bar its text changed width and wrapped, and
+    the highway jumped). Clicking elsewhere hides it but keeps listening; the button
+    then shows a dot and the note (green on a match, red otherwise), "Listening"
+    between notes, "Rec 0:12" while recording; × in the bubble turns the input off.
+    The note readout and Record button have fixed widths.
+  - Highway tilt: rotateY(12deg) from the left edge, so the far end recedes (-12deg
+    brought it closer and cut the score off); 6deg in a game, to use more width.
+- Highway look (user: "make it look better too"): dark rounded backdrop, each lane
+  tinted in its string's colour and its string drawn through it, bar lines plus
+  fainter beat lines (from bpm), a glowing hit line with a target ring per string
+  (lit for 0.15 s by a hit), shaded gems with a dark edge; in a game "Perfect!"
+  (pluck within 70 ms) or "Good" floats up, a score panel (score, streak, accuracy, a
+  multiplier badge grey/blue/green/gold), a progress bar on top, the countdown in a
+  circle. Full screen in a game (user: "doesn't take up the whole screen"): the
+  player bar hides too, title and Stop share one slim row, the grid row is
+  minmax(0, 1fr) (with plain 1fr the canvas grew past the window), lanes up to 170 px
+  below a 100 px strip for the score.
+- Game, leaving and pausing (the user closed the tab mid-game: the game never ended,
+  the page stayed in game layout and looked frozen): closing the tab, turning the
+  input off or loading another song ends a game quietly (`endGame(false)`, no results).
+  The × is hidden in a game; the button reads Pause; Pause/Space opens a pause menu
+  (`#pause-dlg`: points and position, Resume / Restart / Quit). Resume counts 3-2-1
+  and plays on from the same spot (no seeking); Escape = Resume; Restart starts over;
+  Quit ends with the results. The song's end (its onended resets the position to 0)
+  still ends the game.
+- Timing (user: "wiggle room"): Relaxed (default) / Normal / Tight in the Game section,
+  hit windows early/late/Perfect 0.25/0.3/0.1, 0.15/0.2/0.07, 0.1/0.12/0.05 s
+  (`TIMINGS`, `track-splitter-game-timing`); best scores per song + tab + timing. A
+  player 0.2 s late: Relaxed 7/7, Tight 1/7.
+- Hit animation (user: "when I hit a note, make animation like guitar hero", "and when
+  I hold"): on its own clock (performance.now()), drawn with 'lighter' blending: per
+  hit a radial flash at the target and 18 sparks in the string's colour (+8 gold on a
+  Perfect) fanning upwards and falling a little (`game.bursts` -> `game.sparks`, at
+  most 600); the target ring swells for 160 ms; while a hit long note is held at its
+  pitch (the hold bonus sets `game.sustain[string]`) sparks stream and the target
+  glows and pulses; the multiplier badge pulses when it goes up; every 50 in a row
+  "<n> note streak!" in gold for 1.4 s.
+- Gem size (user: "make all the notes the same size, some are very small"): one size
+  per song and speed (no more narrowing crowded ones): width from the song's quick
+  same-string gaps (10th percentile) x speed, 0.7-1.25 x the gem height; the number
+  sized for two digits.
+- Hand thuds (user: "my hand hits the string and it picks it up as a note"): live
+  detection now needs a clearly pitched reading (YIN dip < 0.1) and 3 readings in a
+  row (~120 ms) to agree (was 2 of 3). Test: 16 damped bass-pitched thuds and noise
+  bursts gave no note; a perfect game run still scored 83/84.
+- Game (user: "a guitar hero style game that keeps score; once you start, you can
+  only stop it, you can't move around"): Start in the Game section (any tab:
+  imported, automatic, mine) opens the bass input if needed, switches to the Highway,
+  jumps to 0:00 and counts 3-2-1, then plays. `gameListen` (from `listen`, every 40
+  ms): plucks = the input jumping up (from below -50 dB, or by 3 dB) or a new pitch
+  (hammer-ons); heard pitches minus the player's shift. `judge`: a note is hit when a
+  pluck is within -0.15/+0.2 s of it and its pitch is heard in that window (+0.15 s
+  for detection delay); dead notes need only the pluck; a pluck serves notes within
+  30 ms of each other (double stops). The pluck rule stops a held note scoring a run
+  of 8ths. 100 x multiplier (x2/x3/x4 from streaks of 10/20/30); +2 x multiplier per
+  40 ms while a hit long note (> 0.4 s) is held at its pitch; a miss ends the streak.
+  Highway in a game: hit gems burst and go, missed ones grey, score / "x4 · streak 54
+  · 100%" top right, the countdown in the middle. Locked: `seekTo` refuses while
+  `game.on`; body.game-on greys out seek and ±10 s and hides the sidebar, subtitle,
+  section switch, input bubble and every tool but Stop, so the highway gets the window
+  (the user couldn't see all of it; its size now stays fixed through a game); the ×
+  (close) is hidden too. Pause/Space
+  or "Stop game" ends it (so does the song's end); results dialog: score, new best or
+  best (per song + tab source, `track-splitter-game-best`), accuracy, notes hit of
+  judged, best streak, "Stopped at m:ss" when not finished; Play again. Simulated
+  Scarlett on Electra: in time 74/74 (100%, 26,498 at 0:46); 3 s off 23/35 (66%:
+  the riff repeats).
 - Crowded notes: each fret number shrinks by its own room to its neighbours (down to
   55%), so fast passages don't overlap while the rest stay full size.
 
@@ -327,6 +409,116 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   the button inside the tab view), an Imported/Automatic switch (per song,
   imported by default), the tab's own tuning (raise ½ step still works if it's half
   step down), and a warning when < 35% of its notes matched (other version/tuning?).
+- Other tunings (user: "can you put an imported tab in a different tuning", "if there's
+  a better way to play in another tuning, do that"): the tuning picker works for
+  imported tabs. The tab's own tuning is shown as written ("(as written)"); another
+  one re-fingers the tab's pitches with the learned fingering (dead notes keep their
+  string; notes below the lowest string are counted). `easiest_tunings()` compares
+  every tuning (notes it can't reach, then 4-string before 5-string, then
+  `tab._difficulty` of its fingering) and marks the easiest "(easiest)" + "easiest to
+  play in …" in the subtitle; the tab's own tuning wins unless another is >= 25%
+  easier (retuning is a bother). Cached in the import (`tuning_report`, per learned
+  style). User's tabs: Cry Baby Cry and Electra drop D (~1/3 easier: the low riff on
+  the dropped D and open A), YOLO and Wow! Wow! Wow! standard. Tuning choices are
+  kept per song and per tab source (`song|imported`), so one tab's doesn't re-finger
+  another's.
+- Dead notes ("x") are left out of imported tabs when shown (user: "remove Xs in
+  tabs"; Amsterdam's .gp had 223 of 868), so they're not in the views or the game;
+  the saved import still has them (`notes[i][4]`).
+
+## My tab: recording your own playing
+
+The user plays along through a Focusrite Scarlett (bass in an instrument input, Inst on,
+Direct Monitor to hear themselves) and gets their own tab, and can hear their playing
+with the band.
+- Page: "Bass input" in the tab view opens `#input-bar` (it replaced a record dialog;
+  the user also wanted to see what's coming through without recording, and to hear
+  themselves): input (an input named Scarlett/Focusrite is picked first; input,
+  channel and monitor choices kept in localStorage), channel (Input 1/2 when stereo),
+  level meter (tooltip: too loud / coming in / nothing), the live note, "Hear myself",
+  Record. Closing the tab view closes the bar.
+  - Opening (user hit "Couldn't open the audio input"): the remembered device id can go
+    stale (browsers re-issue ids after restarts, replugging, cleared site data); then
+    the default input is opened and the Scarlett found by name. Errors are explained
+    per kind (macOS microphone permission, nothing plugged in, input busy, gone) and
+    logged to the console.
+  - Live note: every 40 ms the analyser's last ~85 ms (4096 samples) go through YIN
+    (`pitchOf`, signal averaged down to ~11 kHz, 28-420 Hz, threshold 0.15); a note
+    shows once 2 of the last 3 readings agree. Shown with where it can be fretted (in
+    the shown tuning; standard strings when the song is raised) and against the tab's
+    notes sounding now (+-120 ms, `tabNotesNow`, pitches from each tuning's "open"
+    MIDI notes in /api/tab): "✓ matches the tab" (green), "right note, other octave",
+    or "tab: A7" (red). The Highway draws a ring on the hit line in that note's lane
+    (the tab note's string if it matches), green on a match. Simulated Scarlett
+    (Electra's bass track played along): 59 of 61 readings with a note matched; the 2
+    others were at a note change.
+  - Hear myself: the input to the speakers on a separate AudioContext with latencyHint
+    'interactive' (~16 ms in Chromium here; the player's 'playback' context is ~90 ms).
+    The switch's tooltip gives the delay and points to the interface's Direct Monitor.
+    Volume slider 0 to +24 dB (default +6, kept per computer): the user found it too
+    quiet unless they turned the interface gain up, which they don't want to do.
+  - Quiet input: the meter is in dB (-60 to 0 dBFS; tooltip gives the level) and pitch
+    detection listens from -50 dBFS (YIN doesn't depend on loudness). Simulated input
+    at -34 dB (~-44 dB peaks while playing): 44 of 50 readings found, all matched.
+  - Record: the song jumps back 2 s and plays; the button reads "Stop 0:12". The input
+    runs on the player's own AudioContext; an AudioWorklet (inline, Blob URL) posts
+    each block with its frame number, so every sample has a time on the song's clock.
+    The take ends on Stop, pause, a jump elsewhere, or the song's end; it's sent as a
+    mono float WAV with `song_start` = song position at its first sample minus the
+    output delay and the input's reported latency, and the player's `shift`. The bar
+    stays open afterwards.
+- Server: `POST /api/tab/record` queues a "record" job -> `record_tab()`: transcribe the
+  take as is (tab.NOTES: a clean bass has no leakage, so no learned settings/models),
+  `align_take()` matches its attacks (log spectral flux, z-scored) to the bass track
+  (or the song) within +-0.4 s to fix what the page can't measure; pitches minus
+  `shift`; the take replaces notes in its stretch, so sections can be redone. Saved in
+  `.bass-tab-mine.json` (notes [start, end, pitch], takes with start/end/shift/audio).
+  A quiet take is brought up (99.9th percentile to 0.5, at most x1000) before
+  transcribing: a -52 dB take still gave all 31 tab notes of its stretch
+  and each take's audio in `.my-bass/take-<ms>.flac`. `GET /api/tab?source=mine`
+  fingers it in any tuning (learned fingering) with the automatic tab's lines; a
+  missing source falls back imported -> mine -> auto. `POST /api/tab/mine/remove`
+  trashes both.
+- Drafts (user: "drafts of tabs, then play my bass over an imported tab and add notes
+  to it"): My tab is shown as "Draft". More ▾ → "Start a draft from this tab"
+  (`POST /api/tab/draft` {song, source imported|auto, split}) copies that tab's notes
+  into `.bass-tab-mine.json` as `base` (+ the imported tab's own `lines` and `tuning`,
+  `from`, `from_name`); an existing draft and its takes go to the Trash (asked first).
+  Takes have a `mode` (Bass input bubble: Add notes (default, `track-splitter-
+  record-mode`) / Replace): `apply_take()` "add" keeps what's there and adds notes not
+  already in it (same pitch within 70 ms; removed notes played again come back),
+  "replace" takes over the stretch. `redo_mine` rebuilds from `base` then each take in
+  its mode. Test (simulated Scarlett, Electra): draft 1010 notes, 3 deleted -> 1007,
+  an Add take over that stretch -> 1012 (the 3 back, nothing doubled, 2 extra).
+- Ghost notes (user: recorded tabs are more accurate than automatic ones, but have
+  ghost notes). The user's Cry Baby Cry take vs their imported tab: 289 of 335 notes in
+  the tab; of the 46 others, 20 were same-note restarts with real attacks (stronger
+  than real re-plucks: probably played, or the tab simplifies; not filtered) and most
+  of the rest E1/E3 around a played E2 with no attack: the open low E ringing along
+  and overtones. `tab.drop_ringing_octaves` (in `take_notes`): drop a note an octave or
+  two from one played in the last 0.5 s when the bass gets < 1 dB louder there: 47 ->
+  36 notes not in the tab, 288 -> 287 real. `MINE_RULES` in app.py: when take_notes
+  changes, recorded tabs are redone from their takes' audio on the next open
+  (`redo_mine`, ~1 s; keeps the lining up and the user's removals).
+- Removing notes: in the Mine tab's Lines view a note is clickable (red when
+  selected); "Delete <string><fret> at m:ss" or the Delete/Backspace key removes it,
+  Escape deselects, Undo puts the last one back. `POST /api/tab/mine/note` ({song,
+  start, pitch}; `?restore=true` with end to put back) keeps a `removed` list
+  ([start, pitch], matched within 60 ms) that redone takes respect; a new take over a
+  stretch clears removals there.
+- Playback: the player's 4th mode "My bass" (shown when `song.my_bass`) = without +
+  `/api/audio?part=mine` (`my_bass()`: all takes on the song timeline as one float WAV,
+  later takes win, pitch-moved if recorded at another `shift`; each take scaled to the
+  record's own bass there by `playing_level()` (90th percentile of 50 ms RMS, so rests
+  don't count; 0.1 without a bass track), so a quiet take plays about as loud as the
+  band's bass (-18 vs -15 dB measured); cached in SHIFT_DIR).
+  The player's mode buttons are `#hear-mode` (they used to be any `.segmented`, so the
+  tab view's switches changed the player's mode).
+- Tested with a simulated Scarlett in the browser (Electra's bass-only track as the
+  input; each getUserMedia call needs its own MediaStreamDestination, since cloned
+  tracks of one ended together): 23/23 notes of the imported tab, timing within 23 ms;
+  a stand-in take sent 0.25 s off was realigned to 6 ms. The user tried the real
+  Scarlett and said it seems to work.
 
 ## UI (static/index.html)
 
@@ -364,6 +556,12 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   in the background (log: `~/Library/Logs/Track Splitter.log`) or reopens the page if
   already running. Windows: Desktop `.lnk` running `pythonw.exe app.py` (does not
   reinstall packages; untested on a real desktop).
+- Updates while running: the server is the code it started with, so a page reload
+  doesn't pick up changes to app.py/tab.py/tabimport.py (the user's tuning picker
+  "didn't switch" because the running app predated it). `/api/info` returns
+  `restart_needed` when those files changed since start (`CODE_AT_START`), and the
+  sidebar then shows "The app was updated: click Quit below, then open it again"
+  (checked every 30 s). Page-only changes (index.html) just need a reload.
 - Starting a second copy just opens the browser. Quit in the sidebar stops the server
   (`POST /api/quit`).
 - The static files are mounted last in `app.py`; any new `/api/...` route must be

@@ -410,6 +410,7 @@ def song_info(song_dir):
     added = meta.get("added") or max((v["added"] for v in versions), default=song_dir.stat().st_mtime)
     return {"id": rel(song_dir), "title": song_dir.name, "artist": song_dir.parent.name,
             "added": added, "has_original": original_file(song_dir) is not None,
+            "my_bass": any(t.get("audio") for t in (read_mine(song_dir) or {}).get("takes", [])),
             "versions": versions}
 
 
@@ -663,6 +664,172 @@ def import_tab(song_dir, source, report):
     (song_dir / IMPORT_FILE).write_text(json.dumps(out), encoding="utf-8")
 
 
+# --- My tab (recorded) ---------------------------------------------------------------
+# The user plays along through an audio interface (a Focusrite Scarlett, instrument
+# input): the page records the clean bass and uploads each take with the song time it
+# started at. A clean bass signal has none of the leakage of a separated track, so the
+# take is transcribed as is (tab.NOTES; the learned settings and models are for
+# separated tracks). A take replaces the notes in the stretch it covers, so a section
+# can be redone. Saved as .bass-tab-mine.json: notes [start, end, MIDI pitch], fingered
+# on request in any tuning (learned fingering), with the automatic tab's lines.
+
+MINE_FILE = ".bass-tab-mine.json"
+MY_BASS_DIR = ".my-bass"   # each take's audio (FLAC), for playing your bass with the band
+
+
+def read_mine(song_dir):
+    try:
+        return json.loads((song_dir / MINE_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def align_take(take, song_dir, song_start, search=0.4):
+    """Seconds to add to the take's times so its attacks line up with the song's bass
+    (the bass track, or the whole song), searching +-`search` s around where the page
+    says it started; 0 if nothing lines up clearly. Covers what the page can't measure:
+    the interface's input delay and how late the song reached the player's ears."""
+    track = bass_track(song_dir)
+    ref = decode(track, tab.SAMPLERATE).mean(0) if track else half_rate(decode(original_file(song_dir), SAMPLERATE))
+    a = int(max(0.0, song_start - search - 0.1) * tab.SAMPLERATE)
+    seg = ref[a:a + len(take) + int((2 * search + 0.2) * tab.SAMPLERATE)]
+    (fa, fps), (fb, _) = tab._attack_strength(take), tab._attack_strength(seg)
+    if len(fa) < fps or len(fb) < fps:
+        return 0.0
+    z = lambda f: (np.log1p(f) - np.log1p(f).mean()) / (np.log1p(f).std() + 1e-9)
+    fa, fb = z(fa), z(fb)
+    base = int(round((song_start - a / tab.SAMPLERATE) * fps))   # take frame 0 <-> segment frame `base`
+    lags = range(-int(search * fps), int(search * fps) + 1)
+    score = []
+    for lag in lags:
+        j = base + lag
+        n = min(len(fa), len(fb) - j) if j >= 0 else 0
+        score.append(float(np.dot(fa[:n], fb[j:j + n]) / n) if n > fps else -1.0)
+    score = np.array(score)
+    best = int(np.argmax(score))
+    clear = score[best] > 0.1 and score[best] > np.median(score) + 3 * score.std() / 2
+    return lags[best] / fps if clear else 0.0
+
+
+def playing_level(x, rate):
+    """How loud someone is while playing: the 90th percentile of 50 ms RMS (so rests
+    and pauses don't count)."""
+    hop = rate // 20
+    frames = x[:len(x) // hop * hop].reshape(-1, hop)
+    return float(np.percentile(np.sqrt((frames ** 2).mean(axis=1)), 90)) if len(frames) else 0.0
+
+
+def my_bass(song_dir, shift):
+    """All takes as one float WAV on the song's timeline (a later take wins where takes
+    overlap), pitch-moved to match the player's `shift`; cached until a new take."""
+    mine = read_mine(song_dir) or {}
+    takes = [t for t in mine.get("takes", []) if t.get("audio") and (song_dir / MY_BASS_DIR / t["audio"]).exists()]
+    if not takes:
+        raise HTTPException(404, "No recorded bass for this song.")
+    key = hashlib.sha1(f"{song_dir}|{mine['made']}|{shift}".encode()).hexdigest()
+    dest = SHIFT_DIR / f"{key}-mine.wav"
+    if dest.exists():
+        return dest
+    out = np.zeros(int(max(t["end"] for t in takes) * SAMPLERATE) + SAMPLERATE, np.float32)
+    track = bass_track(song_dir)
+    band_bass = decode(track, SAMPLERATE).mean(0) if track else None
+    for t in takes:
+        src = song_dir / MY_BASS_DIR / t["audio"]
+        move = shift - t.get("shift", 0)          # recorded raised, played back as is (or the other way)
+        x = decode(shifted(src, move) if move else src, SAMPLERATE).mean(0)
+        # As loud as the record's own bass there (the user keeps the interface gain low,
+        # so takes come in quiet), or a sensible level without a bass track.
+        a0, a1 = int(t["start"] * SAMPLERATE), int(t["end"] * SAMPLERATE)
+        target = playing_level(band_bass[max(0, a0):a1], SAMPLERATE) if band_bass is not None else 0.0
+        level = playing_level(x, SAMPLERATE)
+        if level > 1e-6:
+            x = x * float(np.clip((target or 0.1) / level, 0.1, 300))
+        a = int(round(t["start"] * SAMPLERATE))
+        x = x[max(0, -a):][:len(out) - max(a, 0)]
+        out[max(a, 0):max(a, 0) + len(x)] = x
+    SHIFT_DIR.mkdir(parents=True, exist_ok=True)
+    part = dest.with_suffix(".part")
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "f32le", "-ar", str(SAMPLERATE), "-ac", "1", "-i", "-",
+                    "-ac", "2", "-c:a", "pcm_f32le", "-f", "wav", str(part)], input=out.tobytes(), check=True)
+    part.replace(dest)
+    return dest
+
+
+MINE_RULES = 2   # bump when take_notes changes: recorded tabs are redone from their takes' audio
+
+
+def take_notes(take, on_progress=lambda fraction: None):
+    """Notes of a clean take (times from its start)."""
+    loud = float(np.percentile(np.abs(take), 99.9))
+    if loud > 1e-5:   # a quiet take (low interface gain) brought up to a normal level first
+        take = take * min(0.5 / loud, 1000.0)
+    return tab.drop_ringing_octaves(tab.transcribe(take, on_progress), take)
+
+
+def without_removed(notes, removed):
+    """Notes minus those the user removed ([start, pitch]; redone takes may move a note
+    by a few ms, so within 60 ms)."""
+    return [n for n in notes if not any(abs(n[0] - r[0]) < 0.06 and n[2] == r[1] for r in removed)]
+
+
+def apply_take(notes, new, start, end, mode="replace"):
+    """A take's notes into the tab: "replace" takes over the stretch it covers; "add"
+    keeps what's there and adds the notes it played that weren't (same pitch within
+    70 ms), for playing over a draft started from another tab."""
+    if mode == "add":
+        return sorted(notes + [n for n in new if not any(abs(n[0] - o[0]) < 0.07 and n[2] == o[2] for o in notes)])
+    return sorted([n for n in notes if not start <= n[0] < end] + new)
+
+
+def redo_mine(song_dir, mine):
+    """A recorded tab (draft) made again from the tab it started from and its takes'
+    saved audio, in recording order (the lining up is kept), when the way takes become
+    notes has improved."""
+    notes = [list(n) for n in mine.get("base", [])]
+    for t in mine["takes"]:
+        path = song_dir / MY_BASS_DIR / t.get("audio", "")
+        if not t.get("audio") or not path.exists():   # no audio: keep what it gave
+            notes = apply_take(notes, [n for n in mine["notes"] if t["start"] <= n[0] < t["end"]], t["start"], t["end"])
+            continue
+        new = [[round(t["start"] + s, 3), round(t["start"] + e, 3), p - t.get("shift", 0)]
+               for s, e, p, a in take_notes(decode(path, tab.SAMPLERATE).mean(0))]
+        notes = apply_take(notes, new, t["start"], t["end"], t.get("mode", "replace"))
+    mine.update(notes=sorted(without_removed(notes, mine.get("removed", []))), rules=MINE_RULES)
+    (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+    return mine
+
+
+def record_tab(song_dir, take_path, song_start, shift, report, mode="replace"):
+    report(0.0, "Reading your recording")
+    take = decode(take_path, tab.SAMPLERATE).mean(0)
+    data = read_tab(song_dir)
+    if data is None or data.get("notes_rules") != NOTES_RULES:
+        # The lines (bars) come from the automatic tab: make it first.
+        make_tab(song_dir, lambda f=None, step=None: report(None if f is None else 0.5 * f, step))
+    report(0.55, "Writing out your notes")
+    notes = take_notes(take, lambda f: report(0.55 + 0.3 * f))
+    report(0.88, "Lining your take up with the song")
+    start = song_start + align_take(take, song_dir, song_start)
+    # Played on a standard bass with the song raised a half step: the tab is for the song as is.
+    new = [[round(start + s, 3), round(start + e, 3), p - shift] for s, e, p, a in notes]
+    end = start + len(take) / tab.SAMPLERATE
+    # Keep the take's audio too, to play it with the band ("With my bass").
+    made = time.time()
+    audio = f"take-{int(made * 1000)}.flac"
+    (song_dir / MY_BASS_DIR).mkdir(exist_ok=True)
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(take_path), "-ac", "1", "-ar", str(SAMPLERATE),
+                    "-c:a", "flac", str(song_dir / MY_BASS_DIR / audio)], check=True)
+    mine = read_mine(song_dir) or {"notes": [], "takes": []}
+    if mode == "add":   # removed notes played again come back
+        mine["removed"] = [r for r in mine.get("removed", []) if not any(abs(n[0] - r[0]) < 0.06 and n[2] == r[1] for n in new)]
+    else:               # new playing over the whole stretch
+        mine["removed"] = [r for r in mine.get("removed", []) if not start <= r[0] < end]
+    mine.update(made=made, notes=apply_take(mine["notes"], new, start, end, mode), rules=MINE_RULES,
+                takes=mine["takes"] + [{"start": round(start, 3), "end": round(end, 3), "shifted_by": round(start - song_start, 3),
+                                        "notes": len(new), "made": made, "audio": audio, "shift": shift, "mode": mode}])
+    (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+
+
 # --- Learning from imported tabs ---------------------------------------------------
 # Every imported tab is a right answer for its song: which notes are played (tuning the
 # note detection, tab.learn_notes) and where (the fingering costs, tab.learn_style).
@@ -811,6 +978,13 @@ def worker():
                     make_tab(song_dir, report)
                     job["done"].append(rel(song_dir))
                     continue
+                if settings.get("kind") == "record":
+                    try:
+                        record_tab(song_dir, item["path"], item["song_start"], item["shift"], report, item.get("mode", "replace"))
+                    finally:
+                        item["path"].unlink(missing_ok=True)
+                    job["done"].append(rel(song_dir))
+                    continue
                 if settings.get("kind") == "import":
                     import_tab(song_dir, item["path"], report)
                     job["done"].append(rel(song_dir))
@@ -855,10 +1029,17 @@ def worker():
 api = FastAPI(title="Track Splitter")
 
 
+# The app's own code as it was when it started: when an update changes it, the running
+# app is still the old code (a page reload isn't enough), and the page says to restart.
+CODE_FILES = [Path(__file__).resolve().parent / f for f in ("app.py", "tab.py", "tabimport.py")]
+CODE_AT_START = {f: f.stat().st_mtime for f in CODE_FILES if f.exists()}
+
+
 @api.get("/api/info")
 def info():
+    updated = any(f.exists() and f.stat().st_mtime > m for f, m in CODE_AT_START.items())
     return {"device": DEVICE_NAME, "library": str(OUTPUT_DIR), "instruments": INSTRUMENTS,
-            "unknown_artist": UNKNOWN_ARTIST}
+            "unknown_artist": UNKNOWN_ARTIST, "restart_needed": updated}
 
 
 @api.get("/api/library")
@@ -894,6 +1075,8 @@ def audio(version: str, part: str, shift: int = 0):
     path = library_path(version, 3)
     if not -2 <= shift <= 2:
         raise HTTPException(400, "The pitch can be moved by up to 2 semitones.")
+    if part == "mine":   # the user's recorded takes ("With my bass")
+        return FileResponse(my_bass(path.parent, shift), media_type="audio/wav")
     if part == "original":
         # The song's own original, for the player's Original mode, decoded exactly as
         # separation does (44.1 kHz) so it lines up with the versions. Float WAV keeps
@@ -1137,23 +1320,87 @@ def read_import(song_dir):
         return None
 
 
+def easiest_tunings(song_dir, imported, opens):
+    """For an imported tab: per tuning, how many notes it can't reach and how hard the
+    fingering is (tab._difficulty: hand shifts, quick jumps, string skips), with the
+    easiest one; saved in the import, recomputed when the learned fingering changes."""
+    learned, style_id = learned_style()
+    saved = imported.get("tuning_report")
+    if saved and saved.get("style") == style_id and saved.get("rules") == 2:
+        return saved
+    played = [n for n in imported["notes"] if not n[4]]
+    notes = [(n[0], n[1], opens[n[2]] + n[3], 1.0) for n in played]
+    report = {"style": style_id, "rules": 2, "tunings": {}}
+    for key in tab.TUNINGS:
+        fingered = tab.fingering(notes, key, learned)
+        report["tunings"][key] = {"dropped": len(notes) - len(fingered),
+                                  "difficulty": round(tab._difficulty([notes[i][0] for i, _, _ in fingered],
+                                                                       [(s, f) for _, s, f in fingered]), 3)}
+    # Easiest: every note reachable first, then a 4-string tuning, then the easiest
+    # fingering; retuning is a bother, so the tab's own tuning wins unless another is at
+    # least 25% easier (Cry Baby Cry, Electra: drop D ~1/3 easier; YOLO's half step
+    # down only ~1/5, so it stays standard).
+    written = imported["tuning"]
+    # A 5-string only when the tab is written for one or nothing else reaches every note.
+    def cost(key):
+        r = report["tunings"][key]
+        return (r["dropped"], key == "five-string" and written != "five-string", r["difficulty"] * (0.75 if key == written else 1.0))
+    report["easiest"] = min(report["tunings"], key=cost)
+    imported["tuning_report"] = report
+    (song_dir / IMPORT_FILE).write_text(json.dumps(imported), encoding="utf-8")
+    return report
+
+
 @api.get("/api/tab")
 def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = None, source: str = "auto"):
     """A song's bass tab: the automatic one in a tuning (default: the suggested one), with
     repeated notes split on the beat or as heard; or the imported one (source=imported);
-    or, without a tab, what's possible. split: None = as learned from imported tabs."""
+    or the one recorded from the user's playing (source=mine); or, without a tab, what's
+    possible. split: None = as learned from imported tabs. A source the song doesn't
+    have falls back to the imported tab, then the recorded one, then the automatic one."""
     song_dir = library_path(song, 2)
-    imported = read_import(song_dir)
-    about = {"has_import": imported is not None, "import_name": imported and imported["name"],
+    imported, mine = read_import(song_dir), read_mine(song_dir)
+    if mine and mine.get("rules") != MINE_RULES:   # made before takes became notes better: redo (a few s)
+        mine = redo_mine(song_dir, mine)
+    has_mine = bool(mine and mine["notes"])
+    about = {"has_import": imported is not None, "import_name": imported and imported["name"], "has_mine": has_mine,
              "can_make": bool(original_file(song_dir) or bass_track(song_dir))}
+    if source == "imported" and not imported and has_mine:
+        source = "mine"
+    if source == "mine" and not has_mine:
+        source = "imported"
+    # "open": each string's MIDI note, so the page can place what the user plays live.
+    tunings = [{"key": k, "label": label, "strings": names, "open": opens} for k, (label, opens, names) in tab.TUNINGS.items()]
+    auto = read_tab(song_dir)
+    if source == "mine" and auto:   # lines (bars): the draft's own (from an imported tab) or the automatic tab's
+        tuning = tuning if tuning in tab.TUNINGS else (mine.get("tuning") or auto["suggested"])
+        notes = [(s, e, p, 1.0) for s, e, p in mine["notes"]]
+        fingered = tab.fingering(notes, tuning, learned_style()[0])
+        return {**about, "exists": True, "source": "mine", "tuning": tuning, "suggested": auto["suggested"],
+                "bpm": auto.get("bpm"), "split": False, "maybe_half_down": auto.get("maybe_half_down", False),
+                "lines": mine.get("lines") or auto["lines"], "dropped": len(notes) - len(fingered), "takes": len(mine["takes"]),
+                "draft_from": mine.get("from"), "draft_from_name": mine.get("from_name"),
+                "tunings": tunings, "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in fingered]}
     if source == "imported" and imported:
-        tunings = [{"key": k, "label": label, "strings": names} for k, (label, _, names) in tab.TUNINGS.items()]
-        if imported["tuning"] == "custom":
-            tunings.append({"key": "custom", "label": imported["label"], "strings": imported["strings"]})
-        return {**about, "exists": True, "source": "imported", "tuning": imported["tuning"], "suggested": imported["tuning"],
+        written = imported["tuning"]
+        if written == "custom":
+            tunings.append({"key": "custom", "label": imported["label"], "strings": imported["strings"], "open": imported.get("open")})
+        opens = imported.get("open") or (tab.TUNINGS[written][1] if written in tab.TUNINGS else None)
+        report = easiest_tunings(song_dir, imported, opens) if opens else None
+        base = {**about, "exists": True, "source": "imported", "suggested": written, "written": written,
+                "easiest": report and report["easiest"], "tuning_report": report and report["tunings"],
                 "bpm": imported.get("bpm"), "split": False, "maybe_half_down": False, "lines": imported["lines"],
-                "dropped": 0, "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings,
-                "notes": [[n[0], n[1], n[2], "x" if n[4] else n[3]] for n in imported["notes"]]}
+                "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings}
+        # Dead (muted) notes, written "x", are left out: the user asked for no x's.
+        played = [n for n in imported["notes"] if not n[4]]
+        if tuning in (None, written) or tuning not in tab.TUNINGS or not opens:
+            return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3]] for n in played]}
+        # In another tuning: the tab's pitches fingered again (learned fingering), the
+        # way the automatic and recorded tabs are.
+        notes = [(n[0], n[1], opens[n[2]] + n[3], 1.0) for n in played]
+        fingered = tab.fingering(notes, tuning, learned_style()[0])
+        return {**base, "tuning": tuning, "dropped": len(notes) - len(fingered),
+                "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in fingered]}
     data = read_tab(song_dir)
     if data is None or data.get("notes_rules") != NOTES_RULES:   # none yet, or made the old way
         return {**about, "exists": False, "outdated": data is not None}
@@ -1189,7 +1436,7 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
             "relearned": relearned, "learning": learning["running"], "tuning": tuning, "suggested": data["suggested"], "bpm": data["bpm"],
             "split": split, "maybe_half_down": data.get("maybe_half_down", False),
             "lines": data["lines"], "dropped": len(notes) - len(data["fingering"][key]),
-            "tunings": [{"key": k, "label": label, "strings": names} for k, (label, _, names) in tab.TUNINGS.items()],
+            "tunings": tunings,
             "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in data["fingering"][key]]}
 
 
@@ -1242,6 +1489,98 @@ def learning_status():
             "last": {"made": saved["made"], "tabs": len(saved.get("sources", {})),
                      "notes": summary(saved.get("note_models") if note_models() else saved.get("notes")),
                      "fingering": summary(saved.get("fingering"))} if saved else None}
+
+
+@api.post("/api/tab/record")
+async def start_record(song: str = Form(...), song_start: float = Form(...), shift: int = Form(0),
+                       mode: str = Form("replace"), file: UploadFile = File(...)):
+    """A take recorded along with the song (WAV): queue turning it into My tab."""
+    song_dir = library_path(song, 2)
+    if not song_dir.is_dir():
+        raise HTTPException(404, "That song doesn't exist.")
+    if not (original_file(song_dir) or bass_track(song_dir)):
+        raise HTTPException(400, "This song has no saved original or bass track to line your playing up with.")
+    STAGE_DIR.mkdir(parents=True, exist_ok=True)
+    path = STAGE_DIR / f"{uuid.uuid4().hex}-take.wav"
+    path.write_bytes(await file.read())
+    job_id = uuid.uuid4().hex
+    jobs[job_id] = {"status": "queued", "total": 1, "index": 0, "song": song_dir.name,
+                    "fraction": 0.0, "done": [], "failed": [], "finished": []}
+    job_queue.put((job_id, {"kind": "record", "items": [{"song_dir": song_dir, "title": song_dir.name, "path": path,
+                                                         "song_start": max(0.0, song_start), "shift": shift,
+                                                         "mode": "add" if mode == "add" else "replace"}]}))
+    return {"job": job_id}
+
+
+class MineEdit(BaseModel):
+    song: str
+    start: float
+    pitch: int
+    end: Optional[float] = None   # given when putting a removed note back (undo)
+
+
+@api.post("/api/tab/mine/note")
+def edit_mine(req: MineEdit, restore: bool = False):
+    """Remove a note from the user's recorded tab (a ghost note), or put it back."""
+    song_dir = library_path(req.song, 2)
+    mine = read_mine(song_dir)
+    if not mine:
+        raise HTTPException(404, "This song has no recorded tab.")
+    removed = [r for r in mine.get("removed", []) if not (abs(r[0] - req.start) < 0.06 and r[1] == req.pitch)]
+    if restore:
+        mine["notes"] = sorted(mine["notes"] + [[req.start, req.end if req.end is not None else req.start + 0.2, req.pitch]])
+    else:
+        removed.append([req.start, req.pitch])
+        mine["notes"] = without_removed(mine["notes"], [[req.start, req.pitch]])
+    mine["removed"] = removed
+    (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+    return {"ok": True}
+
+
+class DraftRequest(BaseModel):
+    song: str
+    source: str            # "imported" or "auto": the tab to start from
+    split: bool = False    # the automatic tab with repeated notes split
+
+
+@api.post("/api/tab/draft")
+def start_draft(req: DraftRequest):
+    """Start the user's draft (My tab) from the imported or automatic tab: its notes,
+    and the imported tab's own bars and tuning. A draft already there goes to the
+    Trash with its takes."""
+    song_dir = library_path(req.song, 2)
+    draft = {"takes": [], "made": time.time(), "rules": MINE_RULES, "from": req.source}
+    if req.source == "imported":
+        imported = read_import(song_dir)
+        if not imported:
+            raise HTTPException(404, "This song has no imported tab.")
+        opens = imported.get("open") or tab.TUNINGS.get(imported["tuning"], (None, None))[1]
+        if not opens:
+            raise HTTPException(400, "Couldn't read that tab's tuning.")
+        draft.update(base=[[n[0], n[1], opens[n[2]] + n[3]] for n in imported["notes"] if not n[4]],
+                     lines=imported["lines"], tuning=imported["tuning"] if imported["tuning"] in tab.TUNINGS else None,
+                     from_name=imported["name"])
+    else:
+        auto = read_tab(song_dir)
+        if not auto:
+            raise HTTPException(404, "This song has no automatic tab yet.")
+        draft.update(base=[[n[0], n[1], n[2]] for n in auto["notes_split" if req.split else "notes"]])
+    draft["notes"] = sorted(draft["base"])
+    for f in (song_dir / MINE_FILE, song_dir / MY_BASS_DIR):
+        if f.exists():
+            send2trash(str(f))
+    (song_dir / MINE_FILE).write_text(json.dumps(draft), encoding="utf-8")
+    return {"ok": True, "notes": len(draft["notes"])}
+
+
+@api.post("/api/tab/mine/remove")
+def remove_mine(req: IdRequest):
+    """Move a song's recorded tab and its takes' audio to the Trash."""
+    song_dir = library_path(req.id, 2)
+    for f in (song_dir / MINE_FILE, song_dir / MY_BASS_DIR):
+        if f.exists():
+            send2trash(str(f))
+    return {"ok": True}
 
 
 @api.post("/api/tab/import/remove")

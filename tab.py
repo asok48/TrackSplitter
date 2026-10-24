@@ -1039,3 +1039,20 @@ def model_counts(truth, notes):
             used[k[0]] = True
             hit += 1
     return hit, len(notes), len(tt)
+
+
+def drop_ringing_octaves(notes, audio, window=0.5, attack=1.0):
+    """For a clean recording of the user's own playing (My tab): drop notes an octave
+    or two from a note played just before that have no attack of their own (the bass
+    gets no louder there): an open string ringing along, like the low E sounding when E
+    is played at the 7th fret, or an overtone. In the user's Cry Baby Cry take these
+    were most of the stray notes (E1/E3 around a played E2): 10 of its 46 notes not in
+    the tab went, 2 real ones with them. A no-attack rule without the octave condition
+    cost far more real notes (26 for 11)."""
+    keep = []
+    for k, (s, e, p, a) in enumerate(notes):
+        ringing = any(abs(p - q[2]) in (12, 24) and q[0] < s and s - q[0] < window and q[1] > s - 0.15
+                      for q in notes[max(0, k - 6):k])
+        if not (ringing and _low_bump(audio, s) < attack):
+            keep.append((s, e, p, a))
+    return keep
