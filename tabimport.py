@@ -423,10 +423,22 @@ def _hits(times, pitches, heard_t, heard_p, tol=0.05):
     return score
 
 
+def _sounding(times, pitches, heard_t, heard_e, heard_p):
+    """How many tab notes fall inside a heard note of the same pitch class (heard sorted by start)."""
+    k = np.searchsorted(heard_t, np.asarray(times) + 0.05, side="right")
+    count = 0
+    for t, p, j in zip(times, pitches, k):
+        for m in range(max(0, j - 8), j):
+            if heard_t[m] - 0.05 <= t <= heard_e[m] and (heard_p[m] - p) % 12 == 0:
+                count += 1
+                break
+    return count
+
+
 def _sync_timed(tab_t, tab_p, bar_starts, bar_of, heard):
-    """Tab with rhythm: one overall start + tempo ratio (searched), then a small
-    correction per bar (+-0.4 s, from the notes of nearby bars, median-smoothed), so
-    tempo drift is followed but a single odd bar can't drag the rest."""
+    """Tab with rhythm: one overall start + tempo ratio (searched), then a correction
+    per bar along one smooth path (up to +-2.5 s), so tempo drift is followed but a
+    single odd bar can't drag the rest."""
     heard_t = np.array([h[0] for h in heard])
     heard_p = np.array([h[2] for h in heard])
     tab_t, tab_p = np.asarray(tab_t), np.asarray(tab_p)
@@ -444,23 +456,37 @@ def _sync_timed(tab_t, tab_p, bar_starts, bar_of, heard):
         if score > best[0]:
             best = (score, scale, offset)
     _, scale, offset = best
-    # Per bar: best small shift for the notes in this bar and its neighbours.
+    # Per bar: a shift from that overall fit, chosen as one smooth path through the song
+    # (Viterbi): each bar scores how well its notes and its neighbours' land on heard
+    # notes (starts, plus being inside a heard note of that pitch: separated bass often
+    # comes out as long merged notes), and the shift may change only gradually from bar to
+    # bar. Up to +-2.5 s: on Save Yourself, I'll Hold Them Back the recording drifted
+    # 1.3-1.7 s from the tab over the first two minutes, and the old per-bar correction
+    # (+-0.4 s, median-smoothed) left the tab that far early there.
+    heard_e = np.array([h[1] for h in heard])
     n_bars = len(bar_starts)
-    shifts = np.zeros(n_bars)
+    cands = np.arange(-2.5, 2.5001, 0.05)
+    score = np.zeros((n_bars, len(cands)))
     for b in range(n_bars):
-        near = (bar_of >= b - 2) & (bar_of <= b + 2)
-        if near.sum() < 3:
-            shifts[b] = np.nan
+        near = (bar_of >= b - 1) & (bar_of <= b + 1)
+        if not near.any():
             continue
-        cands = np.arange(-0.4, 0.4001, 0.01)
-        scores = [_hits(tab_t[near] * scale + offset + d, tab_p[near], heard_t, heard_p) for d in cands]
-        top = max(scores)
-        shifts[b] = cands[int(np.argmax(scores))] if top > 0 else np.nan
-    # Fill bars with no evidence from their neighbours, then smooth.
-    idx = np.arange(n_bars)
-    ok = ~np.isnan(shifts)
-    shifts = np.interp(idx, idx[ok], shifts[ok]) if ok.any() else np.zeros(n_bars)
-    smooth = np.array([np.median(shifts[max(0, b - 2):b + 3]) for b in range(n_bars)])
+        for c, d in enumerate(cands):
+            t = tab_t[near] * scale + offset + d
+            score[b, c] = _hits(t, tab_p[near], heard_t, heard_p) + 0.5 * _sounding(t, tab_p[near], heard_t, heard_e, heard_p)
+    move = 12 * np.abs(cands[:, None] - cands[None, :])   # [to, from]: 0.6 (notes) per 50 ms of change
+    prior = 0.4 * np.abs(cands)                            # and a little for being far from the overall fit
+    best_so_far = score[0] - prior
+    back = np.zeros((n_bars, len(cands)), dtype=int)
+    for b in range(1, n_bars):
+        total = best_so_far[None, :] - move
+        back[b] = np.argmax(total, axis=1)
+        best_so_far = total[np.arange(len(cands)), back[b]] + score[b] - prior
+    path = np.zeros(n_bars, dtype=int)
+    path[-1] = int(np.argmax(best_so_far))
+    for b in range(n_bars - 1, 0, -1):
+        path[b - 1] = back[b][path[b]]
+    smooth = cands[path]
     bar_audio = np.asarray(bar_starts) * scale + offset + smooth
     bar_audio = np.maximum.accumulate(bar_audio)   # never runs backwards
     return bar_audio, best[0] / max(1, len(tab_t)), scale
@@ -615,6 +641,9 @@ def _sync_text(track, notes, playable, tab_p, heard, beat):
             "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2)}
 
 
+NUDGE_MAX, NUDGE_SHARE = 0.1, 0.35   # how far a heard note may move a written one (see _place_in_bars)
+
+
 def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends_t, audio_len, keep_lengths):
     """Each bar's notes on the recording: matched in order to the heard notes in that bar
     (guided by where the tab puts them), unmatched ones placed by the tab's own timing
@@ -640,11 +669,23 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
         where = (lambda i: notes[ks[i]][0]) if keep_lengths else (lambda i: i + 1)
         anchor_x = [bar_starts_t[b] if keep_lengths else 0]
         anchor_t = [a0]
-        for i, j in zip(play, match):
-            if j >= 0:
-                anchor_x.append(where(i))
-                anchor_t.append(inside[j][0])
-                matched += 1
+        for n_i, (i, j) in enumerate(zip(play, match)):
+            if j < 0:
+                continue
+            matched += 1                                  # heard (the match quality counts it either way)
+            if keep_lengths:
+                # The tab's rhythm is exact; a heard note may only nudge a note (60 ms, or a
+                # quarter of the gap to its neighbours). Further off it's more likely a
+                # wrong match (leakage in the bass track), which squeezed notes together:
+                # on Save Yourself, I'll Hold Them Back 15% of gaps came out < 0.6x as
+                # long as written, and the tab looked like it sped up and stalled.
+                near = [abs(expected[i] - expected[play[m]]) for m in (n_i - 1, n_i + 1) if 0 <= m < len(play) and play[m] != i]
+                near = [g for g in near if g > 0.02]
+                tol = min([NUDGE_MAX] + [NUDGE_SHARE * g for g in near])
+                if abs(inside[j][0] - expected[i]) > tol:
+                    continue
+            anchor_x.append(where(i))
+            anchor_t.append(inside[j][0])
         anchor_x.append(bar_ends_t[b] if keep_lengths else len(ks) + 1)
         anchor_t.append(a1)
         order = np.argsort(anchor_x, kind="stable")

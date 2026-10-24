@@ -9,6 +9,7 @@ This file is the engine plus a small local web server; the page itself is
 static/index.html.
 """
 
+import bisect
 import hashlib
 import json
 import os
@@ -629,6 +630,11 @@ def make_tab(song_dir, report):
 # (imported-tab.<ext>) and the synced result (.bass-tab-imported.json).
 
 IMPORT_FILE = ".bass-tab-imported.json"
+# Bump when syncing changes; older imports are synced again from their file on open.
+# 2: bars follow tempo drift up to +-2.5 s on one smooth path, and heard notes only nudge
+#    written ones (Save Yourself, I'll Hold Them Back was 1.3-1.7 s early for two minutes
+#    and 15% of its notes were squeezed together).
+IMPORT_RULES = 2
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 
 
@@ -660,7 +666,8 @@ def import_tab(song_dir, source, report):
     out = {"name": "Pasted tab" if source.name == "imported-tab.txt" else source.name.replace("imported-tab - ", ""),
            "track": track.name, "made": time.time(), "quality": synced["quality"], "tuning": key or "custom",
            "label": tab.TUNINGS[key][0] if key else "Tab's tuning (" + " ".join(names) + ")",
-           "strings": names, "open": track.strings, "notes": synced["notes"], "lines": lines, "bpm": data.get("bpm")}
+           "strings": names, "open": track.strings, "notes": synced["notes"], "lines": lines, "bpm": data.get("bpm"),
+           "rules": IMPORT_RULES}
     (song_dir / IMPORT_FILE).write_text(json.dumps(out), encoding="utf-8")
 
 
@@ -755,7 +762,7 @@ def my_bass(song_dir, shift):
     return dest
 
 
-MINE_RULES = 2   # bump when take_notes changes: recorded tabs are redone from their takes' audio
+MINE_RULES = 3   # bump when take_notes or apply_take changes: recorded tabs are redone from their takes' audio
 
 
 def take_notes(take, on_progress=lambda fraction: None):
@@ -772,13 +779,43 @@ def without_removed(notes, removed):
     return [n for n in notes if not any(abs(n[0] - r[0]) < 0.06 and n[2] == r[1] for r in removed)]
 
 
-def apply_take(notes, new, start, end, mode="replace"):
+def apply_take(notes, new, start, end, mode="replace", bars=None):
     """A take's notes into the tab: "replace" takes over the stretch it covers; "add"
-    keeps what's there and adds the notes it played that weren't (same pitch within
-    70 ms), for playing over a draft started from another tab."""
+    keeps what's there and fills only the gaps: a note played within 0.25 s of one the
+    draft already has (any pitch) is left out, and added notes snap to the 16th-note grid
+    of their bar (within 60 ms) when the draft has bars. It used to add every note not
+    within 70 ms of a same-pitch one; a take a little off the tab's timing then put
+    notes between the tab's (Amsterdam: 61 -> 103 notes in 18 s), which the user saw as
+    the tab speeding up: "keep the same speed and structure"."""
     if mode == "add":
-        return sorted(notes + [n for n in new if not any(abs(n[0] - o[0]) < 0.07 and n[2] == o[2] for o in notes)])
+        have = sorted(o[0] for o in notes)
+        bars = sorted(bars or [])
+
+        def near(t):
+            k = bisect.bisect_left(have, t)
+            return any(abs(have[m] - t) < 0.25 for m in (k - 1, k) if 0 <= m < len(have))
+
+        def snap(t):
+            k = bisect.bisect_right(bars, t) - 1
+            if k < 0 or k + 1 >= len(bars):
+                return t
+            step = (bars[k + 1] - bars[k]) / 16
+            grid = bars[k] + round((t - bars[k]) / step) * step
+            return grid if abs(grid - t) <= 0.06 else t
+
+        added = []
+        for n in new:
+            if near(n[0]):
+                continue
+            t = round(snap(n[0]), 3)
+            added.append([t, round(n[1] + t - n[0], 3), n[2]])
+        return sorted(notes + added)
     return sorted([n for n in notes if not start <= n[0] < end] + new)
+
+
+def bar_starts(mine):
+    """A draft's bar times (from the tab it started from), for snapping added notes."""
+    return sorted({t for a, b, inner in mine.get("lines") or [] for t in (a, b, *inner)})
 
 
 def redo_mine(song_dir, mine):
@@ -793,7 +830,7 @@ def redo_mine(song_dir, mine):
             continue
         new = [[round(t["start"] + s, 3), round(t["start"] + e, 3), p - t.get("shift", 0)]
                for s, e, p, a in take_notes(decode(path, tab.SAMPLERATE).mean(0))]
-        notes = apply_take(notes, new, t["start"], t["end"], t.get("mode", "replace"))
+        notes = apply_take(notes, new, t["start"], t["end"], t.get("mode", "replace"), bar_starts(mine))
     mine.update(notes=sorted(without_removed(notes, mine.get("removed", []))), rules=MINE_RULES)
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
     return mine
@@ -824,7 +861,7 @@ def record_tab(song_dir, take_path, song_start, shift, report, mode="replace"):
         mine["removed"] = [r for r in mine.get("removed", []) if not any(abs(n[0] - r[0]) < 0.06 and n[2] == r[1] for n in new)]
     else:               # new playing over the whole stretch
         mine["removed"] = [r for r in mine.get("removed", []) if not start <= r[0] < end]
-    mine.update(made=made, notes=apply_take(mine["notes"], new, start, end, mode), rules=MINE_RULES,
+    mine.update(made=made, notes=apply_take(mine["notes"], new, start, end, mode, bar_starts(mine)), rules=MINE_RULES,
                 takes=mine["takes"] + [{"start": round(start, 3), "end": round(end, 3), "shifted_by": round(start - song_start, 3),
                                         "notes": len(new), "made": made, "audio": audio, "shift": shift, "mode": mode}])
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
@@ -1320,6 +1357,21 @@ def read_import(song_dir):
         return None
 
 
+def resync_import(song_dir, imported):
+    """An import made with older sync rules, synced again from its saved file (~1 s), when
+    the automatic tab it lines up with is current (making that would take minutes)."""
+    source = next((f for f in song_dir.glob("imported-tab*") if f.suffix.lower() in TAB_EXTENSIONS), None)
+    auto = read_tab(song_dir)
+    if not source or not auto or auto.get("notes_rules") != NOTES_RULES:
+        return imported
+    try:
+        import_tab(song_dir, source, lambda fraction=None, step=None: None)
+    except Exception as err:   # keep the old one rather than fail the page
+        print(f"Couldn't sync {source.name} again: {err}")
+        return imported
+    return read_import(song_dir) or imported
+
+
 def easiest_tunings(song_dir, imported, opens):
     """For an imported tab: per tuning, how many notes it can't reach and how hard the
     fingering is (tab._difficulty: hand shifts, quick jumps, string skips), with the
@@ -1360,6 +1412,8 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
     have falls back to the imported tab, then the recorded one, then the automatic one."""
     song_dir = library_path(song, 2)
     imported, mine = read_import(song_dir), read_mine(song_dir)
+    if imported and imported.get("rules") != IMPORT_RULES:
+        imported = resync_import(song_dir, imported)
     if mine and mine.get("rules") != MINE_RULES:   # made before takes became notes better: redo (a few s)
         mine = redo_mine(song_dir, mine)
     has_mine = bool(mine and mine["notes"])

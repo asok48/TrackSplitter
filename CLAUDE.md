@@ -9,6 +9,27 @@ user's own computer; no audio leaves the machine.
 Primary user runs it on a MacBook Pro (M4); it was developed and tested on Windows
 (CPU only). It has also been run successfully on a second, fresh Mac from git.
 
+## Working on this project
+
+The user plays bass (a Focusrite Scarlett interface on the Mac) and uses the app to
+practise; requests come from playing with it, so features are judged by how they feel
+in use. Ground rules agreed so far (kept here so every computer's session has them):
+- Don't commit or push unless the user asks; they often commit themselves.
+- yt-dlp stays standard: no browser cookies or ways around YouTube's "confirm you're not
+  a bot" check (considered and declined); explain the error or suggest uploading the
+  file. Certificate checking stays on (truststore only).
+- Never fetch tabs from Songsterr / Ultimate Guitar (their terms forbid it) or wire in
+  third-party downloaders for them; the user brings the file or text.
+- Deletes go to the Trash (send2trash), never permanently.
+- Test on a copy of the library (a spare port and `OUTPUT_DIR` pointed at a scratch
+  copy), never the user's real `~/Music/Track Splitter`; reading it for analysis is fine.
+- After every change, load the page and check for errors and that the main screens
+  (song list, player bar, tab view, game) still appear: a stray closing tag once pushed
+  the player bar off screen, and removing the Guitar Hero look took the 3D/Flat
+  setting's code with it.
+- Mac-only paths (app shortcut, MPS fallback, certificate fix) were written on Windows;
+  say when something is untested on a Mac.
+
 ## Files
 
 - `app.py`: everything server-side: the separation engine, the library on disk, the
@@ -263,7 +284,12 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   dimmed, current large with playhead and the sounding note highlighted, next two
   below; slides up on each new line; click a line to seek; tuning picker (choice kept
   per song in localStorage); lines shrink to fit (5 strings, small windows). The
-  playhead subtracts the audio output delay (`ctx.outputLatency + baseLatency`, ~87 ms
+  playhead follows `audioNow()`, the audio clock smoothed between its updates (with the
+  'playback' latency setting `ctx.currentTime` moves in ~23 ms steps; at 120 Hz the
+  Highway and game scrolled in jumps, user: "a little choppier"): carried on by
+  performance.now(), eased a tenth of the way toward each update, never backwards
+  (jumps when > 0.1 s off). Playhead test: still in ~2 of 3 frames before, every frame
+  moving after, steps within ~15% of each other. It also subtracts the audio output delay (`ctx.outputLatency + baseLatency`, ~87 ms
   on this Mac, more on Bluetooth) so it follows what you hear; it ran ahead before.
   Note times themselves were within ~16 ms of the bass attacks (American Idiot).
 - Raise ½ step (user plays a standard-tuned bass): with the tab in "Half step down",
@@ -295,7 +321,8 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   so narrow windows show less time. Clicking the highway plays/pauses.
   User: "sort of hard to read" (too fast, too small): lanes now fill the height (up to
   120 px), gems up to 52 px with numbers ~0.62 of that, string names 13-22 px; a
-  Slow-Fast slider (0.4-1.6 x 3 s ahead, 120-420 px/s; `track-splitter-highway-speed`)
+  Slow-Fast slider (0.25-1.6 x 3 s ahead, 120-420 px/s, nothing overrides it since the
+  repeat ticks (see Game looks); `track-splitter-highway-speed`)
   replaced the speed-from-the-quickest-notes rule above. (Crowded gems used to get
   narrower; now every gem in a song is one size, see "Gem size".)
 - Header (user: "really crowded", "put the game in a different section", "make the input
@@ -365,40 +392,93 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   up.
 - Game looks and HUD (user: "hard to see what's coming up", "like Rock Band"; a
   vertical Rock Band track was tried and dropped: "vertical is too confusing, keep it
-  horizontal"; then "you can have Rock Band or Guitar Hero style"): `gameLook`
-  (`track-splitter-game-look`, default rockband), chosen in Game settings.
-  - Both: sideways perspective with far notes at ~half size (dd = Z), speed floor so
-    two notes on a string never touch at the strike line (gemMin 40 px + 12, from the
-    2nd-percentile same-string gap; `minLaneGap`), one gem size per song.
+  horizontal"). A Guitar Hero look (GH3-style LCD panel, ROCK meter, round gems,
+  flames) was added and later removed (user: "get rid of the guitar hero view, it sort
+  of sucks compared to Rock Band"); Rock Band is the only look.
+  - Both: sideways perspective with far notes at ~half size (dd = Z), one gem size per
+    song and speed. Speed is the slider alone (Note speed 0.25-1.6; 2.6 s ahead /
+    speed). There used to be a floor so two notes on a string never touched
+    (`minLaneGap`), which on busy songs overrode the slider (Wow! Wow! Wow! ~520 px/s in
+    the Tab Highway against Slow's ~150; user: "still too hard to read the highway",
+    "too fast, even on slow"). Now gems narrow to fit two digits (0.7x their height) and
+    a quick repeat of the same fret on a string, closer than a gem, is drawn as a slim
+    tick without a number, so a run of 16ths reads "7 ||| 5 ||| 3" instead of a pile of
+    overlapping numbers (both views). Whether a note is a tick is decided once, from
+    its spacing at the strike line, not per frame: judged at each depth (and dropped
+    once the note before was hit) notes turned from tick to gem on the way, and the
+    user saw them "pop in and out". Far notes fade in over the last 15% of the board.
+  - Board (Game settings: 3D / Flat, `track-splitter-game-board`; user: "more legible
+    from a not perspective"): Flat has no depth (every note the same size, straight
+    lanes) and half the seconds ahead, so notes cross the strike line at the 3D board's
+    speed.
   - Rock Band (from the user's screenshot): rounded fret buttons; slab gems (lit top,
     darker front edge, gloss, white number); top right a black score box with a white
     border and spaced digits, five star medallions under it (silver when earned, gold
-    at five, the next one's ring filling: `starsFor`, score vs 100 a note at 0.25, 0.5,
-    1, 1.6, 2.4); the multiplier badge (blue ring, "4x") at the base of the strike line
+    at five, the next one's ring filling: `starsFor`, score vs a perfect run of the whole
+    song (`perfectScore`: every note, x4 from the 30th) at 12/25/45/65/85%; it was vs
+    100 a note at 0.25-2.4x, and the user "got gold star way too fast, like halfway
+    through"); the multiplier badge (blue ring, "4x") at the base of the strike line
     with a yellow bar up the line toward the next level.
     The hit flash is a flare in the button's shape (the user disliked a round one).
-  - Guitar Hero (after GH3's HUD, which the user loved): round chrome-ringed buttons,
-    round gems with a white rim, flame bursts; bottom left a metal panel with the
-    score on a green LCD, the multiplier glowing in a dial whose 10-segment ring fills
-    toward the next level, 4 level lights, an odometer streak counter (♪ 045); bottom
-    right the ROCK meter (red/yellow/green, needle from the last 24 notes). The board
-    starts right of the panel (nearX >= 26% of the width).
   - Groove on the board (user: "make the groove meter look better, incorporate it into
     the tab", "in Guitar Hero, when you're doing well, it does something similar"):
     the board's rails and strike line glow by the groove (last 24 notes): green, then
-    yellow, then red and pulsing below 40%; at x4 with groove > 85% the rails thicken
-    and a warm wash lights the board. The separate groove bar is gone.
-  - ROCK meter (Guitar Hero look; the user found the first one cheap): metal bezel with
-    screws, dark glass with a reflection, 24 LED segments red/yellow/green lit up to
-    the needle, "ROCK" in the zone's colour, three zone lamps, a tapered glowing needle
-    on a chrome cap.
+    yellow, then red and pulsing below 40%; at x4 (max) the rails turn electric blue
+    like the full meter (user: "the outline of the highway should turn blue"), thicken,
+    and a blue wash lights the board. The separate groove bar is gone.
+  - Rock Band multiplier meter (from the user's Rock Band picture; replaced the blue
+    badge at the base): a chrome-framed bar along the strike line just behind the fret
+    buttons, a silver "4X" disc in its middle, yellow filling outward from the disc
+    toward the next multiplier; at x4 it's full, glows electric blue and throws off blue
+    sparks (`maxSparks`). No streak count or percentage (the user didn't want them).
+  - The board uses most of the height (lanes up to 170 px, 66% of the window for
+    the strings; user: "still cramped").
+  - Play on: Board / Tab (Game settings, `track-splitter-game-view`; user: "an option
+    to play the game mode in the tab", then "still add animations and make it look like
+    Rock Band's UI"). Tab plays the game on the Lines view filling the window
+    (`tabGameFrame`; `body.game-tab`): notes turn green when hit, red when missed,
+    amber when messy (`.note.hit/.miss/.messy`, line notes carry their index), and a
+    canvas over the lines (`drawTabGameFx`) has the board's score box and star
+    medallions (`rbScore`, shared), a chrome multiplier meter bottom left (yellow, at
+    x4 blue and sparking, and the playing line's card glows blue: `body.max`), a flash
+    in the string's colour and sparks from each note you hit (`noteBox` finds it on
+    screen), PERFECT!/GOOD rising from it, MISS/MESSY from missed/messy notes, streak
+    milestones and STREAK LOST across the top, the countdown, and "You: A5" bottom
+    right. Lines are re-laid out for the game's (difficulty's) notes and window when it
+    starts and for the whole tab when it ends. Same listening and scoring as the board.
+  - Testing: localStorage `track-splitter-game-start` (seconds, set in the console)
+    starts the game later in the song; Electra's first ~20 s are nearly empty, so tests
+    use 30.
   - Results: finished songs get stars from `starsFor`; stopped early, from accuracy.
+    Header (user: "instead of 'Song complete' with an X: song name big, band name
+    under smaller, and difficulty"): title, artist, a pill "Expert · Relaxed timing"
+    (+ "stopped early"); no ×, Close and Play again in the footer.
+  - Difficulty (user: Fireman & Dancer, Wow! Wow! Wow! "too hard to play", "difficult
+    to see the notes"): Easy / Medium / Hard / Expert in Game settings
+    (`track-splitter-game-difficulty`, default Expert). `gameNotesFor` keeps at most
+    one note per beat / half / quarter beat (tab bpm, 120 if none; double stops stay
+    together except on Easy); startGame swaps `tabView.data` for that copy (caches
+    `minLaneGap`/`quickLaneGap`/`lanes` cleared, so fewer notes also scroll slower) and
+    endGame puts the whole tab back. Best scores per difficulty (`bestKey`; Expert keeps
+    the old keys).
+  - The game plays the "no bass" version (user: "when you go to game mode, always do no
+    bass"): startGame loads the song's no-bass version (HQ first) if the loaded one
+    removes something else, and switches to Without; the mode before comes back after.
+  - What you're playing (user: "show the string you are hitting even if there's no
+    notes"): the string's strike button gets a white ring (green on a match, amber when
+    it's the right note on another string) and the fret number, between notes too
+    (`input.lane`, see String detection).
+  - Messy notes (user: "I was off note and slid on and it still counted"): a hit whose
+    pluck is followed by 2+ clear readings of another pitch (not an octave, not the
+    tab's previous note: that can ring on or be a written slide) still scores but ends
+    the combo; amber "MESSY · combo lost" instead of PERFECT/GOOD.
   - Pause is a pill at the top centre (the HUD has the corners).
 - Game settings (user: "a settings page in the pause menu, like changing the look"):
   `#settings-dlg`, opened from the pause menu's Settings (Done returns to it) or
   "Game settings" in the Game section: Look, Note speed (drives `#hw-speed`), Timing,
   Mistake sound, Hear myself + My bass volume (drive the input bubble's), Song volume
   (drives the player's). Timing and Mistake sound moved here from the Game section.
+  Also Difficulty and Timing calibration (opens the calibration screen).
 - Mistakes (user: "feedback when a mistake is made"): a miss flashes that string's
   button red with "MISS" rising, and a lost streak of 10+ shows "STREAK LOST · n"; a
   wrong note (`checkWrong`: a new pitch the tab doesn't have while it expects another
@@ -432,13 +512,53 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   16. Jumping elsewhere resets it. Simulated player 60 ms late: average read ~39 ms
   late (detection timing assumptions; Timing under More shifts it). With the switch on
   but no bass input, the Highway says so.
+- Whole tab (user: "would be nice to see the whole tab"): a third view next to Lines /
+  Highway (`tabMode` 'whole', `wholeFrame`): every line at the small size in a scrolling
+  column, the playing one on the card with a playhead and note highlights, kept centred
+  unless you scrolled in the last 4 s; click a line to jump.
+- String detection (user: "a 5 on the E is an A but shows as an open A"): the same pitch
+  on another string sounds different (how sharp the overtones run, inharmonicity B; the
+  levels of harmonics 2-6). Measured on the user's two test takes (scratch analysis;
+  recorder page, slow + fast 8ths at 130 bpm): from 0.1 s of a note, fast notes right
+  84-93%, 94-98% of the 70% it's surest about; B alone fails at speed (10-20x noisier).
+  - In the page: `stringFeatures` (4096 samples, Hann, x4 zero-padded FFT
+    (`fftMagnitude`), 12 harmonics, a line fit of (f_n/n)^2 vs n^2; null unless within
+    half a semitone of the expected pitch), `fitStrings` (per string: open notes' mean,
+    fretted notes a line in the fret; one spread per feature), `stringScores` (every
+    place the pitch can be played on the bass as tuned now, `shownTuning()`; a
+    5-string's B is uncalibrated), `checkStrings` (fit on every other note of each spot,
+    test the rest). Checked against the Python analysis on the same takes: same numbers.
+  - Live: plucks for this come from the newest 20 ms of the analyser (>4 dB over the
+    last 3 readings, 90 ms apart): the 85 ms buffer's peak barely rises when a ringing
+    note is re-plucked (fast repeats were missed). 115 ms after a pluck the buffer holds
+    ~0.03-0.12 s of the note (`readString`; the pitch is the reading then, or the last
+    one: low notes often have no clear reading yet). Shown only when the best place
+    beats the next by `margin` (max(2, the self-check's 95% margin): on positions left
+    out entirely that was right 95% with 73% of notes shown). Readout: "on A5 · D0";
+    the Highway ring and the game's button go on that string; amber + "same note · tab:
+    A5" when the tab has it on another string.
+  - Calibration (`#strcal-dlg`: More → "Calibrate strings…", "Strings…" in the Bass
+    input bubble): standard tuning, each string at frets 0 2 3 5 7 8 10 12, 8 notes a
+    spot (the expected pitch only; full spots move on by themselves), a fretboard
+    showing progress, Back / Skip, Save once every string has its open note and two
+    fretted spots. Saved per computer (`track-splitter-string-calibration`: samples,
+    margin, self-check). More → "Reset string calibration". End to end with the user's
+    fast take as a simulated Scarlett: 155 notes saved, self-check 92%; their slow take
+    then read live: right 87% of the notes it named, half named (that test calibration
+    had big gaps on the A string). Not yet tried on the real bass.
 - Timing calibration (user: "it always says I'm early": the Mac/browser's reported
-  output/input delays don't match the real ones): "Calibrate" next to the switch takes
-  the current average (>= 6 notes) as on time; the seconds (`inputCalibration`,
-  `track-splitter-input-calibration`, cumulative) are subtracted from every pluck and
-  heard-pitch time in Show my timing and the game. More → "Reset timing
-  calibration". Simulated player 80 ms early: read 66 ms early, after Calibrate 16 ms
-  (on time), total correction 82 ms after a second Calibrate.
+  output/input delays don't match the real ones; then "a calibrate page where it does
+  it for you with a made-up set of notes"): `#calib-dlg`, opened from Calibrate (next
+  to Show my timing), More -> "Calibrate timing…" and Game settings (Close returns
+  there). Clicks at 96 bpm on the player's context (4 count-in, then 16 quarter notes
+  of a random line: open strings / frets 2-5, never the same string twice) on a small
+  4-lane highway; each pluck shows Early/Late n ms. Plucks use the game's attack rule
+  and nudge on the same clock (audio clock - output delay + Line timing), without the
+  current calibration; the median of >= 8 heard notes is offered as the new
+  `inputCalibration` (`track-splitter-input-calibration`, seconds subtracted from
+  every pluck and heard-pitch time in Show my timing and the game). While it runs,
+  `listen` feeds only `calibListen`. More -> "Reset timing calibration". Simulated
+  plucks: shifting them 100 ms later moved the reading by 105 ms, spread ±5-9 ms.
 - Hand thuds (user: "my hand hits the string and it picks it up as a note"): live
   detection now needs a clearly pitched reading (YIN dip < 0.1) and 3 readings in a
   row (~120 ms) to agree (was 2 of 3). Test: 16 damped bass-pitched thuds and noise
@@ -482,7 +602,21 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   The .gp (GP7/8) reader follows the documented layout but is untested on a real file;
   .gpx (GP6) is refused with a "save as .gp/.gp5 or MusicXML" message.
 - Sync to the recording uses the automatic tab's heard notes (made first if missing):
-  files with rhythm: overall start + tempo ratio search, then per-bar shifts; text tabs:
+  files with rhythm: overall start + tempo ratio search, then per-bar shifts along one
+  smooth path (Viterbi over -2.5..+2.5 s in 50 ms steps; each bar scored on its and its
+  neighbours' notes landing on heard starts plus 0.5 x lying inside a heard note of that
+  pitch, since separated bass often comes out as long merged notes; 0.6 per 50 ms of
+  change, 0.4/s for leaving the overall fit). It was +-0.4 s median-smoothed, which
+  left Save Yourself, I'll Hold Them Back (MCR; user: "tab is all off, starts too early,
+  way too fast") 1.3-1.7 s early for its first two minutes. In bars, a heard note may
+  only nudge a written one (`NUDGE_MAX` 0.1 s or `NUDGE_SHARE` 35% of the gap to its
+  neighbours): unlimited, wrong matches squeezed notes together (MCR 15% of gaps < 0.6x
+  their written length; the user saw tabs "speeding up", and the game's speed floor
+  went up to match). Re-synced, MCR's notes inside a heard note 67 -> 89%, squeezed
+  0.4-1.3% on all 8 imported tabs, its quickest same-string gap 0.056 -> 0.141 s; the
+  other songs' scores moved by a few points either way. `IMPORT_RULES` (app.py): bump
+  when syncing changes; `get_tab` then re-syncs an old import from its saved file
+  (`resync_import`, ~1-2 s) when the automatic tab is current. Text tabs:
   bar length from the song's tempo, bars placed by note content and then followed in
   order (+-0.3 s, ordered matching) so look-alike riff repeats can't make it jump. Both
   then place notes inside each bar by matching them in order to heard notes
@@ -494,6 +628,10 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   `.bass-tab-imported.json` (synced notes, lines, tuning, match quality).
   `POST /api/tab/import` (multipart: song, file or text) queues an "import" job;
   `GET /api/tab?source=imported`; `POST /api/tab/import/remove` (to the Trash).
+- Import dialog (`#import-dlg.fancy-dlg`, same look as Add songs; user: "how about the
+  tab uploader"): song in the subtitle, a drop zone for the file (click or drop; the
+  hidden `#import-file` holds it; once chosen it shows as a card with × instead), "or
+  paste a text tab", a monospace paste box. A file wins over pasted text.
 - Page: "Import tab…" (file or paste box; also "Import bass tab…" in each song's ⋯ menu,
   which loads the song and opens its tab view behind the box: the user couldn't find
   the button inside the tab view), an Imported/Automatic switch (per song,
@@ -527,6 +665,26 @@ with the band.
   channel and monitor choices kept in localStorage), channel (Input 1/2 when stereo),
   level meter (tooltip: too loud / coming in / nothing), the live note, "Hear myself",
   Record. Closing the tab view closes the bar.
+  - Layout (user: "bass input goes off screen, can we clean up the settings", then
+    "make it some sort of drawer that pulls up on the bottom"): `#input-bar` is a drawer
+    fixed above the player bar, centred over the main area (`--side-w`, 0 when the
+    sidebar collapses), sliding up on open; columns Input (device/channel, level, the
+    note), Listen (Hear myself + volume), Tools (Tuner, Calibrate strings…), Record into
+    your draft (Add notes / Replace, Record); two columns under 1000 px; the tuner opens
+    full width below; scrolls if the window is short. The Bass input button has one
+    fixed width (9.2em): its text changing ("● A1", "Listening") used to wrap the tools
+    row and move the button. Game settings likewise grouped: Game (Play on; Board only when
+    playing on the board; Difficulty, Note speed, Timing), Sound, Setup (Calibrate
+    timing…, Calibrate strings…), scrolling on short windows.
+  - Tuner (user: "add a tuner in the sound popup"): Tuner in the Bass input bubble opens
+    a chromatic tuner from the same readings (YIN, median of the last 5): note, Hz, a
+    needle -50..+50 cents (green within 5), "n cents flat: tune up", and the strings of
+    the bass as tuned now with the matching one lit. Simulated A 10 cents flat read
+    "10 cents flat", then "In tune".
+  - Dropouts (user: "bass randomly cut off, I had to change my input and back"): when
+    the input track ends, or stays muted for 1.5 s, the same input is opened again
+    (`reopenInput`, with a toast), and the player's audio clock is resumed if it gets
+    suspended while the input is on.
   - Opening (user hit "Couldn't open the audio input"): the remembered device id can go
     stale (browsers re-issue ids after restarts, replugging, cleared site data); then
     the default input is opened and the Scarlett found by name. Errors are explained
@@ -575,8 +733,13 @@ with the band.
   into `.bass-tab-mine.json` as `base` (+ the imported tab's own `lines` and `tuning`,
   `from`, `from_name`); an existing draft and its takes go to the Trash (asked first).
   Takes have a `mode` (Bass input bubble: Add notes (default, `track-splitter-
-  record-mode`) / Replace): `apply_take()` "add" keeps what's there and adds notes not
-  already in it (same pitch within 70 ms; removed notes played again come back),
+  record-mode`) / Replace): `apply_take()` "add" keeps what's there and only fills
+  gaps: notes within 0.25 s of an existing one (any pitch) are left out and added ones
+  snap to their bar's 16th grid (within 60 ms; `bar_starts` from the draft's lines).
+  It used to add anything not within 70 ms of a same-pitch note; a take slightly off the
+  tab put notes between the tab's (Amsterdam 61 -> 103 notes in 18 s; user: "it speeds
+  it way up, keep the same speed and structure"); MINE_RULES 3 rebuilt drafts. Removed
+  notes played again come back,
   "replace" takes over the stretch. `redo_mine` rebuilds from `base` then each take in
   its mode. Test (simulated Scarlett, Electra): draft 1010 notes, 3 deleted -> 1007,
   an Add take over that stretch -> 1012 (the 3 back, nothing doubled, 2 extra).
@@ -613,9 +776,10 @@ with the band.
 ## UI (static/index.html)
 
 - Sidebar: All songs, artists (hover ... -> rename/merge, delete; + New artist; drop a
-  song row on an artist to move it), device label, Open library folder, Create app
+  song row on an artist to move it; clicking one also closes the tab view so the list
+  shows, user: "show it no matter where I am"; not during a game), device label, Open library folder, Create app
   shortcut, Quit.
-- Main: searchable song list; each row shows version chips (click to play) and
+- Main: searchable song list; each row shows version chips (click loads it paused, user: "not autoplay"; click again or Space plays; right-click → Play starts it) and
   "+ Version"; row ... menu: New version, Edit song & versions (rename, change artist,
   delete versions), Delete song. Hovering a chip widens it and shows ↻ Redo (remakes
   it right away with its own instruments/HQ from the name and level from .song.json,
@@ -636,6 +800,13 @@ with the band.
   instruments (guitar is All guitar / Lead guitar / Rhythm guitar), level, HQ, and
   "Faster guitar/piano" (shown only with HQ + guitar/piano). Upload is disabled until the required fields are filled. On
   success the songs clear and the dialog closes; settings persist (localStorage).
+  Styled to match the newer screens (user: "update the file uploader to match the rest
+  of the UI"; CSS for `.fancy-dlg` at the end of the stylesheet, shared with Import a
+  tab): violet glow,
+  title with a gradient badge and subtitle, glowing drop zone, link field with an icon,
+  item cards with a note/link icon, small uppercase section labels, selected
+  instruments as gradient pills, level + HQ in one panel, pill buttons. Its switches
+  are laid out as rows there (`.field > label` made them blocks).
 - Dark theme, violet accent, system font; fits one screen down to ~1024x768 and
   collapses for narrow windows.
 
@@ -660,10 +831,16 @@ with the band.
 ## Testing approach used so far
 
 No test suite in the repo. Changes were verified by running the server on a spare port
-(`app.main(port=7866, open_browser=False)`), driving the API with small scripts
+(`app.main(port=7866, open_browser=False)`, with `app.OUTPUT_DIR` set to a copy of the
+library), driving the API with small scripts
 (upload, poll, move, delete, bad ids), and clicking through the page in a browser. A
 synthetic 15 s clip (sine bass line + chords + clicks) was used, measuring how much
 40-100 Hz energy remains to confirm bass removal.
+The bass input was tested with a simulated Scarlett: in the page, `getUserMedia` is
+replaced by a MediaStreamDestination (a fresh one per call) playing a song's "bass only"
+track, or the user's own recordings; `track-splitter-game-start` starts a game later in
+the song. String detection was measured on two recordings of the user's bass (slow and
+fast takes, each position labelled), made with a small local recorder page.
 
 ## Open ideas / to do
 
