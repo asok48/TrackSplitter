@@ -634,7 +634,8 @@ IMPORT_FILE = ".bass-tab-imported.json"
 # 2: bars follow tempo drift up to +-2.5 s on one smooth path, and heard notes only nudge
 #    written ones (Save Yourself, I'll Hold Them Back was 1.3-1.7 s early for two minutes
 #    and 15% of its notes were squeezed together).
-IMPORT_RULES = 2
+# 3: notes keep whether they're slid or hammered into (Guitar Pro marks), for the game.
+IMPORT_RULES = 3
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 
 
@@ -1445,16 +1446,18 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
                 "easiest": report and report["easiest"], "tuning_report": report and report["tunings"],
                 "bpm": imported.get("bpm"), "split": False, "maybe_half_down": False, "lines": imported["lines"],
                 "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings}
-        # Dead (muted) notes, written "x", are left out: the user asked for no x's.
+        # Dead (muted) notes, written "x", are left out: the user asked for no x's. A 5th
+        # value says the note is slid or hammered into (the game doesn't call it messy).
         played = [n for n in imported["notes"] if not n[4]]
+        legato = lambda n: bool(n[5]) if len(n) > 5 else False
         if tuning in (None, written) or tuning not in tab.TUNINGS or not opens:
-            return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3]] for n in played]}
+            return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3], legato(n)] for n in played]}
         # In another tuning: the tab's pitches fingered again (learned fingering), the
         # way the automatic and recorded tabs are.
         notes = [(n[0], n[1], opens[n[2]] + n[3], 1.0) for n in played]
         fingered = tab.fingering(notes, tuning, learned_style()[0])
         return {**base, "tuning": tuning, "dropped": len(notes) - len(fingered),
-                "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in fingered]}
+                "notes": [[notes[i][0], notes[i][1], s, f, legato(played[i])] for i, s, f in fingered]}
     data = read_tab(song_dir)
     if data is None or data.get("notes_rules") != NOTES_RULES:   # none yet, or made the old way
         return {**about, "exists": False, "outdated": data is not None}

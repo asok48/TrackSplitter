@@ -119,6 +119,9 @@
   .ib-row { display: flex; align-items: center; gap: 10px; width: 100%; }
   .ib-device select { flex: 1; min-width: 0; }
   .ib-device #input-channel { flex: 0 0 auto; }
+  .ib-note { font-size: 11.5px; color: var(--faint); }
+  .ib-instrument { margin-left: auto; }
+  .ib-instrument button { height: 24px; padding: 0 10px; font-size: 12px; }
   .ib-section { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
   /* Tuner (user: "add a tuner in the sound popup"): chromatic, the needle -50..+50 cents. */
   .tuner { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; border-radius: 12px;
@@ -821,11 +824,16 @@
               </button>
             </div>
             <div class="ib-col ib-input">
-              <div class="ib-section">Input</div>
+              <div class="ib-row"><span class="ib-section">Input</span>
+                <div class="segmented ib-instrument" id="input-instrument" role="group" aria-label="Instrument" title="Bass: notes from a low B up. Guitar: a guitar's range and strings; notes in another octave count in the game">
+                  <button type="button" data-instrument="bass">Bass</button>
+                  <button type="button" data-instrument="guitar">Guitar</button>
+                </div></div>
               <div class="ib-row ib-device">
                 <select id="input-device" aria-label="Input"></select>
-                <select id="input-channel" aria-label="Channel"><option value="0">Input 1</option><option value="1">Input 2</option></select>
+                <select id="input-channel" aria-label="Channel" title="Which of the interface's inputs to listen to; Both mixes them, so the instrument is heard whichever input it's in"><option value="both">Both inputs</option><option value="0">Input 1</option><option value="1">Input 2</option></select>
               </div>
+              <div class="ib-note hidden" id="input-mono">This browser gives the app one channel: only Input 1 can be heard. Use Chrome, or plug into Input 1.</div>
               <div class="progress input-level" id="input-level-box" title="Input level"><div id="input-level"></div></div>
               <div class="input-note"><b id="input-note">–</b><span id="input-where">Play a note</span></div>
             </div>
@@ -834,6 +842,7 @@
               <label class="switch" id="input-monitor-row" title="Plays your bass through the app, a little late. The interface's Direct Monitor has no delay at all.">
                 <input type="checkbox" id="input-monitor"><span class="track"></span><span>Hear myself</span>
               </label>
+              <span class="ib-note" id="input-monitor-late"></span>
               <label class="input-volume" title="How loud you hear yourself: a boost in the app, so the interface's gain can stay low">
                 <input type="range" id="input-volume" min="0" max="24" step="1" value="6" aria-label="Hear myself volume"><span id="input-volume-db">+6 dB</span>
               </label>
@@ -2688,10 +2697,7 @@
     drawTabGameFx();
     $('#tg-count').textContent = game.countdown ? String(game.countdown) : '';
     const you = $('#tg-you');
-    if (input.note !== null && input.lane !== null) {
-      const tun = shownTuning();
-      you.textContent = `You: ${tun.strings[input.lane]}${input.note - tun.open[input.lane]}`;
-    } else you.textContent = '';
+    you.textContent = input.note !== null ? `You: ${input.placeLabel}` : '';
     you.classList.toggle('match', input.match); you.classList.toggle('other', !!input.otherString);
   }
   // The tab game's Rock Band layer, on a canvas over the lines: the score box and star
@@ -2911,6 +2917,7 @@
     const names = showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : d.tunings.find((x) => x.key === d.tuning).strings;
     // Like tab: highest string on top, notes travel right to left to a hit line on the left.
     // As big as the window allows (the user found the first version small and fast).
+    if (W < 60 || H < 60) return;                       // not laid out yet (switching views): nothing to draw
     const n = names.length, rowH = Math.min(120, (H - 16) / n), top = (H - rowH * n) / 2;
     const gemH = Math.min(52, rowH * 0.68), nameSize = Math.max(13, Math.min(22, rowH * 0.3));
     const hitX = Math.max(84, nameSize * 2.2 + gemH * 0.9);
@@ -3156,6 +3163,7 @@
     // screen. Speed: the slider alone (2.6 s ahead / speed; it used to be capped so two
     // notes on a string never touched, which kept Slow about as fast as Normal on busy
     // songs; now quick notes get narrower gems and may overlap a little).
+    if (W < 60 || H < 60) return;                       // not laid out yet: nothing to draw
     const nearX = Math.max(150, W * 0.14), farX = W * 0.985, midY = H * 0.57, kz = 1.0;
     const rowH = Math.min(170, (H * 0.66) / n);   // most of the height (the user found it cramped)
     const gemH = Math.min(66, rowH * 0.64), gemMin = Math.max(30, gemH * 0.72);
@@ -3236,7 +3244,7 @@
     // too. The string heard when the string calibration is sure, else where the tab has
     // that note, else the lowest fret.
     if (input.note !== null && input.lane !== null && input.lane < n) {
-      const s = input.lane, y0 = laneY(s, 0), fret = input.note - shownTuning().open[s];
+      const s = input.lane, y0 = laneY(s, 0), fret = input.laneFret ?? -1;
       const w = gemW * 1.16, h = gemH * 1.1;
       g.strokeStyle = input.match ? '#bbf7d0' : input.otherString ? '#fde68a' : '#ffffff';
       g.lineWidth = 3; g.shadowColor = g.strokeStyle; g.shadowBlur = 16;
@@ -3600,7 +3608,11 @@
     process(inputs) {
       const ch = inputs[0];
       if (ch && ch.length) {
-        const data = new Float32Array(ch[Math.min(this.channel, ch.length - 1)]);
+        let data;
+        if (this.channel === 'both') {                 // both inputs added up
+          data = new Float32Array(ch[0]);
+          for (let c = 1; c < ch.length; c++) for (let i = 0; i < data.length; i++) data[i] += ch[c][i];
+        } else data = new Float32Array(ch[Math.min(this.channel, ch.length - 1)]);
         this.port.postMessage({ frame: currentFrame, data }, [data.buffer]);
       }
       return true;
@@ -3611,11 +3623,27 @@
   const input = { stream: null, source: null, analyser: null, mon: null, monOut: null, timer: 0, recent: [], note: null, lane: null, match: false };
   const rec = { node: null, sink: null, chunks: [], startedAt: null, songStart: 0, active: false, timer: 0 };
   const INPUT_KEY = 'track-splitter-record-input', CHANNEL_KEY = 'track-splitter-record-channel', MONITOR_KEY = 'track-splitter-monitor';
+  // Bass or guitar (user: his brother plays guitar; "add a Bass / Guitar choice"): the
+  // pitch range listened for, the strings the tuner and readout use, and whether a note
+  // in another octave counts (a guitar plays a bass part an octave or two up). String
+  // detection is bass-only (its calibration is the user's bass). Kept per computer.
+  const INSTRUMENT_KEY = 'track-splitter-instrument';
+  let instrument = (() => { try { return localStorage.getItem(INSTRUMENT_KEY) === 'guitar' ? 'guitar' : 'bass'; } catch { return 'bass'; } })();
+  const PITCH_RANGE = { bass: [28, 420], guitar: [70, 1400] };   // Hz: a low B to G4; a dropped low D to a 24th-fret high E
+  const GUITAR = { open: [40, 45, 50, 55, 59, 64], strings: ['E', 'A', 'D', 'G', 'B', 'E'] };
+  const samePitch = (heard, written) => heard === written || (instrument === 'guitar' && (heard - written) % 12 === 0);
   const VOLUME_KEY = 'track-splitter-monitor-volume';   // Hear myself boost, dB
   const monitorGain = () => 10 ** (Number($('#input-volume').value) / 20);
   const pref = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const setPref = (key, value) => { try { localStorage.setItem(key, value); } catch { /* not kept */ } };
-  const inputChannel = () => Number($('#input-channel').value);
+  // Which input: 0, 1, or 'both' (the default: summed, so an instrument is heard whichever
+  // input it's in; a guitar on a 2i2's Input 2 wasn't, as the choice was hidden when the
+  // browser didn't report two channels, and Input 1 was used).
+  const inputChannel = () => ($('#input-channel').value === 'both' ? 'both' : Number($('#input-channel').value));
+  const connectChannel = (split, node) => {
+    const ch = inputChannel();
+    for (const c of ch === 'both' ? [0, 1] : [ch]) split.connect(node, c);   // two outputs into one input add up
+  };
   const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
   const noteName = (m) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
 
@@ -3630,17 +3658,16 @@
     closeInput();
     input.stream = await navigator.mediaDevices.getUserMedia({ audio: {
       deviceId: deviceId ? { exact: deviceId } : undefined, channelCount: { ideal: 2 },
-      echoCancellation: false, noiseSuppression: false, autoGainControl: false } });   // the bass as it is
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false, latency: { ideal: 0 } } });   // the bass as it is, as soon as possible
     await ctx.resume();
     input.source = ctx.createMediaStreamSource(input.stream);
     const split = ctx.createChannelSplitter(2);
     input.analyser = ctx.createAnalyser();
     input.analyser.fftSize = 4096;                    // ~85 ms: two periods of a low B (31 Hz)
     input.source.connect(split);
-    const stereo = (input.stream.getAudioTracks()[0].getSettings().channelCount || 1) > 1;
-    $('#input-channel').classList.toggle('hidden', !stereo);
-    if (!stereo) $('#input-channel').value = '0';
-    split.connect(input.analyser, inputChannel());
+    const channels = input.stream.getAudioTracks()[0].getSettings().channelCount;
+    $('#input-mono').classList.toggle('hidden', channels !== 1);   // known to be one channel
+    connectChannel(split, input.analyser);
     await setMonitor($('#input-monitor').checked);
     const buf = new Float32Array(input.analyser.fftSize);
     input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly
@@ -3666,26 +3693,35 @@
     input.mon?.close();
     input.mon = input.monOut = null;
     if (!on || !input.stream) return;
-    const m = new AudioContext({ latencyHint: 'interactive' });
+    // The smallest buffer the browser allows (latencyHint 0 s; 'interactive' is a little
+    // larger), at the input's own sample rate so nothing is resampled on the way (user:
+    // "there's lag from when I play and hear my bass"). Direct Monitor on the
+    // interface is still the only way with no delay at all.
+    const rate = input.stream.getAudioTracks()[0].getSettings().sampleRate;
+    let m;
+    try { m = new AudioContext({ latencyHint: 0, ...(rate ? { sampleRate: rate } : {}) }); }
+    catch { m = new AudioContext({ latencyHint: 'interactive' }); }
     const split = m.createChannelSplitter(2), out = m.createGain();
     out.gain.value = monitorGain();
     input.monOut = out;
     m.createMediaStreamSource(input.stream).connect(split);
-    split.connect(out, inputChannel());
+    connectChannel(split, out);
     out.connect(m.destination);
     input.mon = m;
     await m.resume();
     const late = Math.round(((m.baseLatency || 0) + (m.outputLatency || 0) + (input.stream.getAudioTracks()[0].getSettings().latency || 0)) * 1000);
     $('#input-monitor-row').title = `Plays your bass through the app, about ${late} ms late. The interface's Direct Monitor has no delay at all.`;
+    $('#input-monitor-late').textContent = `~${late} ms · Direct Monitor: none`;
   }
 
-  // Pitch of a bass note (YIN), on the signal brought down to ~11 kHz (bass notes are
-  // below 400 Hz). 0 when there's no clear pitch.
+  // Pitch of a note (YIN), on the signal brought down to ~11 kHz, within the instrument's
+  // range (PITCH_RANGE). 0 when there's no clear pitch.
   function pitchOf(buf, sampleRate) {
+    const [loHz, hiHz] = PITCH_RANGE[instrument];
     const q = Math.max(1, Math.round(sampleRate / 11025)), n = Math.floor(buf.length / q), rate = sampleRate / q;
     const x = new Float32Array(n);
     for (let i = 0; i < n; i++) { let v = 0; for (let j = 0; j < q; j++) v += buf[i * q + j]; x[i] = v / q; }
-    const minT = Math.floor(rate / 420), maxT = Math.min(Math.ceil(rate / 28), Math.floor(n / 2)), w = n - maxT;
+    const minT = Math.floor(rate / hiHz), maxT = Math.min(Math.ceil(rate / loHz), Math.floor(n / 2)), w = n - maxT;
     const c = new Float32Array(maxT + 2);
     let sum = 0;
     for (let t = 1; t <= maxT; t++) {
@@ -3866,9 +3902,13 @@
     for (let i = buf.length - tail; i < buf.length; i++) fresh = Math.max(fresh, Math.abs(buf[i]));
     const freshDb = 20 * Math.log10(fresh + 1e-9), hist = input.freshHist || [];
     const nowMs = performance.now();
-    if (freshDb > GATE_DB && hist.length && freshDb - Math.min(...hist) > 4 && nowMs - (input.pluckAt || 0) > 90) {
-      input.pluckAt = nowMs; input.stringDue = nowMs + 115; input.string = null;
-    }
+    const plucked = freshDb > GATE_DB && hist.length && freshDb - Math.min(...hist) > 4 && nowMs - (input.pluckAt || 0) > 90;
+    if (plucked) { input.pluckAt = nowMs; input.stringDue = nowMs + 115; input.string = null; }
+    // A new pitch from two clear readings in a row (~40 ms) instead of the five the shown
+    // note needs (~100 ms): the game's plucks for notes played while another still rings.
+    const prevRaw = input.recent[input.recent.length - 2];
+    const newPitch = raw !== null && prevRaw === raw && raw !== input.rawNote;
+    if (raw !== null && prevRaw === raw) input.rawNote = raw;
     input.freshHist = [...hist.slice(-2), freshDb];
     if (input.stringDue && performance.now() >= input.stringDue) { input.stringDue = 0; readString(buf, raw); }
     // The note shown (and checked for wrong notes) needs 5 readings in a row (~100 ms)
@@ -3877,9 +3917,9 @@
     const steady = input.recent.length === 5 && input.recent.every((m) => m !== null && m === input.recent[0]) ? input.recent[0] : undefined;
     showNote(steady ?? null);
     if (calib.on) { calibListen(db); return; }
-    if (!game.on && timingShown && tabMode === 'highway' && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw);
+    if (!game.on && timingShown && tabMode === 'highway' && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked, newPitch);
     if (game.on && !game.countdown) {
-      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw); }
+      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw, plucked, newPitch); }
       else if (game.started && !game.paused) {
         if (player.offset === 0) endGame();               // the song ended (its end resets the position)
         else pauseGame();                                 // paused (Space): the pause menu
@@ -3898,7 +3938,7 @@
     if (hz) { tuner.hz = [...tuner.hz.slice(-4), hz]; tuner.lastAt = now; }
     else if (now - tuner.lastAt > 600) tuner.hz = [];
     const box = $('#tuner');
-    const tun = shownTuning();
+    const tun = instrument === 'guitar' ? GUITAR : shownTuning();
     if (!tuner.hz.length) {
       box.classList.add('idle'); box.classList.remove('in');
       $('#tuner-note').textContent = '–'; $('#tuner-hz').textContent = 'Play an open string'; $('#tuner-cents').textContent = '';
@@ -3917,6 +3957,19 @@
     $('#tuner-strings').replaceChildren(...tun.strings.map((name, s) => el('span', {
       textContent: name, className: tun.open[s] === note ? (inTune ? 'in' : 'near') : '' })));
   }
+  const showInstrument = () => {
+    document.querySelectorAll('#input-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === instrument));
+    $('#tab-input-text').textContent = input.stream ? 'Listening' : (instrument === 'guitar' ? 'Guitar input' : 'Bass input');
+    $('.ib-title').textContent = instrument === 'guitar' ? 'Guitar input' : 'Bass input';
+  };
+  document.querySelectorAll('#input-instrument button').forEach((b) => b.addEventListener('click', () => {
+    instrument = b.dataset.instrument;
+    setPref(INSTRUMENT_KEY, instrument);
+    input.recent = []; input.string = null; tuner.hz = [];
+    showInstrument(); showNote(null);
+    if (tunerOn) showTuner(0);
+  }));
+  showInstrument();
   $('#input-tuner-btn').addEventListener('click', () => {
     tunerOn = !tunerOn;
     $('#tuner').classList.toggle('hidden', !tunerOn);
@@ -3933,7 +3986,7 @@
     if (!tuning?.open) return [];
     const t = tabTime(), names = showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : tuning.strings;
     return d.notes.filter(([ns, ne, , f]) => f !== 'x' && ns <= t + 0.12 && t - 0.12 < Math.max(ne, ns + 0.2))
-      .map(([, , s, f]) => ({ pitch: tuning.open[s] + f, s, label: `${names[s]}${f}` }));
+      .map(([, , s, f]) => ({ pitch: tuning.open[s] + f, s, f, label: `${names[s]}${f}` }));
   }
 
   function showNote(m) {
@@ -3945,22 +3998,28 @@
       $('#input-note').textContent = '–';
       $('#input-where').textContent = 'Play a note';
       box.classList.remove('match', 'off', 'other');
-      input.lane = null; input.otherString = false;
+      input.lane = null; input.otherString = false; input.placeLabel = '';
       return;
     }
-    // Where it can be played (on the strings shown: standard ones when the song is raised).
-    const shown = shownTuning();
-    let places = shown.open.map((o, s) => [s, m - o]).filter(([, f]) => f >= 0 && f <= 21).sort((a, b) => a[1] - b[1]);
+    // Where it can be played (on the strings shown: standard ones when the song is raised;
+    // a guitar's own strings in guitar mode).
+    const shown = instrument === 'guitar' ? GUITAR : shownTuning();
+    let places = shown.open.map((o, s) => [s, m - o]).filter(([, f]) => f >= 0 && f <= 24).sort((a, b) => a[1] - b[1]);
     // The string heard (when the calibration is sure): first, as "on A5".
     const det = input.string && input.string.midi === m ? input.string : null;
     if (det) places = [[det.s, det.f], ...places.filter(([s]) => s !== det.s)];
     // The tab is for the song as is: a raised song is played a half step higher.
     const now = tabNotesNow(), heard = m - player.shift;
     const same = det && now.find((n) => n.pitch === heard && n.s === det.s);
-    const hit = same || now.find((n) => n.pitch === heard), octave = !hit && now.find((n) => (n.pitch - heard) % 12 === 0);
+    const hit = same || now.find((n) => samePitch(heard, n.pitch)), octave = !hit && now.find((n) => (n.pitch - heard) % 12 === 0);
     const other = !!(det && hit && !same);                // the right note on another string than the tab's
     input.match = !!hit && !other; input.otherString = other;
-    input.lane = det ? det.s : hit ? hit.s : places[0]?.[0] ?? null;
+    // The lane (a string of the tab) and fret shown on the Highway / board: the string
+    // heard, else the tab's note it matches, else where it's easiest (bass only: a
+    // guitar's strings aren't the board's lanes).
+    input.lane = det ? det.s : hit ? hit.s : instrument === 'guitar' ? null : places[0]?.[0] ?? null;
+    input.laneFret = det ? det.f : hit ? hit.f : places[0]?.[1] ?? null;
+    input.placeLabel = places[0] ? `${shown.strings[places[0][0]]}${places[0][1]}` : noteName(m);
     $('#input-note').textContent = noteName(m);
     const where = places.slice(0, 3).map(([s, f], k) => `${det && k === 0 ? 'on ' : ''}${shown.strings[s]}${f}`).join(' · ');
     $('#input-where').textContent = [where,
@@ -3986,7 +4045,7 @@
     $('#input-monitor').checked = pref(MONITOR_KEY) === '1';
     $('#input-volume').value = pref(VOLUME_KEY) ?? '6';
     showVolume();
-    $('#input-channel').value = pref(CHANNEL_KEY) || '0';
+    $('#input-channel').value = pref(CHANNEL_KEY) || 'both';
     try {
       let saved = pref(INPUT_KEY);
       try {
@@ -4027,7 +4086,7 @@
     $('#input-bar').classList.add('hidden');
     $('#tab-input').setAttribute('aria-pressed', 'false');
     $('#tab-input').classList.remove('listening', 'match', 'off');
-    $('#tab-input-text').textContent = 'Bass input';
+    $('#tab-input-text').textContent = instrument === 'guitar' ? 'Guitar input' : 'Bass input';
   }
   // The button opens the input (first time) or shows/hides its bubble; clicking
   // elsewhere hides the bubble but keeps listening (the button then shows the note).
@@ -4218,22 +4277,30 @@
       if (f === 'x' || Math.max(ne, ns + 0.2) < t - late) continue;
       near.push({ s, pitch: open[s] + f, label: `${noteName(open[s] + f)}` });
     }
-    if (!near.length || near.some((x) => x.pitch === heard) || performance.now() - game.wrongAt < 250) return;
+    if (!near.length || near.some((x) => samePitch(heard, x.pitch)) || performance.now() - game.wrongAt < 250) return;
     game.wrongAt = performance.now();
     mistake(near[near.length - 1].s, 'WRONG', `${noteName(midi)} · tab ${near[near.length - 1].label}`);
   }
 
-  function gameListen(db, midi, raw) {
+  function gameListen(db, midi, raw, fresh, newPitch) {
     const now = tabTime();
-    // Plucks: an attack (the input jumps up from silence, or by PLUCK_DB within 40 ms:
-    // the reading before last), or a new pitch (hammer-ons, slides). Times nudged back
-    // for the readings' own delay. Pitches heard: every clear reading (judging needs a
-    // pluck too, so a stray pitch alone scores nothing).
+    // Plucks: an attack (the newest 20 ms jumping up, `fresh`; or the input jumping up
+    // from silence, or by PLUCK_DB within 40 ms), or a new pitch (two clear readings:
+    // hammer-ons, slides, and plucks the level misses). Times nudged back for the
+    // readings' own delay. Pitches heard: every clear reading (judging needs a pluck too,
+    // so a stray pitch alone scores nothing). Only the 85 ms buffer's peak used to count
+    // as an attack, and a note plucked while the last one rang often didn't raise it: the
+    // pluck came from the steady pitch (5 readings) ~120 ms late or fell out of the
+    // window (combos broke while on time; the user: "lag between hitting a note and it
+    // showing"). Simulated perfect player on Electra: see CLAUDE.md.
     const fix = inputCalibration;                        // this setup's measured delay (Calibrate)
     const before = Math.min(game.prevDb, game.prevDb2 ?? game.prevDb);
-    const attack = (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
-    if (attack) { game.plucks.push({ t: now - 0.03 - fix, used: null }); game.lastAttack = now; }
-    else if (midi !== null && midi !== game.lastMidi) game.plucks.push({ t: now - 0.12 - fix, used: null });
+    const attack = fresh || (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
+    // Every sign of a pluck is kept (a pluck often shows on two readings): a note that
+    // lost its pluck to a neighbour can still find one, and a spare pluck scores nothing
+    // without its pitch. De-duplicating them cost notes (22 missed vs 12 on a 40 s test).
+    if (attack) { game.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null }); game.lastAttack = now; }
+    if (newPitch) game.plucks.push({ t: now - 0.06 - fix, used: null, soft: true });
     game.prevDb2 = game.prevDb; game.prevDb = db;
     if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift]);   // the tab is for the song as is
     // A wrong note needs a real attack just before it: lifting a finger lets the open
@@ -4253,17 +4320,45 @@
     for (let k = game.next; k < notes.length && notes[k][0] - early <= now; k++) {
       if (game.result[k]) continue;
       const ns = notes[k][0], pitch = pitchOfNote(k);
-      const pluck = game.plucks.find((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03));
-      const heard = pitch === null || game.heard.some(([t, m]) => m === pitch && t >= ns - early && t <= ns + late + 0.15);
+      const cands = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03));
+      const match = pitch === null ? null : game.heard.find(([t, m]) => samePitch(m, pitch) && t >= ns - early && t <= ns + late + 0.15);
+      const heard = pitch === null || !!match;
+      // The pluck that started this note: the last one before its pitch was first heard.
+      // An earlier one belongs to whatever was played before (a note the tab doesn't have
+      // took the pluck and made the right note look "messy").
+      const pluck = !cands.length ? null : (match && cands.filter((p) => p.t <= match[0] + 0.03).pop()) || cands[0];
       if (pluck && heard) {
         pluck.used = ns;
-        // Messy (user: "I was off note and slid on and it still counted"): after the pluck,
-        // two or more clear readings of another pitch (not an octave error, not the tab's
-        // previous note, which can ring on or be a written slide) before this one. Still
-        // scores, but the combo ends.
-        const prevPitch = k > 0 ? pitchOfNote(k - 1) : null;
-        const offs = pitch === null ? [] : game.heard.filter(([t, m]) => t > pluck.t + 0.01 && m !== pitch && (m - pitch) % 12 !== 0 && m !== prevPitch);
-        const messy = offs.length >= 2;
+        // Messy (user: "I was off note and slid on and it still counted"): the note began
+        // without a pluck of its own (a pitch change: a slide or hammer-on) and the real
+        // pluck just before it (0.35 s) was on a wrong note: 2+ clear readings of a pitch
+        // that isn't this one, an octave of it, or one of the tab's last 3 notes (those
+        // ring on). Or it was plucked but 3+ such readings came before its pitch. Notes the
+        // imported tab marks as slid or hammered into are never messy (Guitar Pro marks;
+        // the user's tabs have up to ~30 a song). Still scores; the combo ends.
+        const recentTab = new Set();
+        for (let j = Math.max(0, k - 3); j < k; j++) recentTab.add(pitchOfNote(j));
+        const isOff = (m) => m !== pitch && (m - pitch) % 12 !== 0 && !recentTab.has(m);
+        // A wrong note actually held: 3+ readings in a row (~60 ms) of the same wrong pitch.
+        // Pitches a slide only passes through (one or two readings each) don't count.
+        const heldWrong = (from, to) => {
+          let run = 0, last = null;
+          for (const [t, m] of game.heard) {
+            if (t <= from || t >= to) continue;
+            run = isOff(m) && m === last ? run + 1 : isOff(m) ? 1 : 0;
+            last = m;
+            if (run >= 3) return true;
+          }
+          return false;
+        };
+        let messy = false;
+        if (notes[k][4] === true) messy = false;           // the tab says it's slid or hammered into
+        else if (pitch !== null && pluck.soft) {
+          const hard = game.plucks.filter((p) => !p.soft && p.t < pluck.t && p.t > pluck.t - 0.35).pop();
+          if (hard) messy = heldWrong(hard.t, pluck.t + 0.06);
+        } else if (pitch !== null && match) {
+          messy = heldWrong(pluck.t + 0.01, match[0]);
+        }
         game.result[k] = 'hit'; game.hitAt[k] = now;
         game.grade[k] = messy ? 'Messy' : Math.abs(pluck.t - ns) < perfect ? 'Perfect' : 'Good';
         game.laneHit[notes[k][2]] = now;
@@ -4579,15 +4674,15 @@
   const TIMING_SHOW_KEY = 'track-splitter-show-timing';
   let timingShown = pref(TIMING_SHOW_KEY) === '1';
   const practice = { plucks: [], heard: [], prevDb: -100, lastMidi: null, judged: new Set(), labels: [], offsets: [], lastT: 0 };
-  function practiceListen(db, midi, raw) {
+  function practiceListen(db, midi, raw, fresh, newPitch) {
     const now = tabTime();
     if (Math.abs(now - practice.lastT) > 1) { practice.plucks = []; practice.heard = []; practice.judged.clear(); }   // jumped elsewhere
     practice.lastT = now;
     const fix = inputCalibration;                        // same plucks and pitches as the game (gameListen)
     const before = Math.min(practice.prevDb, practice.prevDb2 ?? practice.prevDb);
-    const attack = (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
-    if (attack) { practice.plucks.push({ t: now - 0.03 - fix, used: null }); practice.lastAttack = now; }
-    else if (midi !== null && midi !== practice.lastMidi) practice.plucks.push({ t: now - 0.12 - fix, used: null });
+    const attack = fresh || (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
+    if (attack) { practice.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null }); practice.lastAttack = now; }
+    if (newPitch) practice.plucks.push({ t: now - 0.06 - fix, used: null });
     practice.prevDb2 = practice.prevDb; practice.prevDb = db; practice.lastMidi = midi;
     if (raw !== null) practice.heard.push([now - 0.05 - fix, raw - player.shift]);
     const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
@@ -4598,7 +4693,7 @@
       if (practice.judged.has(k) || notes[k][3] === 'x') continue;
       const ns = notes[k][0], pitch = open[notes[k][2]] + notes[k][3];
       const pluck = practice.plucks.find((q) => q.t >= ns - early && q.t <= ns + late && (q.used === null || Math.abs(q.used - ns) < 0.03));
-      if (!pluck || !practice.heard.some(([t, m]) => m === pitch && t >= ns - early && t <= ns + late + 0.15)) continue;
+      if (!pluck || !practice.heard.some(([t, m]) => samePitch(m, pitch) && t >= ns - early && t <= ns + late + 0.15)) continue;
       pluck.used = ns;
       practice.judged.add(k);
       const dt = pluck.t - ns, msOff = Math.round(Math.abs(dt) * 1000);
@@ -4625,7 +4720,7 @@
         const [ns, ne, s, f] = notes[k];
         if (f !== 'x' && Math.max(ne, ns + 0.2) >= t - late) near.push({ s, pitch: open[s] + f });
       }
-      if (near.length && !near.some((x) => x.pitch === heard) && performance.now() - (practice.wrongAt || 0) > 250) {
+      if (near.length && !near.some((x) => samePitch(heard, x.pitch)) && performance.now() - (practice.wrongAt || 0) > 250) {
         practice.wrongAt = performance.now();
         practice.labels.push({ s: near[near.length - 1].s, at: performance.now(), text: `Wrong: ${noteName(midi)}`, colour: '#f87171' });
       }
@@ -4798,6 +4893,7 @@
   if (stringCal?.samples?.length) stringModel = fitStrings(stringCal.samples);
   function readString(buf, raw) {
     if (strcal.on) { strcalHeard(buf, raw); return; }
+    if (instrument !== 'bass') return;                  // the calibration is the user's bass
     raw ??= input.recent.findLast((m) => m !== null) ?? null;   // low notes: YIN may not be sure yet
     if (raw === null) return;
     if (!stringModel) return;

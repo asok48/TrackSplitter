@@ -24,7 +24,9 @@ in use. Ground rules agreed so far (kept here so every computer's session has th
 - Test on a copy of the library (a spare port and `OUTPUT_DIR` pointed at a scratch
   copy), never the user's real `~/Music/Track Splitter`; reading it for analysis is fine.
 - After every change, load the page and check for errors and that the main screens
-  (song list, player bar, tab view, game) still appear: a stray closing tag once pushed
+  (song list, player bar, tab view, game) still appear (`drawHighway` / `drawGame`
+  return early when their canvas is under 60 px: at ~0 height while the view opened,
+  sizes went negative and `arc` threw, which broke the page when opening a tab): a stray closing tag once pushed
   the player bar off screen, and removing the Guitar Hero look took the 3D/Flat
   setting's code with it.
 - Mac-only paths (app shortcut, MPS fallback, certificate fix) were written on Windows;
@@ -468,10 +470,21 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     notes"): the string's strike button gets a white ring (green on a match, amber when
     it's the right note on another string) and the fret number, between notes too
     (`input.lane`, see String detection).
-  - Messy notes (user: "I was off note and slid on and it still counted"): a hit whose
-    pluck is followed by 2+ clear readings of another pitch (not an octave, not the
-    tab's previous note: that can ring on or be a written slide) still scores but ends
-    the combo; amber "MESSY · combo lost" instead of PERFECT/GOOD.
+  - Messy notes (user: "I was off note and slid on and it still counted"): still scores
+    but ends the combo; amber "MESSY · combo lost" instead of PERFECT/GOOD. A note takes
+    the pluck closest before its pitch is first heard (an earlier one belongs to whatever
+    was played before; taking it made clean notes look messy). Messy when the note
+    started without a pluck of its own (a pitch change, `soft`: slid or hammered) and the
+    real pluck within 0.35 s before was on a wrong note actually held (3+ readings in a
+    row of one pitch that isn't this one, an octave, or one of the tab's last 3 notes;
+    pitches a slide passes through don't count), or it was plucked but such a held wrong
+    note came before its pitch. Never for notes the imported tab marks as slid or
+    hammered into (`legato`, the 5th value of a note; Guitar Pro slide-into / slide-to-
+    next / hammer-on and pull-off marks, read by tabimport; `IMPORT_RULES` 3 re-syncs old
+    imports; MCR has 32 such notes, You Only Live Once 28, Electra none). The user felt
+    combos broke while on time: the first version fired on clean playing (e.g. a note
+    the tab doesn't have, plucked just before). Simulated Electra: 0 false MESSY in 40 s;
+    a held wrong note slid into the right one: MESSY.
   - Pause is a pill at the top centre (the HUD has the corners).
 - Game settings (user: "a settings page in the pause menu, like changing the look"):
   `#settings-dlg`, opened from the pause menu's Settings (Done returns to it) or
@@ -494,6 +507,15 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   note needs a real attack within 0.3 s: lifting a finger lets an open string ring
   (a new pitch with no attack), which used to flag a mistake. Same in Show my timing.
   Simulated perfect run: 52 streak, 100%, no stray WRONG/MISS.
+  Plucks (user: "I can't keep a combo even though I'm on", "lag between when I hit a
+  note and it shows"): the 85 ms buffer's peak often didn't rise when a note was
+  plucked while the last one rang, so the pluck came from the steady pitch (5
+  readings) ~120 ms late, or fell out of the window. Now an attack is also the newest
+  20 ms jumping 4 dB (`plucked`, as for string detection), and a new pitch from 2
+  matching readings adds a `soft` pluck; every sign is kept (de-duplicating cost notes:
+  22 vs 12 missed). Simulated Electra (40 s from 30 s): hits judged a median 119 -> ~58
+  ms after the note's time (p90 274 -> ~255); misses cluster at 56-69 s in both old and
+  new (that passage of the separated track doesn't match the tab).
 - Lines spacing (user: "make sure all the notes are easy to read and spaced enough"):
   `layoutLines` re-cuts the tab's bars into lines (up to ~6.5 s) so two notes on a
   string stay >= 34 px apart, recomputed on resize; numbers only shrink for a close
@@ -685,6 +707,22 @@ with the band.
     the input track ends, or stays muted for 1.5 s, the same input is opened again
     (`reopenInput`, with a toast), and the player's audio clock is resumed if it gets
     suspended while the input is on.
+  - Inputs: Both inputs (default, `track-splitter-record-channel`) / Input 1 / Input 2,
+    always shown; Both sums the interface's two inputs (`connectChannel`, the recorder
+    worklet too), so an instrument is heard whichever input it's in. The user's brother
+    (guitar) got nothing: the choice only appeared when the browser reported 2 channels,
+    else Input 1 was used. When a browser reports one channel the drawer says only Input
+    1 can be heard (use Chrome or Input 1).
+  - Bass / Guitar (drawer's Input row, `track-splitter-instrument`; user: "add a Bass /
+    Guitar choice" for his brother): `PITCH_RANGE` bass 28-420 Hz, guitar 70-1400 Hz
+    (bass mode read a guitar's C5/E5/B5 an octave low); the readout and tuner use the
+    guitar's strings (`GUITAR`, E A D G B E, frets to 24); `samePitch` lets a note in
+    another octave count in the game, Show my timing and wrong-note checks (a guitar
+    plays a bass part an octave or two up); the board/Highway ring only shows on a
+    matching tab note (`input.lane`; `input.laneFret`, `input.placeLabel` for the fret
+    shown); string detection is off (its calibration is the bass). Labels say "Guitar
+    input". Simulated guitar tones E2-B5 all read right; the guitar tuner read B 10
+    cents sharp.
   - Opening (user hit "Couldn't open the audio input"): the remembered device id can go
     stale (browsers re-issue ids after restarts, replugging, cleared site data); then
     the default input is opened and the Scarlett found by name. Errors are explained
@@ -701,8 +739,10 @@ with the band.
     (Electra's bass track played along): 59 of 61 readings with a note matched; the 2
     others were at a note change.
   - Hear myself: the input to the speakers on a separate AudioContext with latencyHint
-    'interactive' (~16 ms in Chromium here; the player's 'playback' context is ~90 ms).
-    The switch's tooltip gives the delay and points to the interface's Direct Monitor.
+    0 (the smallest buffer; was 'interactive') at the input's sample rate, and the input
+    opened with `latency: 0` (user: "lag from when I play and hear my bass"); the
+    player's 'playback' context is ~90 ms. The drawer shows the delay ("~13 ms · Direct
+    Monitor: none" in the test browser); the interface's Direct Monitor has none.
     Volume slider 0 to +24 dB (default +6, kept per computer): the user found it too
     quiet unless they turned the interface gain up, which they don't want to do.
   - Quiet input: the meter is in dB (-60 to 0 dBFS; tooltip gives the level) and pitch

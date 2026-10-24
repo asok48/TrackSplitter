@@ -31,6 +31,8 @@ class TabNote:
     fret: int
     tie: bool = False   # continues the previous note on this string
     dead: bool = False  # muted ("x")
+    legato_in: bool = False    # slid or hammered into (Guitar Pro "slide in", hammer-on/pull-off target)
+    legato_out: bool = False   # slides or hammers on into the next note on this string
 
 
 @dataclass
@@ -81,8 +83,11 @@ def read_gp5(path):
                 for note in beat.notes:
                     if note.type.name == "rest":
                         continue
+                    slides = {s_.name for s_ in (note.effect.slides or [])}
                     bar.notes.append(TabNote(pos, beat.duration.time / 960, n - note.string, note.value,
-                                             tie=note.type.name == "tie", dead=note.type.name == "dead"))
+                                             tie=note.type.name == "tie", dead=note.type.name == "dead",
+                                             legato_in=bool(slides & {"intoFromBelow", "intoFromAbove"}),
+                                             legato_out=bool(slides & {"shiftSlideTo", "legatoSlideTo"}) or bool(note.effect.hammer)))
             bars.append(bar)
         tracks.append(TabTrack(t.name, strings, bars, float(song.tempo)))
     return tracks
@@ -165,9 +170,14 @@ def read_gp(path):
                     if string is None or fret is None:
                         continue
                     tie = note.find("Tie")
+                    # Slide flags: 1 shift slide / 2 legato slide to the next note, 16 / 32
+                    # slide in from below / above; hammer-ons and pull-offs: HopoOrigin/Destination.
+                    slide = int(props["Slide"].findtext("Flags") or 0) if "Slide" in props else 0
                     bar.notes.append(TabNote(pos, dur, int(string.findtext("String")), int(fret.findtext("Fret")),
                                              tie=tie is not None and tie.get("destination") == "true",
-                                             dead="Muted" in props))
+                                             dead="Muted" in props,
+                                             legato_in=bool(slide & 48) or "HopoDestination" in props,
+                                             legato_out=bool(slide & 3) or "HopoOrigin" in props))
                 pos += dur
             tbars.append(bar)
         name = track.findtext("Name") or ""
@@ -370,10 +380,12 @@ def play_order(bars):
 
 
 def timeline(track):
-    """[(tab time s, end s, string, fret, dead, bar number)] in playing order, ties
-    merged into the note they continue, plus the bar start times."""
+    """[(tab time s, end s, string, fret, dead, bar number, legato)] in playing order,
+    ties merged into the note they continue, plus the bar start times. legato: the note is
+    slid or hammered into (its own mark, or the note before it on that string slides or
+    hammers on to it), so it starts without a pluck of its own."""
     tempo, t, notes, bar_starts = track.tempo, 0.0, [], []
-    open_note = {}
+    open_note, leads_on = {}, {}
     for k, idx in enumerate(play_order(track.bars)):
         bar = track.bars[idx]
         changes = sorted(bar.tempos)
@@ -393,9 +405,10 @@ def timeline(track):
             if note.tie and note.string in open_note:
                 open_note[note.string][1] = end          # extend the note it continues
                 continue
-            row = [start, end, note.string, note.fret, note.dead, k]
+            row = [start, end, note.string, note.fret, note.dead, k, note.legato_in or leads_on.get(note.string, False)]
             notes.append(row)
             open_note[note.string] = row
+            leads_on[note.string] = note.legato_out
         t += at(bar.beats)
         if changes:
             tempo = changes[-1][1]
@@ -564,7 +577,7 @@ def sync(track, heard, beat=None):
         # text tabs do (matched in order, guided by the exact rhythm) fixes that.
         out, matched = _place_in_bars(track, notes, playable, heard, list(bar_audio), bar_starts, ends,
                                       lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=True)
-        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:]] for n in out],
+        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], bool(notes[k][6])] for k, n in enumerate(out)],
                 "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2)}
     # Order only (text tab): spacing inside a bar isn't reliable, and matching the whole
     # pitch sequence slips by a riff repetition (60% right on a test line). So bars are
