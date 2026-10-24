@@ -136,16 +136,43 @@
   .tab-body.highway { justify-content: stretch; perspective: 1100px; }
   /* Game: the highway gets the window (no sidebar, tab tools, subtitle or input bar;
      the input keeps listening), and nothing that would move the song can be used. */
+  /* Game mode: its own full-window stage (drawn by drawGame); of the app only a small
+     Pause button stays, over the stage. */
   body.game-on .app { grid-template-columns: 0 1fr; grid-template-rows: 1fr 0; }
-  body.game-on .player, body.game-on #tab-close { display: none; }   /* Pause (and its menu) is all a game needs */
-  body.game-on .tab-view { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto minmax(0, 1fr); gap: 8px 12px; padding: 10px 16px 12px; }   /* minmax: the canvas can't push the row taller than the window */
-  body.game-on .tab-head h2 { font-size: 16px; }
-  body.game-on .tab-body { grid-column: 1 / -1; }
-  body.game-on .highway { transform: rotateY(6deg); }   /* less tilt: more of the width used */
-  body.game-on .sidebar, body.game-on #tab-sub, body.game-on #tab-hint, body.game-on #input-bar, body.game-on #tab-section,
+  body.game-on .player, body.game-on .sidebar, body.game-on .tab-head, body.game-on #tab-hint, body.game-on #input-bar,
   body.game-on .tab-tools > :not(#tab-game) { display: none !important; }
+  body.game-on .tab-view { display: block; position: relative; padding: 0; background: #07070c; }
+  body.game-on .tab-body { position: absolute; inset: 0; }
+  body.game-on .highway { transform: none; }
+  body.game-on .tab-tools { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 5; }   /* top centre: the HUD has the corners */
+  body.game-on #tab-game { height: 34px; padding: 0 16px; border-radius: 999px; background: rgba(255, 255, 255, .08);
+                           border: 1px solid rgba(255, 255, 255, .18); color: #fff; font-weight: 700; letter-spacing: .04em;
+                           text-transform: uppercase; font-size: 12px; backdrop-filter: blur(8px); box-shadow: none; }
+  body.game-on #tab-game:hover { background: rgba(255, 255, 255, .16); }
   body.game-on #seek, body.game-on #back-btn, body.game-on #fwd-btn, body.game-on .tab-line,
   body.game-on #input-record { pointer-events: none; opacity: .4; }
+  /* Pause and results: game screens, not app dialogs. */
+  dialog.game-screen { width: min(440px, 92vw); padding: 0; border: 1px solid rgba(139, 92, 246, .45); border-radius: 22px; color: #fff;
+                       background: radial-gradient(120% 90% at 50% 0%, #2a1650 0%, #120c22 55%, #0b0814 100%);
+                       box-shadow: 0 0 0 1px rgba(255, 255, 255, .04), 0 30px 80px rgba(0, 0, 0, .7), 0 0 60px rgba(139, 92, 246, .25); }
+  dialog.game-screen::backdrop { background: rgba(4, 3, 10, .72); backdrop-filter: blur(6px); }
+  .game-screen .dlg-head { justify-content: center; padding: 26px 24px 4px; border: 0; }
+  .game-screen h2 { margin: 0; font-size: 30px; font-weight: 900; font-style: italic; letter-spacing: .02em; text-transform: uppercase;
+                    background: linear-gradient(180deg, #fff 0%, #c4b5fd 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .game-screen .dlg-body { padding: 10px 28px 8px; }
+  .game-screen .dlg-foot { justify-content: center; gap: 10px; padding: 14px 24px 26px; border: 0; background: none; }
+  .game-screen .btn { height: 42px; padding: 0 22px; border-radius: 999px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
+  .game-screen .btn.primary { background: linear-gradient(180deg, #a78bfa, #7c3aed); border: 0; box-shadow: 0 6px 20px rgba(124, 58, 237, .45); }
+  .game-screen .btn:not(.primary):not(.danger) { background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .16); color: #fff; }
+  .game-screen .btn.danger { background: rgba(240, 82, 82, .14); border: 1px solid rgba(240, 82, 82, .45); color: #fecaca; }
+  .settings-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-weight: 700; font-size: 14px; }
+  .set-range { display: flex; align-items: center; gap: 8px; width: 210px; color: rgba(255,255,255,.6); font-size: 12px; font-weight: 600; }
+  .set-range span:last-child { min-width: 3.4em; text-align: right; font-variant-numeric: tabular-nums; }
+  .game-screen .segmented { background: rgba(0,0,0,.35); border-color: rgba(255,255,255,.12); }
+  .game-stars { display: flex; justify-content: center; gap: 6px; margin: 4px 0 2px; font-size: 34px; line-height: 1; }
+  .game-stars span { color: rgba(255, 255, 255, .14); }
+  .game-stars span.on { color: #facc15; text-shadow: 0 0 18px rgba(250, 204, 21, .6); }
   .pause-body { display: flex; flex-direction: column; gap: 10px; }
   .pause-body .btn { justify-content: center; height: 40px; font-size: 15px; }
   .pause-score { margin: 0 0 6px; text-align: center; color: var(--muted); }
@@ -474,6 +501,65 @@
     :root { --player-h: 190px; }
     .upload-item .inputs, .row-2 { grid-template-columns: 1fr; }
   }
+
+  /* ---------- Finish (the user asked for a more professional look) ----------
+     One layer of refinements over the styles above: deeper, slightly cooler surfaces
+     with hairline borders, one control height (34px) and radius (10px), soft
+     shadows, visible keyboard focus, tabular numbers, and a calmer, card-like tab. */
+  :root {
+    --bg: #0b0b10; --panel: #121218; --panel-2: #191921; --hover: #20202a; --border: #262631;
+    --ring: 0 0 0 3px rgba(139, 92, 246, .35);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35); --shadow-lg: 0 18px 50px rgba(0, 0, 0, .55);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 { letter-spacing: -.02em; }
+  #time-cur, #time-dur, .song-row .num, #input-volume-db, #sync-value { font-variant-numeric: tabular-nums; }
+  ::selection { background: rgba(139, 92, 246, .35); }
+  * { scrollbar-width: thin; scrollbar-color: #2c2c38 transparent; }
+
+  /* Controls */
+  .btn { height: 34px; padding: 0 14px; border-radius: 10px; font-size: 13px; box-shadow: var(--shadow-sm);
+         transition: background .15s, border-color .15s, box-shadow .15s, transform .08s; }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn.primary { background: linear-gradient(180deg, #9a6dfa, #7c4ff0); box-shadow: 0 4px 14px rgba(124, 79, 240, .35), inset 0 1px 0 rgba(255, 255, 255, .18); }
+  .btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #a77ffb, #8a5df5); }
+  .btn.sm { height: 30px; padding: 0 12px; }
+  .btn:focus-visible, .icon-btn:focus-visible, .segmented button:focus-visible, select:focus-visible,
+  input:focus-visible, textarea:focus-visible, .vchip:focus-visible { outline: none; box-shadow: var(--ring); }
+  .segmented { padding: 3px; border-radius: 11px; background: #14141b; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .4); }
+  .segmented button { border-radius: 8px; transition: background .15s, color .15s; }
+  .segmented button.active { background: linear-gradient(180deg, #9a6dfa, #7c4ff0); box-shadow: 0 2px 8px rgba(124, 79, 240, .35), inset 0 1px 0 rgba(255, 255, 255, .18); }
+  .tab-tools select, .input-bar select { height: 30px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); padding: 0 10px; }
+  .tab-tools select:hover, .input-bar select:hover { border-color: #34343f; }
+
+  /* Song list and chips */
+  .song-row { border-radius: 12px; }
+  .song-row:hover { background: rgba(255, 255, 255, .035); }
+  .song-row.current { background: linear-gradient(90deg, rgba(139, 92, 246, .16), rgba(139, 92, 246, .04)); box-shadow: inset 2px 0 0 var(--accent); }
+  .vchip { border-radius: 999px; transition: background .15s, border-color .15s, color .15s; }
+
+  /* Player bar: a frosted strip with a lifted play button */
+  .player { background: rgba(18, 18, 24, .86); backdrop-filter: blur(14px); border-top: 1px solid rgba(255, 255, 255, .06); }
+  .play-btn { box-shadow: 0 6px 18px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .6); transition: transform .1s; }
+  .play-btn:hover:not(:disabled) { transform: scale(1.05); }
+
+  /* Tab view: the line being played sits on a card; the others recede */
+  .tab-view { gap: 12px; }
+  .tab-head h2 { font-size: 24px; font-weight: 800; }
+  .tab-line { border-radius: 14px; padding: 6px 10px; }
+  .tab-line.cur { background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .015)); border: 1px solid rgba(255, 255, 255, .06);
+                  box-shadow: var(--shadow-sm); padding: 12px 12px; }
+  .tab-line .string { stroke: #3a3a48; }
+  .tab-line .bar { stroke: #55556a; }
+  .tab-line .note text { font-weight: 700; }
+  .tab-line .note.playing rect { fill: var(--accent); filter: drop-shadow(0 0 6px rgba(139, 92, 246, .8)); }
+  .tab-line .playhead { stroke: #b49cff; stroke-width: 2; filter: drop-shadow(0 0 4px rgba(139, 92, 246, .9)); }
+  .tab-more, .input-bar { border-color: rgba(255, 255, 255, .08); box-shadow: var(--shadow-lg); border-radius: 14px; }
+
+  /* Dialogs and toasts */
+  dialog:not(.game-screen) { border: 1px solid rgba(255, 255, 255, .08); border-radius: 18px; box-shadow: var(--shadow-lg); }
+  dialog::backdrop { background: rgba(5, 5, 9, .7); backdrop-filter: blur(6px); }
+  .toast { border-radius: 12px; box-shadow: var(--shadow-lg); }
 </style>
 </head>
 <body>
@@ -563,6 +649,10 @@
         <label class="hw-speed hidden" id="hw-speed-row" title="How fast the notes come at you: slower shows more of what's ahead">
           <span>Slow</span><input type="range" id="hw-speed" min="0.4" max="1.6" step="0.1" value="1" aria-label="Highway speed"><span>Fast</span>
         </label>
+        <label class="switch hidden only-tab" id="timing-row" title="With your bass input: as each note reaches the hit line, how early or late you played it (no score)">
+          <input type="checkbox" id="timing-show"><span class="track"></span><span>Show my timing</span>
+        </label>
+        <button type="button" class="btn sm hidden only-tab" id="timing-calibrate" title="Play along normally for a few bars, then press this: your current average counts as on time from now on (for this and the game)">Calibrate</button>
         <select id="tab-tuning" aria-label="Tuning"></select>
         <label class="switch hidden" id="tab-raise-row" title="Plays the song a half step higher (same tempo), so the half-step-down shapes fit a bass in standard tuning">
           <input type="checkbox" id="tab-raise"><span class="track"></span><span>Standard bass: raise ½ step</span>
@@ -570,11 +660,7 @@
         <button type="button" class="btn sm danger hidden only-tab" id="tab-delete-note" title="Remove the selected note (Delete key)">Delete note</button>
         <button type="button" class="btn sm hidden only-tab" id="tab-undo-note" title="Put the last removed note back">Undo</button>
         <span class="tools-gap"></span>
-        <div class="segmented only-game" id="game-timing" role="group" aria-label="Timing" title="How exactly notes have to be on time">
-          <button type="button" data-timing="relaxed">Relaxed</button>
-          <button type="button" data-timing="normal">Normal</button>
-          <button type="button" data-timing="tight">Tight</button>
-        </div>
+        <button type="button" class="btn sm only-game" id="game-settings-btn" title="Look, note speed, timing, sounds">Game settings</button>
         <span class="game-best-now only-game" id="game-best-now"></span>
         <div class="input-wrap">
           <button type="button" class="btn sm" id="tab-input" aria-pressed="false" aria-haspopup="true" title="Your bass through an audio interface: see the notes you play, hear yourself, record your own tab"><span class="in-dot"></span><span id="tab-input-text">Bass input</span></button>
@@ -611,6 +697,7 @@
             <label class="switch hidden only-tab" id="tab-split-row" title="Driving parts: show repeated plucks of a note as separate notes (split on the beat). Off: notes as heard, best for held notes.">
               <input type="checkbox" id="tab-split"><span class="track"></span><span>Split repeated notes</span>
             </label>
+            <button type="button" class="btn sm hidden" id="timing-reset" title="Forget the timing calibration">Reset timing calibration</button>
             <button type="button" class="btn sm hidden only-tab" id="tab-draft" title="Copy this tab into your draft, then play over it to add notes (Bass input → Record → Add notes)">Start a draft from this tab</button>
             <button type="button" class="btn sm" id="tab-import" title="Bring in a tab you trust (Guitar Pro, MusicXML, or pasted text)">Import tab…</button>
             <button type="button" class="btn sm only-tab" id="tab-remake" title="Make this song's tab again">Redo tab</button>
@@ -749,27 +836,59 @@
   </form>
 </dialog>
 
-<dialog id="pause-dlg" class="narrow" aria-labelledby="pause-title">
+<dialog id="pause-dlg" class="game-screen" aria-labelledby="pause-title">
   <form method="dialog">
     <div class="dlg-head"><h2 id="pause-title">Paused</h2></div>
     <div class="dlg-body pause-body">
       <p class="pause-score" id="pause-score"></p>
       <button type="button" class="btn primary" id="pause-resume">Resume</button>
       <button type="button" class="btn" id="pause-restart">Restart</button>
+      <button type="button" class="btn" id="pause-settings">Settings</button>
       <button type="button" class="btn danger" id="pause-quit">Quit</button>
     </div>
   </form>
 </dialog>
 
-<dialog id="game-dlg" class="narrow" aria-labelledby="game-title">
+<dialog id="settings-dlg" class="game-screen" aria-labelledby="settings-title">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="settings-title">Settings</h2></div>
+    <div class="dlg-body settings-body">
+      <div class="set-row"><span>Look</span>
+        <div class="segmented" id="game-look" role="group" aria-label="Look">
+          <button type="button" data-look="rockband">Rock Band</button>
+          <button type="button" data-look="guitarhero">Guitar Hero</button>
+        </div></div>
+      <div class="set-row"><span>Note speed</span>
+        <label class="set-range"><span>Slow</span><input type="range" id="gs-speed" min="0.4" max="1.6" step="0.1" aria-label="Note speed"><span>Fast</span></label></div>
+      <div class="set-row"><span>Timing</span>
+        <div class="segmented" id="game-timing" role="group" aria-label="Timing" title="How exactly notes have to be on time">
+          <button type="button" data-timing="relaxed">Relaxed</button>
+          <button type="button" data-timing="normal">Normal</button>
+          <button type="button" data-timing="tight">Tight</button>
+        </div></div>
+      <div class="set-row"><span>Mistake sound</span>
+        <label class="switch"><input type="checkbox" id="mistake-sound"><span class="track"></span></label></div>
+      <div class="set-row"><span>Hear myself</span>
+        <label class="switch"><input type="checkbox" id="gs-monitor"><span class="track"></span></label></div>
+      <div class="set-row"><span>My bass volume</span>
+        <label class="set-range"><input type="range" id="gs-monvol" min="0" max="24" step="1" aria-label="My bass volume"><span id="gs-monvol-db"></span></label></div>
+      <div class="set-row"><span>Song volume</span>
+        <label class="set-range"><input type="range" id="gs-volume" min="0" max="100" aria-label="Song volume"><span id="gs-volume-pct"></span></label></div>
+    </div>
+    <div class="dlg-foot"><button type="button" class="btn primary" id="settings-done">Done</button></div>
+  </form>
+</dialog>
+
+<dialog id="game-dlg" class="game-screen" aria-labelledby="game-title">
   <form method="dialog">
     <div class="dlg-head">
-      <h2 id="game-title">Your score</h2>
+      <h2 id="game-title">Song complete</h2>
       <button type="button" class="icon-btn" data-close aria-label="Close">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
       </button>
     </div>
     <div class="dlg-body game-results">
+      <div class="game-stars" id="game-stars" aria-label="Stars"></div>
       <div class="game-score" id="game-score">0</div>
       <p class="game-best" id="game-best"></p>
       <dl>
@@ -1974,15 +2093,7 @@
       tabView.hasMine = !!data.has_mine;
       tabView.selected = null;
       tabView.outdated = !!data.outdated;
-      if (tabView.data) {
-        // Which notes fall in each line (notes are sorted by time).
-        let k = 0;
-        tabView.lineNotes = data.lines.map(([, end]) => {
-          const from = k;
-          while (k < data.notes.length && data.notes[k][0] < end) k++;
-          return [from, k];
-        });
-      }
+      if (tabView.data) layoutLines(tabView.data);
       renderTabHead();
       tabView.line = -1;
       tabFrame(true);
@@ -2007,6 +2118,10 @@
     $('#tab-mode').classList.toggle('hidden', !d);
     $('#tab-game').classList.toggle('hidden', !d);
     $('#hw-speed-row').classList.toggle('hidden', !d || (tabMode !== 'highway' && tabView.section !== 'game'));
+    $('#timing-row').classList.toggle('hidden', !d || tabMode !== 'highway');
+    $('#timing-show').checked = timingShown;
+    $('#timing-calibrate').classList.toggle('hidden', !d || tabMode !== 'highway' || !timingShown);
+    $('#timing-reset').classList.toggle('hidden', !inputCalibration);
     if (d) {
       let bests = {};
       try { bests = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* none */ }
@@ -2090,6 +2205,64 @@
     return lo;
   };
 
+  // The song's quickest gaps between notes on one string (2nd percentile, ignoring
+  // grace notes under 30 ms): what the Highway and game keep readable.
+  function minLaneGap(d) {
+    if (d.minLaneGap === undefined) {
+      const { next } = laneLinks(d);
+      const gaps = next.map((j, k) => (j < 0 ? null : d.notes[j][0] - d.notes[k][0])).filter((v) => v !== null && v > 0.03).sort((a, b) => a - b);
+      d.minLaneGap = gaps.length ? gaps[Math.floor(gaps.length * 0.02)] : 0.5;
+    }
+    return d.minLaneGap;
+  }
+
+  // Per note: the next / previous note on the same string (-1: none), cached.
+  function laneLinks(d) {
+    if (!d.lanes) {
+      const next = new Array(d.notes.length).fill(-1), prev = new Array(d.notes.length).fill(-1), last = {};
+      d.notes.forEach(([, , s], k) => { if (last[s] !== undefined) { next[last[s]] = k; prev[k] = last[s]; } last[s] = k; });
+      d.lanes = { next, prev };
+    }
+    return d.lanes;
+  }
+
+  // Lines for the Lines view, from the tab's bars: each line takes as many bars as fit
+  // (up to ~6.5 s) while two notes on the same string stay >= 34 px apart (a two-digit
+  // fret at full size), so busy passages get fewer bars per line instead of tiny
+  // numbers (the user: "make sure all the notes are easy to read and spaced enough").
+  function layoutLines(d) {
+    const src = d.serverLines || (d.serverLines = d.lines);
+    const bounds = [...new Set(src.flatMap(([a, , bars]) => [a, ...bars]))].sort((a, b) => a - b);
+    const last = src[src.length - 1][1], endOf = (j) => (j < bounds.length ? bounds[j] : last);
+    const usable = Math.max(300, $('#tab-body').clientWidth) - 30 - 24, need = 34;
+    const { next } = laneLinks(d);
+    const fits = (a, b) => {
+      const scale = usable / (b - a);
+      for (let k = 0; k < d.notes.length; k++) {
+        const t0 = d.notes[k][0];
+        if (t0 < a) continue;
+        if (t0 >= b) break;
+        const j = next[k];
+        if (j >= 0 && d.notes[j][0] < b && (d.notes[j][0] - t0) * scale < need) return false;
+      }
+      return true;
+    };
+    const lines = [];
+    for (let i = 0; i < bounds.length;) {
+      let j = i + 1;
+      while (j < bounds.length && endOf(j + 1) - bounds[i] <= 6.5 && fits(bounds[i], endOf(j + 1))) j++;
+      lines.push([bounds[i], endOf(j), bounds.slice(i + 1, j)]);
+      i = j;
+    }
+    d.lines = lines;
+    let k = 0;                                           // which notes fall in each line (sorted by time)
+    tabView.lineNotes = lines.map(([, end]) => {
+      const from = k;
+      while (k < d.notes.length && d.notes[k][0] < end) k++;
+      return [from, k];
+    });
+  }
+
   // One line as an SVG tab staff: string names, strings, bar lines, fret numbers placed by time.
   function tabLineSvg(i, big) {
     const d = tabView.data, [start, end, bars] = d.lines[i];
@@ -2133,10 +2306,11 @@
       const [t, te] = d.notes[k];
       if (holdEnd(k) > start + 0.05 && te > start) notes.push([t, te, null, tail(k, start)]);
     }
-    // Numbers squeezed between close neighbours (fast notes, two-digit frets) shrink just
-    // enough not to overlap; the rest stay full size.
-    const room = (k) => Math.min(k > from ? x(d.notes[k][0]) - x(d.notes[k - 1][0]) : Infinity,
-                                 k < to - 1 ? x(d.notes[k + 1][0]) - x(d.notes[k][0]) : Infinity);
+    // A number only shrinks if a note on the same string is too close (notes on other
+    // strings are on other rows); lines are laid out so that's rare (layoutLines).
+    const lanes = laneLinks(d);
+    const room = (k) => Math.min(lanes.prev[k] >= 0 ? x(d.notes[k][0]) - x(d.notes[lanes.prev[k]][0]) : Infinity,
+                                 lanes.next[k] >= 0 ? x(d.notes[lanes.next[k]][0]) - x(d.notes[k][0]) : Infinity);
     for (let k = from; k < to; k++) {
       const [t, te, s, f] = d.notes[k];
       const size = Math.max(font * 0.55, Math.min(font, (room(k) - 2) / (String(f).length * 0.62 + 0.25)));
@@ -2208,6 +2382,7 @@
     if (!tabView.open) return;
     if (!tabView.data) { if (force) renderTabEmpty(); return; }
     const t = tabTime();
+    if (game.on) { drawGame(t, force); return; }
     if (tabMode === 'highway' || tabView.section === 'game') { drawHighway(t, force); return; }
     if ($('#tab-body').classList.contains('highway')) { $('#tab-body').classList.remove('highway'); force = true; }
     const i = lineAt(t);
@@ -2271,14 +2446,15 @@
     const names = showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : d.tunings.find((x) => x.key === d.tuning).strings;
     // Like tab: highest string on top, notes travel right to left to a hit line on the left.
     // As big as the window allows (the user found the first version small and fast).
-    // In a game the lanes may grow taller, below a strip kept for the score.
-    const hud = game.on ? 100 : 0;
-    const n = names.length, rowH = Math.min(game.on ? 170 : 120, (H - 16 - hud) / n), top = hud + (H - hud - rowH * n) / 2;
+    const n = names.length, rowH = Math.min(120, (H - 16) / n), top = (H - rowH * n) / 2;
     const gemH = Math.min(52, rowH * 0.68), nameSize = Math.max(13, Math.min(22, rowH * 0.3));
     const hitX = Math.max(84, nameSize * 2.2 + gemH * 0.9);
     // Speed: the speed slider times 3 s ahead in this window (kept within 120-420 px/s).
     // Notes that come close at slow speeds get narrower gems instead of overlapping.
-    const perSec = Math.max(120, Math.min(420, (W - hitX) / AHEAD)) * hwSpeed;
+    // ...but never so slow that two notes on a string get closer than a readable gem and
+    // a gap (the song's quickest same-string gaps, 2nd percentile; at most 900 px/s).
+    const minGem = Math.max(32, gemH * 0.85);
+    const perSec = Math.max(Math.max(120, Math.min(420, (W - hitX) / AHEAD)) * hwSpeed, Math.min(900, (minGem + 10) / minLaneGap(d)));
     if (!d.laneNext) {   // per note: the next / previous note on the same string
       d.laneNext = new Array(d.notes.length).fill(-1);
       d.lanePrev = new Array(d.notes.length).fill(-1);
@@ -2294,7 +2470,7 @@
       const gaps = d.laneNext.map((j, k) => (j < 0 ? null : d.notes[j][0] - d.notes[k][0])).filter((v) => v !== null && v > 0.03).sort((a, b) => a - b);
       d.quickLaneGap = gaps.length ? gaps[Math.floor(gaps.length * 0.1)] : 0.5;
     }
-    const gemW = Math.max(gemH * 0.7, Math.min(gemH * 1.25, d.quickLaneGap * perSec - 4));
+    const gemW = Math.max(minGem, Math.min(gemH * 1.25, d.quickLaneGap * perSec - 8));
     const gemFont = Math.round(Math.max(11, Math.min(gemH * 0.62, (gemW - 8) / 1.3)));
 
     const laneColor = (s) => LANE_COLORS[s % LANE_COLORS.length];
@@ -2334,11 +2510,8 @@
     g.beginPath(); g.moveTo(hitX, laneTop - 4); g.lineTo(hitX, laneBottom + 4); g.stroke();
     g.shadowBlur = 0;
     for (let s = 0; s < n; s++) {
-      const lit = game.on && t - (game.laneHit?.[s] ?? -9) < 0.15;
-      const pop = game.on ? Math.max(0, 1 - (performance.now() - (game.laneHitMs?.[s] ?? -1e9)) / 160) : 0;   // swells on a hit
-      g.lineWidth = 3; g.strokeStyle = laneColor(s);
-      g.fillStyle = lit ? laneColor(s) : 'rgba(10,10,14,0.85)';
-      g.beginPath(); g.arc(hitX, cy(s), gemH * 0.5 * (1 + 0.35 * pop), 0, Math.PI * 2); g.fill(); g.stroke();
+      g.lineWidth = 3; g.strokeStyle = laneColor(s); g.fillStyle = 'rgba(10,10,14,0.85)';
+      g.beginPath(); g.arc(hitX, cy(s), gemH * 0.5, 0, Math.PI * 2); g.fill(); g.stroke();
     }
     g.lineWidth = 1;
     g.font = `700 ${Math.round(nameSize)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -2354,28 +2527,8 @@
       let end = Math.max(ne, ns);
       for (let j = k + 1; j < notes.length && notes[j][0] < end; j++) if (notes[j][2] === s) { end = notes[j][0]; break; }
       const holding = ns <= t && t < Math.max(end, ns + 0.12);
-      if (!holding && ns < t - BEHIND && !(game.on && game.result[k] === 'hit')) continue;
-      // In a game: a hit gem bursts on its target and goes (unless it's being held), with
-      // "Perfect!" or "Good" floating up; a missed one turns grey.
-      const res = game.on ? game.result[k] : null;
-      if (res === 'hit' && !holding) {
-        const age = t - (game.hitAt[k] ?? t);
-        if (age < 0.3) {
-          g.globalAlpha = 1 - age / 0.3;
-          g.strokeStyle = laneColor(s); g.lineWidth = 4;
-          g.beginPath(); g.arc(hitX, cy(s), gemH * (0.6 + age * 2.2), 0, Math.PI * 2); g.stroke();
-          g.lineWidth = 1;
-        }
-        if (age < 0.7) {
-          g.globalAlpha = Math.max(0, 1 - age / 0.7);
-          g.fillStyle = game.grade[k] === 'Perfect' ? '#facc15' : '#e5e7eb';
-          g.font = `800 ${Math.round(gemH * 0.42)}px system-ui, sans-serif`;
-          g.fillText(game.grade[k] === 'Perfect' ? 'Perfect!' : 'Good', hitX + gemH * 1.4, cy(s) - gemH * 0.5 - age * 40);
-        }
-        g.globalAlpha = 1;
-        continue;
-      }
-      const lane = res === 'miss' ? '#6b7280' : laneColor(s);
+      if (!holding && ns < t - BEHIND) continue;
+      const lane = laneColor(s);
       if (end - ns > 0.15 && end > t) {                    // tail
         const from = holding ? hitX : x(ns), to = x(end), th = gemH * 0.34;
         g.globalAlpha = holding ? 0.9 : 0.45; g.fillStyle = lane;
@@ -2400,84 +2553,36 @@
       g.fillText(f, gx, cy(s) + 1);
       g.globalAlpha = 1;
     }
-    // Hit animation (a game only), on its own clock: a flash and a spray of sparks in the
-    // string's colour per hit (gold ones too for a Perfect); while a long note is held,
-    // sparks stream from its target and it glows.
-    if (game.on) {
-      const ms = performance.now();
-      const spray = (s, count, speed, colour, life) => {
-        for (let i = 0; i < count; i++) {
-          const a = -Math.PI * (0.05 + Math.random() * 0.9), v = speed * (0.35 + Math.random() * 0.65);   // upwards, fanned out
-          game.sparks.push({ x: hitX, y: cy(s), vx: Math.cos(a) * v + 60, vy: Math.sin(a) * v, born: ms, life: life * (0.6 + Math.random() * 0.6), colour, size: 1.5 + Math.random() * 2.5 });
-        }
-      };
-      for (const b of game.bursts) {
-        if (b.sprayed) continue;
-        b.sprayed = true;
-        spray(b.s, 18, 380, laneColor(b.s), 0.55);
-        if (b.perfect) spray(b.s, 8, 300, '#facc15', 0.6);
-      }
-      const holding = [...Array(n).keys()].filter((s) => ms - (game.sustain[s] ?? -1e9) < 120);
-      for (const s of holding) spray(s, 2, 220, laneColor(s), 0.35);
-      game.bursts = game.bursts.filter((b) => ms - b.at < 400);
-      game.sparks = game.sparks.filter((p) => (ms - p.born) / 1000 < p.life).slice(-600);
-      g.globalCompositeOperation = 'lighter';
-      const glow = (s, r, alpha) => {
-        const grad = g.createRadialGradient(hitX, cy(s), 0, hitX, cy(s), r);
-        grad.addColorStop(0, `${laneColor(s)}dd`); grad.addColorStop(0.45, `${laneColor(s)}55`); grad.addColorStop(1, `${laneColor(s)}00`);
-        g.globalAlpha = alpha; g.fillStyle = grad;
-        g.beginPath(); g.arc(hitX, cy(s), r, 0, Math.PI * 2); g.fill();
-      };
-      for (const b of game.bursts) {
-        const age = (ms - b.at) / 1000;
-        if (age < 0.28) glow(b.s, gemH * (0.6 + age * 7), 1 - age / 0.28);
-      }
-      for (const s of holding) glow(s, gemH * (1.1 + 0.18 * Math.sin(ms / 55)), 0.8);
-      for (const p of game.sparks) {
-        const a = (ms - p.born) / 1000, a0 = Math.max(0, a - 0.035);
-        const at = (u) => [p.x + p.vx * u, p.y + p.vy * u + 300 * u * u];   // falling a little
-        const [x0, y0] = at(a0), [x1, y1] = at(a);
-        g.globalAlpha = 1 - a / p.life; g.strokeStyle = p.colour; g.lineWidth = p.size; g.lineCap = 'round';
-        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-      }
-      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineWidth = 1; g.lineCap = 'butt';
-    }
-    // Game: how far into the song (a thin bar along the top), the score panel top right
-    // (score, a multiplier badge, streak and accuracy), the countdown in the middle.
-    if (game.on) {
-      const dur = duration() || 1;
-      g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, 0, W, 4);
-      g.fillStyle = color('--accent'); g.fillRect(0, 0, (W * Math.min(1, currentTime() / dur)), 4);
-      const m = multiplier(), badge = ['#6b7280', '#60a5fa', '#4ade80', '#facc15'][m - 1];
-      const pw = 210, ph = 74, px = W - pw - 12, py = 14;
-      g.fillStyle = 'rgba(8,8,12,0.72)';
-      g.beginPath(); g.roundRect(px, py, pw, ph, 12); g.fill();
-      g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-      g.fillStyle = color('--text'); g.font = '800 30px system-ui, sans-serif';
-      g.fillText(game.score.toLocaleString(), px + 14, py + 36);
-      g.fillStyle = color('--muted'); g.font = '600 13px system-ui, sans-serif';
-      g.fillText(`streak ${game.streak}${game.judged ? `  ·  ${Math.round((game.hits / game.judged) * 100)}%` : ''}`, px + 14, py + 60);
-      g.fillStyle = badge;                                    // pulses when the multiplier goes up
-      g.beginPath(); g.arc(px + pw - 34, py + ph / 2, 22 * (1 + 0.45 * Math.max(0, 1 - (performance.now() - game.multAt) / 350)), 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#111'; g.font = '800 17px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(`×${m}`, px + pw - 34, py + ph / 2 + 1);
-      // Streak milestones (every 50): "100 note streak!" across the highway for a moment.
-      const since = game.milestone ? performance.now() - game.milestone.at : Infinity;
-      if (since < 1400) {
-        g.globalAlpha = Math.min(1, (1400 - since) / 400);
-        g.fillStyle = '#facc15'; g.font = `800 ${Math.round(Math.min(56, H * 0.1) * (1 + 0.25 * Math.max(0, 1 - since / 250)))}px system-ui, sans-serif`;
-        g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.shadowColor = '#facc15'; g.shadowBlur = 20;
-        g.fillText(`${game.milestone.n} note streak!`, W / 2, hud + (H - hud) * 0.22);
-        g.shadowBlur = 0; g.globalAlpha = 1;
-      }
-      if (game.countdown) {
-        g.fillStyle = 'rgba(8,8,12,0.6)';
-        g.beginPath(); g.arc(W / 2, H / 2, H * 0.22, 0, Math.PI * 2); g.fill();
-        g.fillStyle = color('--text'); g.font = `800 ${Math.round(H * 0.28)}px system-ui, sans-serif`;
-        g.fillText(String(game.countdown), W / 2, H / 2 + 2);
-      }
+    // Show my timing: each note you played rises from its target as "Perfect" or "Early
+    // / Late n ms"; top right the average of the last 16.
+    if (timingShown && !game.on && !input.stream) {          // nothing to time without the bass input
+      g.textAlign = 'right'; g.textBaseline = 'top';
+      g.fillStyle = '#fbbf24'; g.font = '700 14px system-ui, sans-serif';
+      g.fillText('Bass input is off: open Bass input to see your timing', W - 14, 10);
       g.textAlign = 'center'; g.textBaseline = 'middle';
+    }
+    if (timingShown && !game.on) {
+      const ms = performance.now();
+      practice.labels = practice.labels.filter((l) => ms - l.at < 1100);
+      for (const l of practice.labels) {
+        if (l.s >= n) continue;
+        const age = (ms - l.at) / 1000;
+        g.globalAlpha = Math.max(0, 1 - age / 1.1);
+        g.strokeStyle = l.colour; g.lineWidth = 3;
+        g.beginPath(); g.arc(hitX, cy(l.s), gemH * (0.55 + age * 0.6), 0, Math.PI * 2); g.stroke();
+        g.fillStyle = l.colour; g.font = `800 ${Math.round(gemH * 0.4)}px system-ui, sans-serif`;
+        g.fillText(l.text, hitX + gemH * 2.1, cy(l.s) - gemH * 0.5 - age * 36);
+        g.globalAlpha = 1; g.lineWidth = 1;
+      }
+      if (practice.offsets.length >= 3) {
+        const avg = Math.round((practice.offsets.reduce((a, v) => a + v, 0) / practice.offsets.length) * 1000);
+        g.textAlign = 'right'; g.textBaseline = 'top';
+        g.fillStyle = Math.abs(avg) <= 30 ? '#4ade80' : '#fbbf24'; g.font = '800 15px system-ui, sans-serif';
+        g.fillText(Math.abs(avg) <= 10 ? 'Avg: right on time' : `Avg: ${Math.abs(avg)} ms ${avg < 0 ? 'early' : 'late'}`, W - 14, 10);
+        g.fillStyle = color('--muted'); g.font = '600 12px system-ui, sans-serif';
+        g.fillText(`last ${practice.offsets.length} notes`, W - 14, 30);
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+      }
     }
     // What's coming in from the bass input: a ring on the hit line in the note's lane,
     // green when it's the tab's note.
@@ -2491,6 +2596,482 @@
       g.fillStyle = color('--text');
       g.font = `700 ${Math.round(gemH * 0.42)}px system-ui, sans-serif`;
       g.fillText(noteName(input.note), hitX, cy(input.lane) - r - 9);
+    }
+  }
+
+  // --- Game stage -------------------------------------------------------------------
+  // The game's stage: dark, two slowly sweeping lights, dust drifting up, a vignette.
+  function drawStage(g, W, H, ms) {
+    const bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#06060b'); bg.addColorStop(1, '#130b22');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+    for (const [phase, colour] of [[0, 'rgba(139,92,246,0.20)'], [2.2, 'rgba(56,189,248,0.12)']]) {
+      const lx = W * (0.5 + 0.38 * Math.sin(ms / 2600 + phase)), light = g.createRadialGradient(lx, -H * 0.15, 0, lx, -H * 0.15, H * 1.15);
+      light.addColorStop(0, colour); light.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = light; g.fillRect(0, 0, W, H);
+    }
+    for (let i = 0; i < 46; i++) {
+      const px = (i * 997 + ms * 0.004 * (1 + (i % 3))) % W, py = H - ((i * 619 + ms * 0.018 * (1 + (i % 4))) % (H + 40)) + 20;
+      g.fillStyle = `rgba(200,190,255,${0.05 + (i % 5) * 0.025})`;
+      g.beginPath(); g.arc(px, py, 1 + (i % 3) * 0.6, 0, Math.PI * 2); g.fill();
+    }
+    g.globalCompositeOperation = 'source-over';
+    const vignette = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)'); vignette.addColorStop(1, 'rgba(0,0,0,0.55)');
+    g.fillStyle = vignette; g.fillRect(0, 0, W, H);
+  }
+
+  // The game's own look (the Tab section's Highway stays plain): a stage with moving
+  // lights, a fretboard in perspective (notes come out of the distance on the right
+  // toward the strike line on the left, lanes converging), chunky gems, strike buttons,
+  // hit sparks, and a game HUD (title, score, multiplier ring, groove meter, progress).
+  function drawGame(t, force) {
+    const body = $('#tab-body');
+    let cv = tabView.canvas;
+    if (force || !cv || !body.contains(cv)) {
+      cv = tabView.canvas = el('canvas', { className: 'highway' });
+      cv.addEventListener('click', () => pauseGame());
+      body.classList.add('highway');
+      body.replaceChildren(cv);
+    }
+    const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (!W || !H) return;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ms = performance.now(), d = tabView.data, notes = d.notes;
+    const names = showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : d.tunings.find((x) => x.key === d.tuning).strings;
+    const n = names.length, laneColor = (s) => LANE_COLORS[s % LANE_COLORS.length];
+
+    drawStage(g, W, H, ms);
+    // The groove (how the last 24 notes went) shows on the board itself (the user wanted
+    // it part of the tab, as in Guitar Hero): the rails and strike line glow green when
+    // it's going well, yellow, then pulsing red; at x4 and grooving the board lights up.
+    const groove = game.recent.length ? game.recent.reduce((a, v) => a + v, 0) / game.recent.length : 0.75;
+    const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+    const grooveRgb = groove < 0.5 ? mix([239, 68, 68], [250, 204, 21], groove / 0.5) : mix([250, 204, 21], [74, 222, 128], (groove - 0.5) / 0.5);
+    const grooveColour = `rgb(${grooveRgb.join(',')})`;
+    const onFire = multiplier() === 4 && groove > 0.85, struggling = groove < 0.4;
+    const railPulse = struggling ? 0.5 + 0.5 * Math.sin(ms / 140) : 1;
+
+    // The fretboard in perspective: z = seconds ahead (0 at the strike line); depth(z)
+    // shrinks things with distance, but only to about half at the far end so what's
+    // coming stays readable (the user: "hard to see what's coming up"); sx(z) where on
+    // screen. Speed: the slider, but never so slow that two notes on a string touch.
+    // In the Guitar Hero look the board starts right of the score panel (like GH3's).
+    const nearX = gameLook === 'guitarhero' ? Math.max(290, W * 0.26) : Math.max(120, W * 0.12), farX = W * 0.985, midY = H * 0.57, kz = 1.0;
+    const rowH = Math.min(150, (H * 0.56) / n);
+    const gemH = Math.min(66, rowH * 0.64), gemMin = Math.max(40, gemH * 0.9);
+    const fitZ = ((farX - nearX) * (1 + kz)) / (kz * ((gemMin + 12) / minLaneGap(d)));
+    const Z = Math.max(0.8, Math.min(2.6 / hwSpeed, fitZ)), dd = Z * kz, zPast = -0.3;
+    const depth = (z) => dd / (z + dd);
+    const sx = (z) => nearX + (farX - nearX) * ((z * (Z + dd)) / (Z * (z + dd)));
+    const laneY = (s, z) => midY - (s - (n - 1) / 2) * rowH * depth(z);
+    const edgeY = (side, z) => midY + side * (n / 2) * rowH * depth(z);
+    if (d.quickLaneGap === undefined) {
+      const { next } = laneLinks(d);
+      const gaps = next.map((j, k) => (j < 0 ? null : notes[j][0] - notes[k][0])).filter((v) => v !== null && v > 0.03).sort((a, b) => a - b);
+      d.quickLaneGap = gaps.length ? gaps[Math.floor(gaps.length * 0.1)] : 0.5;
+    }
+    const nearSpeed = ((farX - nearX) * (Z + dd)) / (Z * dd);       // px per second at the strike line
+    const gemW = Math.max(gemMin, Math.min(gemH * 1.3, d.quickLaneGap * nearSpeed - 8));
+    const quad = (pts, fill) => { g.fillStyle = fill; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill(); };
+
+    const surface = g.createLinearGradient(nearX, 0, farX, 0);
+    surface.addColorStop(0, 'rgba(30,22,48,0.96)'); surface.addColorStop(1, 'rgba(10,9,18,0.9)');
+    quad([[sx(zPast), edgeY(-1, zPast)], [sx(Z), edgeY(-1, Z)], [sx(Z), edgeY(1, Z)], [sx(zPast), edgeY(1, zPast)]], surface);
+    for (let s = 0; s < n; s++) {                               // lanes tinted, strings through them
+      const half = (z) => (rowH * depth(z)) / 2;
+      const tint = g.createLinearGradient(nearX, 0, farX, 0);
+      tint.addColorStop(0, `${laneColor(s)}2e`); tint.addColorStop(1, `${laneColor(s)}06`);
+      quad([[sx(zPast), laneY(s, zPast) - half(zPast) + 2], [sx(Z), laneY(s, Z) - half(Z) + 1], [sx(Z), laneY(s, Z) + half(Z) - 1], [sx(zPast), laneY(s, zPast) + half(zPast) - 2]], tint);
+      g.strokeStyle = `${laneColor(s)}88`; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(sx(zPast), laneY(s, zPast)); g.lineTo(sx(Z), laneY(s, Z)); g.stroke();
+    }
+    g.lineWidth = onFire ? 5 : 3.5; g.strokeStyle = grooveColour;  // the rails: the groove meter
+    g.globalAlpha = 0.55 + 0.45 * railPulse; g.shadowColor = grooveColour; g.shadowBlur = (onFire ? 30 : 14) * railPulse;
+    for (const side of [-1, 1]) { g.beginPath(); g.moveTo(sx(zPast), edgeY(side, zPast)); g.lineTo(sx(Z), edgeY(side, Z)); g.stroke(); }
+    g.shadowBlur = 0; g.globalAlpha = 1;
+    if (onFire) {                                          // on fire: light washing along the board
+      const wash = g.createLinearGradient(nearX, 0, farX, 0);
+      wash.addColorStop(0, 'rgba(250,204,21,0.16)'); wash.addColorStop(0.5, 'rgba(74,222,128,0.07)'); wash.addColorStop(1, 'rgba(74,222,128,0)');
+      g.globalCompositeOperation = 'lighter';
+      quad([[sx(zPast), edgeY(-1, zPast)], [sx(Z), edgeY(-1, Z)], [sx(Z), edgeY(1, Z)], [sx(zPast), edgeY(1, zPast)]], wash);
+      g.globalCompositeOperation = 'source-over';
+    }
+    // Bar and beat lines across the board, coming toward you.
+    const bars = d.lines.flatMap(([start, , b]) => [start, ...b]);
+    for (let i = 0; i < bars.length; i++) {
+      const b0 = bars[i], b1 = bars[i + 1];
+      if (b0 - t > Z) break;
+      if (b1 !== undefined && b1 - t < zPast) continue;
+      const beats = d.bpm && b1 !== undefined ? Math.max(1, Math.round(((b1 - b0) * d.bpm) / 60)) : 1;
+      for (let j = 0; j < beats; j++) {
+        const z = b0 + ((b1 ?? b0) - b0) * (j / beats) - t;
+        if (z < zPast || z > Z) continue;
+        g.strokeStyle = j ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.26)'; g.lineWidth = (j ? 1 : 2) * depth(z);
+        g.beginPath(); g.moveTo(sx(z), edgeY(-1, z)); g.lineTo(sx(z), edgeY(1, z)); g.stroke();
+      }
+    }
+    // Strike line and a Rock Band-style fret button per string: lit in its colour on a
+    // hit, flashing red on a mistake (a miss or a wrong note).
+    g.shadowColor = grooveColour; g.shadowBlur = 18 * railPulse; g.strokeStyle = '#f5f3ff'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(nearX, edgeY(-1, 0) - 6); g.lineTo(nearX, edgeY(1, 0) + 6); g.stroke();
+    g.shadowBlur = 0;
+    for (let s = 0; s < n; s++) {
+      const pop = Math.max(0, 1 - (ms - (game.laneHitMs[s] ?? -1e9)) / 180);
+      const bad = Math.max(0, 1 - (ms - (game.laneMissMs[s] ?? -1e9)) / 300);
+      if (gameLook === 'guitarhero') {                    // Guitar Hero: a round button in a chrome ring
+        const rx = Math.min(gemW, gemH * 1.2) * 0.55 * (1 + 0.1 * pop), ry = gemH * 0.5 * (1 + 0.1 * pop), y0 = laneY(s, 0);
+        const chrome = g.createLinearGradient(0, y0 - ry, 0, y0 + ry);
+        chrome.addColorStop(0, '#f3f4f6'); chrome.addColorStop(0.5, '#6b7280'); chrome.addColorStop(1, '#d1d5db');
+        g.fillStyle = chrome; g.beginPath(); g.ellipse(nearX, y0, rx + 5, ry + 5, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = bad > pop ? '#ef4444' : laneColor(s); g.shadowColor = g.fillStyle; g.shadowBlur = 6 + 24 * Math.max(pop, bad);
+        g.beginPath(); g.ellipse(nearX, y0, rx, ry, 0, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;
+        const centre = g.createRadialGradient(nearX, y0 - ry * 0.3, 1, nearX, y0, rx * 0.7);
+        centre.addColorStop(0, pop ? '#ffffff' : '#3b3548'); centre.addColorStop(1, pop ? laneColor(s) : '#0d0b14');
+        g.fillStyle = centre; g.beginPath(); g.ellipse(nearX, y0, rx * 0.66, ry * 0.66, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = 'rgba(255,255,255,0.75)'; g.font = `800 ${Math.round(Math.max(14, gemH * 0.34))}px system-ui, sans-serif`;
+        g.textAlign = 'right'; g.textBaseline = 'middle';
+        g.fillText(names[s], nearX - rx - 18, y0);
+        continue;
+      }
+      const bw = gemW * (1 + 0.1 * pop), bh = gemH * 0.95 * (1 + 0.12 * pop), bx = nearX - bw / 2, by = laneY(s, 0) - bh / 2;
+      const face = g.createLinearGradient(0, by, 0, by + bh);
+      face.addColorStop(0, pop ? '#ffffff' : bad ? '#fca5a5' : '#2c263a'); face.addColorStop(1, pop ? laneColor(s) : bad ? '#dc2626' : '#110e1a');
+      g.fillStyle = face; g.beginPath(); g.roundRect(bx, by, bw, bh, 12); g.fill();
+      const ring = bad > pop ? '#ef4444' : laneColor(s);
+      g.lineWidth = 4; g.strokeStyle = ring; g.shadowColor = ring; g.shadowBlur = 8 + 24 * Math.max(pop, bad); g.stroke(); g.shadowBlur = 0;
+      g.fillStyle = 'rgba(255,255,255,0.75)'; g.font = `800 ${Math.round(Math.max(14, gemH * 0.34))}px system-ui, sans-serif`;
+      g.textAlign = 'right'; g.textBaseline = 'middle';
+      g.fillText(names[s], bx - 14, laneY(s, 0));
+    }
+
+    // Notes, far ones first so near ones are drawn on top.
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    let lo = 0, hi = notes.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (notes[mid][0] < t - 10) lo = mid + 1; else hi = mid; }
+    let last = lo;
+    while (last < notes.length && notes[last][0] - t < Z) last++;
+    for (let k = last - 1; k >= lo; k--) {
+      const [ns, ne, s, f] = notes[k];
+      let end = Math.max(ne, ns);
+      for (let j = k + 1; j < notes.length && notes[j][0] < end; j++) if (notes[j][2] === s) { end = notes[j][0]; break; }
+      const res = game.result[k], holding = res === 'hit' && ns <= t && t < end && end - ns > 0.15;
+      const z = holding ? 0 : ns - t;
+      if (res === 'hit' && !holding) continue;                       // it burst on the strike button
+      if (z < zPast) continue;
+      const colour = res === 'miss' ? '#4b5563' : laneColor(s);
+      if (end - ns > 0.15 && end - t > Math.max(z, 0)) {           // tail, narrowing into the distance
+        const zEnd = Math.min(Z, end - t), w0 = gemH * 0.3 * depth(z), w1 = gemH * 0.3 * depth(zEnd);
+        g.globalAlpha = res === 'miss' ? 0.35 : holding ? 0.95 : 0.6;
+        if (holding) { g.shadowColor = colour; g.shadowBlur = 16; }
+        quad([[sx(z), laneY(s, z) - w0 / 2], [sx(zEnd), laneY(s, zEnd) - w1 / 2], [sx(zEnd), laneY(s, zEnd) + w1 / 2], [sx(z), laneY(s, z) + w0 / 2]], colour);
+        g.shadowBlur = 0; g.globalAlpha = 1;
+      }
+      if (holding) continue;                                          // the button glows instead (effects below)
+      const k2 = depth(z), w = gemW * k2, h = gemH * k2, x = sx(z), y = laneY(s, z), r = Math.min(12, w / 3) * k2 + 2;
+      g.globalAlpha = res === 'miss' ? 0.45 : z < 0 ? Math.max(0, 1 + z / -zPast) : 1;
+      g.fillStyle = 'rgba(0,0,0,0.45)';                               // shadow under it
+      g.beginPath(); g.ellipse(x, y + h * 0.55, w * 0.5, h * 0.16, 0, 0, Math.PI * 2); g.fill();
+      if (gameLook === 'guitarhero') {                    // Guitar Hero: a round gem with a white rim
+        const rx = Math.min(w, h * 1.2) * 0.5, ry = h * 0.47;
+        g.fillStyle = colour; g.beginPath(); g.ellipse(x, y + ry * 0.2, rx, ry, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = 'rgba(0,0,0,0.42)'; g.fill();                                   // its darker base
+        g.fillStyle = colour; g.beginPath(); g.ellipse(x, y, rx, ry * 0.92, 0, 0, Math.PI * 2); g.fill();
+        g.lineWidth = Math.max(2, 3.5 * k2); g.strokeStyle = '#ffffff';
+        g.beginPath(); g.ellipse(x, y, rx * 0.8, ry * 0.72, 0, 0, Math.PI * 2); g.stroke();
+        const shine = g.createRadialGradient(x - rx * 0.3, y - ry * 0.5, 1, x, y, rx);
+        shine.addColorStop(0, 'rgba(255,255,255,0.55)'); shine.addColorStop(0.5, 'rgba(255,255,255,0.05)'); shine.addColorStop(1, 'rgba(0,0,0,0.15)');
+        g.fillStyle = shine; g.beginPath(); g.ellipse(x, y, rx, ry * 0.92, 0, 0, Math.PI * 2); g.fill();
+        g.lineWidth = Math.max(1, 2 * k2); g.strokeStyle = 'rgba(0,0,0,0.5)'; g.stroke();
+        const size = Math.round(Math.max(12, ry * 1.1));
+        g.font = `900 ${size}px system-ui, sans-serif`; g.lineJoin = 'round';
+        g.lineWidth = Math.max(2, size * 0.18); g.strokeStyle = 'rgba(0,0,0,0.65)'; g.strokeText(f, x, y + 1);
+        g.fillStyle = '#fff'; g.fillText(f, x, y + 1);
+        g.globalAlpha = 1;
+        continue;
+      }
+      // A Rock Band slab: a darker front edge below, the lit top, a gloss, a dark outline.
+      const edge = h * 0.2, topH = h - edge;
+      g.fillStyle = colour;
+      g.beginPath(); g.roundRect(x - w / 2, y - h / 2 + edge, w, topH, r); g.fill();
+      g.fillStyle = 'rgba(0,0,0,0.42)'; g.fill();
+      g.fillStyle = colour;
+      g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, topH, r); g.fill();
+      const gloss = g.createLinearGradient(0, y - h / 2, 0, y - h / 2 + topH);
+      gloss.addColorStop(0, 'rgba(255,255,255,0.6)'); gloss.addColorStop(0.45, 'rgba(255,255,255,0.1)'); gloss.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gloss; g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, topH, r); g.fill();
+      g.lineWidth = Math.max(1, 2 * k2); g.strokeStyle = 'rgba(0,0,0,0.45)';
+      g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, r); g.stroke();
+      const size = Math.round(Math.max(12, Math.min(topH * 0.78, (w - 6 * k2) / 1.25)));
+      g.font = `900 ${size}px system-ui, sans-serif`;
+      g.lineWidth = Math.max(2, size * 0.18); g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineJoin = 'round';
+      g.strokeText(f, x, y - edge / 2 + 1); g.fillStyle = '#fff'; g.fillText(f, x, y - edge / 2 + 1);
+      g.globalAlpha = 1;
+    }
+
+    // Effects: per hit a flash and sparks from the strike button (gold too on a Perfect),
+    // "Perfect!"/"Good" rising; while a long note is held, sparks stream and it glows.
+    const spray = (s, count, speed, colour, life) => {
+      for (let i = 0; i < count; i++) {
+        const a = -Math.PI * (0.05 + Math.random() * 0.9), v = speed * (0.35 + Math.random() * 0.65);
+        game.sparks.push({ x: nearX, y: laneY(s, 0), vx: Math.cos(a) * v + 80, vy: Math.sin(a) * v, born: ms, life: life * (0.6 + Math.random() * 0.6), colour, size: 1.5 + Math.random() * 3 });
+      }
+    };
+    for (const b of game.bursts) {
+      if (b.sprayed) continue;
+      b.sprayed = true;
+      spray(b.s, 22, 460, laneColor(b.s), 0.6);
+      if (b.perfect) spray(b.s, 10, 340, '#facc15', 0.65);
+    }
+    const holdingNow = [...Array(n).keys()].filter((s) => ms - (game.sustain[s] ?? -1e9) < 120);
+    for (const s of holdingNow) spray(s, 3, 260, laneColor(s), 0.4);
+    game.bursts = game.bursts.filter((b) => ms - b.at < 700);
+    game.sparks = game.sparks.filter((p) => (ms - p.born) / 1000 < p.life).slice(-700);
+    g.globalCompositeOperation = 'lighter';
+    // A flare in the fret button's own shape (the user didn't like a round flash), grown
+    // to r (its half-height) and fading.
+    const glow = (s, r, alpha) => {
+      if (gameLook === 'guitarhero') {                    // Guitar Hero: a flame licking up from the button
+        const y0 = laneY(s, 0), fh = r * 2.6, fw = r * 0.9;
+        for (const [colour, k] of [['#f97316', 1], ['#facc15', 0.7], ['#fff7d6', 0.4]]) {
+          const flame = g.createRadialGradient(nearX, y0 - fh * 0.35 * k, 1, nearX, y0 - fh * 0.35 * k, fh * 0.6 * k);
+          flame.addColorStop(0, colour); flame.addColorStop(1, 'rgba(0,0,0,0)');
+          g.globalAlpha = alpha * 0.85; g.fillStyle = flame;
+          g.beginPath(); g.ellipse(nearX, y0 - fh * 0.35 * k, fw * k, fh * 0.6 * k, 0, 0, Math.PI * 2); g.fill();
+        }
+        return;
+      }
+      const h = r * 2, w = gemW * (h / (gemH * 0.95));
+      g.globalAlpha = alpha * 0.55; g.fillStyle = laneColor(s); g.shadowColor = laneColor(s); g.shadowBlur = 28;
+      g.beginPath(); g.roundRect(nearX - w / 2, laneY(s, 0) - h / 2, w, h, 14); g.fill();
+      g.shadowBlur = 0;
+    };
+    for (const b of game.bursts) { const age = (ms - b.at) / 1000; if (age < 0.3) glow(b.s, gemH * 0.48 * (1 + age * 2.4), 1 - age / 0.3); }
+    for (const s of holdingNow) glow(s, gemH * 0.5 * (1.08 + 0.06 * Math.sin(ms / 50)), 0.8);
+    for (const p of game.sparks) {
+      const a = (ms - p.born) / 1000, a0 = Math.max(0, a - 0.04), at = (u) => [p.x + p.vx * u, p.y + p.vy * u + 320 * u * u];
+      const [x0, y0] = at(a0), [x1, y1] = at(a);
+      g.globalAlpha = 1 - a / p.life; g.strokeStyle = p.colour; g.lineWidth = p.size; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineCap = 'butt';
+    for (const b of game.bursts) {
+      const age = (ms - b.at) / 1000;
+      if (age > 0.7) continue;
+      g.globalAlpha = Math.max(0, 1 - age / 0.7);
+      g.font = `900 italic ${Math.round(gemH * 0.42)}px system-ui, sans-serif`;
+      g.fillStyle = b.perfect ? '#facc15' : '#e5e7eb'; g.shadowColor = b.perfect ? '#facc15' : 'transparent'; g.shadowBlur = b.perfect ? 14 : 0;
+      g.fillText(b.perfect ? 'PERFECT!' : 'GOOD', nearX + gemH * 1.9, laneY(b.s, 0) - gemH * 0.55 - age * 50);
+      g.shadowBlur = 0; g.globalAlpha = 1;
+    }
+
+    // Mistakes: "MISS"/"WRONG" (+ what you played) rising red from the fret button.
+    for (const mk of game.mistakes) {
+      const age = (ms - mk.at) / 1000;
+      if (age > 0.9 || mk.s >= n) continue;
+      g.globalAlpha = Math.max(0, 1 - age / 0.9);
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `900 italic ${Math.round(gemH * 0.42)}px system-ui, sans-serif`;
+      g.fillStyle = '#f87171'; g.shadowColor = '#ef4444'; g.shadowBlur = 12;
+      const lift = (mk.stack || 0) * gemH * 0.95;
+      g.fillText(mk.text, nearX + gemW * 1.6, laneY(mk.s, 0) - gemH * 0.55 - age * 46 - lift);
+      g.shadowBlur = 0;
+      if (mk.sub) { g.font = `800 ${Math.round(gemH * 0.26)}px system-ui, sans-serif`; g.fillStyle = '#fecaca'; g.fillText(mk.sub, nearX + gemW * 1.6, laneY(mk.s, 0) - gemH * 0.1 - age * 46 - lift); }
+      g.globalAlpha = 1;
+    }
+    const lostAge = game.streakLost ? ms - game.streakLost.at : Infinity;
+    if (lostAge < 1300) {
+      g.globalAlpha = Math.min(1, (1300 - lostAge) / 400);
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = '900 italic 30px system-ui, sans-serif'; g.fillStyle = '#f87171'; g.shadowColor = '#ef4444'; g.shadowBlur = 18;
+      g.fillText(`STREAK LOST · ${game.streakLost.n}`, W / 2, 110);
+      g.shadowBlur = 0; g.globalAlpha = 1;
+    }
+
+    // HUD, like Rock Band. Top: a progress line and the song (left). Top right: the
+    // score in a black box with a white border, star medallions under it (earned ones
+    // silver, the next one filling its ring; starsFor). At the base of the strike line:
+    // the multiplier badge (blue ring), with a yellow bar up the strike line filling
+    // toward the next multiplier. Bottom centre: the groove meter.
+    g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, 0, W, 4);
+    g.fillStyle = '#8b5cf6'; g.fillRect(0, 0, W * Math.min(1, currentTime() / (duration() || 1)), 4);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = '#fff'; g.font = '800 17px system-ui, sans-serif';
+    const boxW = 250, boxH = 54, boxX = W - boxW - 20, boxY = 20;
+    let title = state.current?.song.title || '';               // cut short before it reaches the score
+    while (title.length > 4 && g.measureText(title).width > Math.min(boxX - 44, W / 2 - 100)) title = `${title.slice(0, -2).trimEnd()}…`.replace(/……$/, '…');
+    g.fillText(title, 22, 34);
+    g.fillStyle = 'rgba(255,255,255,0.5)'; g.font = '600 12px system-ui, sans-serif';
+    g.fillText(`${state.current?.song.artist || ''}  ·  ${gameTiming[0].toUpperCase()}${gameTiming.slice(1)} timing`, 22, 52);
+    if (gameLook === 'guitarhero') {
+      // Guitar Hero's HUD (after GH3, which the user loved). Bottom left, a metal panel:
+      // the score on a green LCD, the multiplier glowing in a dial whose ring fills toward
+      // the next level, lights for the multiplier level, an odometer streak counter.
+      // Bottom right, the ROCK meter: how the last notes went.
+      const m = multiplier(), level = m === 4 ? 1 : (game.streak % 10) / 10, pulse = 1 + 0.3 * Math.max(0, 1 - (ms - game.multAt) / 350);
+      const pw = 170, ph = 218, px = 22, py = H - ph - 22;
+      const frame = g.createLinearGradient(px, py, px + pw, py + ph);
+      frame.addColorStop(0, '#4b5563'); frame.addColorStop(0.5, '#1f2937'); frame.addColorStop(1, '#374151');
+      g.fillStyle = frame; g.beginPath(); g.roundRect(px, py, pw, ph, 14); g.fill();
+      g.lineWidth = 2; g.strokeStyle = '#9ca3af'; g.stroke();
+      g.fillStyle = '#03140a'; g.beginPath(); g.roundRect(px + 12, py + 12, pw - 24, 46, 6); g.fill();
+      g.lineWidth = 2; g.strokeStyle = '#166534'; g.stroke();
+      g.textAlign = 'right'; g.textBaseline = 'middle'; g.font = '700 30px ui-monospace, Menlo, monospace';
+      g.fillStyle = '#4ade80'; g.shadowColor = '#22c55e'; g.shadowBlur = 12;
+      g.fillText(String(game.score), px + pw - 20, py + 36); g.shadowBlur = 0;
+      const dx = px + pw / 2 + 14, dy = py + 116, dr = 40;
+      const dial = g.createRadialGradient(dx, dy - 10, 3, dx, dy, dr);
+      dial.addColorStop(0, '#2b2140'); dial.addColorStop(1, '#09070f');
+      g.fillStyle = dial; g.beginPath(); g.arc(dx, dy, dr, 0, Math.PI * 2); g.fill();
+      for (let i = 0; i < 10; i++) {                     // the ring: 10 segments toward the next level
+        const a0 = -Math.PI / 2 + (i * Math.PI) / 5 + 0.05, a1 = a0 + Math.PI / 5 - 0.1, on = i < Math.round(level * 10);
+        g.lineWidth = 7; g.strokeStyle = on ? '#c084fc' : '#2e2540'; g.shadowColor = '#a855f7'; g.shadowBlur = on ? 12 : 0;
+        g.beginPath(); g.arc(dx, dy, dr - 4, a0, a1); g.stroke();
+      }
+      g.shadowBlur = 0;
+      g.textAlign = 'center'; g.font = `900 ${Math.round(46 * pulse)}px system-ui, sans-serif`;
+      g.fillStyle = '#e9d5ff'; g.shadowColor = '#a855f7'; g.shadowBlur = 22;
+      g.fillText(String(m), dx, dy + 2); g.shadowBlur = 0;
+      for (let i = 0; i < 4; i++) {                      // lights: the multiplier level
+        const ly = dy + 30 - i * 20, on = i < m;
+        g.beginPath(); g.roundRect(px + 14, ly - 6, 14, 12, 3);
+        g.fillStyle = on ? '#fbbf24' : '#3f3a2a'; g.shadowColor = '#fbbf24'; g.shadowBlur = on ? 10 : 0; g.fill();
+      }
+      g.shadowBlur = 0;
+      const digits = String(Math.min(999, game.streak)).padStart(3, '0'), oy = py + ph - 36;
+      g.fillStyle = '#e5e7eb'; g.font = '800 22px system-ui, sans-serif'; g.fillText('♪', px + 26, oy + 1);
+      for (let i = 0; i < 3; i++) {
+        const ox = px + 46 + i * 36;
+        g.fillStyle = '#f9fafb'; g.beginPath(); g.roundRect(ox, oy - 16, 30, 32, 4); g.fill();
+        g.lineWidth = 2; g.strokeStyle = '#111827'; g.stroke();
+        g.fillStyle = '#111827'; g.font = '800 22px ui-monospace, Menlo, monospace'; g.fillText(digits[i], ox + 15, oy + 1);
+      }
+      // The ROCK meter (the user found the first one cheap): a metal bezel with screws, a
+      // dark glass face with a reflection, a scale of LED segments (red, yellow, green) lit
+      // up to the needle, a tapered glowing needle on a chrome cap, "ROCK" lit in the
+      // current zone's colour and three zone lamps.
+      const cxm = W - 108, cym = H - 44, R = 78;
+      const zoneOf = (v) => (v < 1 / 3 ? 0 : v < 2 / 3 ? 1 : 2), zoneColours = ['#ef4444', '#facc15', '#22c55e'];
+      const zone = zoneOf(groove);
+      const bezel = g.createLinearGradient(cxm - R, cym - R, cxm + R, cym);
+      bezel.addColorStop(0, '#f3f4f6'); bezel.addColorStop(0.35, '#6b7280'); bezel.addColorStop(0.6, '#e5e7eb'); bezel.addColorStop(1, '#4b5563');
+      g.fillStyle = bezel; g.beginPath(); g.arc(cxm, cym, R + 12, Math.PI, 0); g.lineTo(cxm + R + 12, cym + 14); g.lineTo(cxm - R - 12, cym + 14); g.closePath(); g.fill();
+      g.lineWidth = 1.5; g.strokeStyle = 'rgba(0,0,0,0.6)'; g.stroke();
+      for (const sxw of [-1, 1]) {                         // screws
+        const scx = cxm + sxw * (R + 2), scy = cym + 6;
+        g.fillStyle = '#9ca3af'; g.beginPath(); g.arc(scx, scy, 4, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#374151'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(scx - 3, scy); g.lineTo(scx + 3, scy); g.stroke();
+      }
+      const face = g.createRadialGradient(cxm, cym, 4, cxm, cym, R);
+      face.addColorStop(0, '#1a2420'); face.addColorStop(1, '#050807');
+      g.fillStyle = face; g.beginPath(); g.arc(cxm, cym, R, Math.PI, 0); g.closePath(); g.fill();
+      const segments = 24;                                  // the LED scale
+      for (let i = 0; i < segments; i++) {
+        const v = (i + 0.5) / segments, a = Math.PI * (1.04 + 0.92 * (i / segments)), a2 = a + (Math.PI * 0.92) / segments - 0.025;
+        const lit = v <= groove + 0.001, colour = zoneColours[zoneOf(v)];
+        g.lineWidth = 11; g.strokeStyle = colour; g.globalAlpha = lit ? 1 : 0.16;
+        g.shadowColor = colour; g.shadowBlur = lit ? 10 : 0;
+        g.beginPath(); g.arc(cxm, cym, R - 13, a, a2); g.stroke();
+      }
+      g.shadowBlur = 0; g.globalAlpha = 1;
+      g.font = '900 italic 22px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = zoneColours[zone]; g.shadowColor = zoneColours[zone]; g.shadowBlur = 16;
+      g.fillText('ROCK', cxm, cym - 36); g.shadowBlur = 0;
+      zoneColours.forEach((colour, i) => {                 // zone lamps
+        const lx = cxm - 22 + i * 22, ly = cym - 14, on = i === zone;
+        const lamp = g.createRadialGradient(lx - 1.5, ly - 1.5, 0.5, lx, ly, 6);
+        lamp.addColorStop(0, on ? '#ffffff' : '#555'); lamp.addColorStop(1, on ? colour : '#1f1f1f');
+        g.fillStyle = lamp; g.shadowColor = colour; g.shadowBlur = on ? 14 : 0;
+        g.beginPath(); g.arc(lx, ly, 5.5, 0, Math.PI * 2); g.fill();
+      });
+      g.shadowBlur = 0;
+      const na = Math.PI * (1.04 + 0.92 * groove), nl = R - 6;       // the needle
+      g.save(); g.translate(cxm, cym); g.rotate(na);
+      g.fillStyle = '#fb923c'; g.shadowColor = '#f97316'; g.shadowBlur = 12;
+      g.beginPath(); g.moveTo(-8, -4); g.lineTo(nl, -1); g.lineTo(nl, 1); g.lineTo(-8, 4); g.closePath(); g.fill();
+      g.restore(); g.shadowBlur = 0;
+      const cap = g.createRadialGradient(cxm - 3, cym - 3, 1, cxm, cym, 10);
+      cap.addColorStop(0, '#ffffff'); cap.addColorStop(1, '#4b5563');
+      g.fillStyle = cap; g.beginPath(); g.arc(cxm, cym, 9, 0, Math.PI * 2); g.fill();
+      const glare = g.createLinearGradient(0, cym - R, 0, cym - R * 0.35);   // glass reflection
+      glare.addColorStop(0, 'rgba(255,255,255,0.18)'); glare.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = glare; g.beginPath(); g.arc(cxm, cym, R - 2, Math.PI * 1.08, Math.PI * 1.92); g.closePath(); g.fill();
+    } else {
+    g.fillStyle = 'rgba(0,0,0,0.88)'; g.beginPath(); g.roundRect(boxX, boxY, boxW, boxH, 7); g.fill();
+    g.lineWidth = 3; g.strokeStyle = '#f5f5f5'; g.stroke();
+    g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillStyle = '#fff';
+    g.font = '800 34px system-ui, sans-serif';
+    if ('letterSpacing' in g) g.letterSpacing = '3px';
+    g.fillText(game.score.toLocaleString(), boxX + boxW - 16, boxY + boxH / 2 + 2);
+    if ('letterSpacing' in g) g.letterSpacing = '0px';
+    const starValue = starsFor(game.score, notes.length), medal = 18;
+    const star = (x0, y0, r) => {
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.42 : r;
+        if (i) g.lineTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr); else g.moveTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr);
+      }
+      g.closePath();
+    };
+    const allGold = starValue >= 5;
+    for (let i = 0; i < 5; i++) {
+      const x0 = boxX + 26 + i * (medal * 2 + 8), y0 = boxY + boxH + medal + 10, fill = Math.max(0, Math.min(1, starValue - i));
+      const disc = g.createRadialGradient(x0 - medal * 0.3, y0 - medal * 0.4, 2, x0, y0, medal);
+      if (fill >= 1) { disc.addColorStop(0, allGold ? '#fff3b0' : '#f1f5f9'); disc.addColorStop(1, allGold ? '#ca8a04' : '#64748b'); }
+      else { disc.addColorStop(0, '#3a3f4b'); disc.addColorStop(1, '#14161c'); }
+      g.fillStyle = disc; g.beginPath(); g.arc(x0, y0, medal, 0, Math.PI * 2); g.fill();
+      g.lineWidth = 2; g.strokeStyle = fill >= 1 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.25)'; g.stroke();
+      star(x0, y0, medal * 0.62);
+      g.fillStyle = fill >= 1 ? (allGold ? '#a16207' : '#3f5f6b') : 'rgba(0,0,0,0.55)'; g.fill();
+      if (fill > 0 && fill < 1) {                         // the next star: its ring fills as you score
+        g.lineWidth = 3; g.strokeStyle = '#e2e8f0'; g.shadowColor = '#fff'; g.shadowBlur = 8;
+        g.beginPath(); g.arc(x0, y0, medal + 1, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fill); g.stroke(); g.shadowBlur = 0;
+      }
+    }
+    // Multiplier at the base of the strike line, and the streak bar up the line.
+    const m = multiplier(), level = m === 4 ? 1 : (game.streak % 10) / 10, pulse = 1 + 0.3 * Math.max(0, 1 - (ms - game.multAt) / 350);
+    const lineTop = edgeY(-1, 0), lineBottom = edgeY(1, 0);
+    g.lineWidth = 6; g.lineCap = 'round';
+    g.strokeStyle = '#facc15'; g.shadowColor = '#facc15'; g.shadowBlur = 14;
+    g.beginPath(); g.moveTo(nearX, lineBottom); g.lineTo(nearX, lineBottom - (lineBottom - lineTop) * level); g.stroke();
+    g.shadowBlur = 0; g.lineCap = 'butt';
+    const bx = nearX, byy = lineBottom + 40, br = 30 * pulse;
+    const core = g.createRadialGradient(bx, byy - br * 0.3, 2, bx, byy, br);
+    core.addColorStop(0, '#1e3a8a'); core.addColorStop(1, '#0b1026');
+    g.fillStyle = core; g.beginPath(); g.arc(bx, byy, br, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 5; g.strokeStyle = '#38bdf8'; g.shadowColor = '#38bdf8'; g.shadowBlur = 18 + 10 * (m - 1); g.stroke(); g.shadowBlur = 0;
+    g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,0.7)'; g.beginPath(); g.arc(bx, byy, br - 6, 0, Math.PI * 2); g.stroke();
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff';
+    g.font = `900 italic ${Math.round(28 * pulse)}px system-ui, sans-serif`;
+    const mw = g.measureText(String(m)).width;
+    g.fillText(String(m), bx - 5, byy + 1);
+    g.font = `900 italic ${Math.round(15 * pulse)}px system-ui, sans-serif`;
+    g.fillText('x', bx - 5 + mw / 2 + 6, byy + 6);
+    g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,0.65)'; g.font = '800 12px system-ui, sans-serif';
+    g.fillText(`${game.streak} NOTE STREAK${game.judged ? `  ·  ${Math.round((game.hits / game.judged) * 100)}%` : ''}`, bx + br + 14, byy);
+    }
+
+    // Streak milestones and the countdown (3, 2, 1, GO!).
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    const since = game.milestone ? ms - game.milestone.at : Infinity;
+    if (since < 1500) {
+      g.globalAlpha = Math.min(1, (1500 - since) / 400);
+      g.font = `900 italic ${Math.round(Math.min(64, H * 0.1) * (1 + 0.3 * Math.max(0, 1 - since / 250)))}px system-ui, sans-serif`;
+      g.fillStyle = '#facc15'; g.shadowColor = '#facc15'; g.shadowBlur = 26;
+      g.fillText(`${game.milestone.n} NOTE STREAK!`, W / 2, H * 0.2);
+      g.shadowBlur = 0; g.globalAlpha = 1;
+    }
+    const goAge = ms - (game.goAt ?? -1e9);
+    if (game.countdown || goAge < 700) {
+      const label = game.countdown ? String(game.countdown) : 'GO!', grow = Math.min(1, game.countdown ? (ms - (game.countAt ?? ms)) / 800 : goAge / 700);
+      g.globalAlpha = game.countdown ? 1 : 1 - grow;
+      g.font = `900 italic ${Math.round(H * 0.24 * (1.25 - 0.25 * grow))}px system-ui, sans-serif`;
+      g.fillStyle = game.countdown ? '#fff' : '#4ade80'; g.shadowColor = game.countdown ? '#a78bfa' : '#4ade80'; g.shadowBlur = 40;
+      g.fillText(label, W / 2, H * 0.48);
+      g.shadowBlur = 0; g.globalAlpha = 1;
     }
   }
 
@@ -2660,7 +3241,7 @@
     split.connect(input.analyser, inputChannel());
     await setMonitor($('#input-monitor').checked);
     const buf = new Float32Array(input.analyser.fftSize);
-    input.timer = setInterval(() => listen(buf), 40);
+    input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly
   }
 
   // Hear myself: the input straight to the speakers on its own 'interactive' context
@@ -2721,14 +3302,16 @@
     $('#input-level-box').title = peak > 0.98 ? 'Too loud: turn the gain down on the interface'
       : peak > 0.003 ? `Your bass is coming in (${Math.round(db)} dB)` : 'Nothing coming in: play a note';
     const hz = peak > 0.003 ? pitchOf(buf, ctx.sampleRate) : 0;   // pitch doesn't depend on loudness, so quiet is fine
-    input.recent = [...input.recent.slice(-2), hz ? Math.round(12 * Math.log2(hz / 440) + 69) : null];
-    // A note counts once 3 readings in a row (~120 ms) agree: a played note rings that
-    // long, a thud from a hand hitting the strings dies away sooner (the user saw those
-    // counted as notes when 2 of 3 were enough).
-    const steady = input.recent.length === 3 && input.recent.every((m) => m !== null && m === input.recent[0]) ? input.recent[0] : undefined;
+    const raw = hz ? Math.round(12 * Math.log2(hz / 440) + 69) : null;   // this reading: clearly pitched or nothing
+    input.recent = [...input.recent.slice(-4), raw];
+    // The note shown (and checked for wrong notes) needs 5 readings in a row (~100 ms)
+    // to agree: a played note rings that long, a thud from a hand on the strings dies
+    // away sooner. Hits are judged sooner: a pluck plus one clear reading (`raw`).
+    const steady = input.recent.length === 5 && input.recent.every((m) => m !== null && m === input.recent[0]) ? input.recent[0] : undefined;
     showNote(steady ?? null);
+    if (!game.on && timingShown && tabMode === 'highway' && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw);
     if (game.on && !game.countdown) {
-      if (player.playing) { game.started = true; gameListen(db, steady ?? null); }
+      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw); }
       else if (game.started && !game.paused) {
         if (player.offset === 0) endGame();               // the song ended (its end resets the position)
         else pauseGame();                                 // paused (Space): the pause menu
@@ -2975,19 +3558,69 @@
   let gameTiming = (() => { try { return localStorage.getItem(TIMING_KEY) || 'relaxed'; } catch { return 'relaxed'; } })();
   const BEST_KEY = 'track-splitter-game-best';
   const game = { on: false, started: false, countdown: 0, score: 0, streak: 0, best: 0, hits: 0, judged: 0,
-                 result: [], hitAt: [], grade: [], laneHit: {}, bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, plucks: [], heard: [], next: 0, prevDb: -100, lastMidi: null, song: null, source: null };
+                 result: [], hitAt: [], grade: [], laneHit: {}, bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
+                 laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, plucks: [], heard: [], next: 0, prevDb: -100, lastMidi: null, song: null, source: null };
   const multiplier = () => Math.min(4, 1 + Math.floor(game.streak / 10));
 
-  function gameListen(db, midi) {
+  // Mistakes (the user wanted feedback when one is made): the string's fret button
+  // flashes red, "MISS" / "WRONG" rises from it (with what was played vs the tab), a
+  // streak of 10+ lost shows "STREAK LOST", and a short thunk plays (switchable).
+  const MISTAKE_SOUND_KEY = 'track-splitter-mistake-sound';
+  let mistakeSound = pref(MISTAKE_SOUND_KEY) !== '0';
+  function mistake(s, text, sub) {
+    const at = performance.now();
+    game.laneMissMs[s] = at;
+    const kept = game.mistakes.filter((m) => at - m.at < 900);
+    const stack = kept.filter((m) => m.s === s).length;      // one above the other on the same string
+    game.mistakes = [...kept, { s, at, text, sub, stack }];
+    if (mistakeSound) thunk();
+  }
+  function thunk() {                                   // a muted string thud: filtered noise + a low knock
+    const t0 = ctx.currentTime, out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t0); out.gain.exponentialRampToValueAtTime(0.35, t0 + 0.005); out.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+    out.connect(ctx.destination);
+    const noise = ctx.createBuffer(1, Math.round(ctx.sampleRate * 0.15), ctx.sampleRate), data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter();
+    src.buffer = noise; lp.type = 'lowpass'; lp.frequency.value = 420;
+    src.connect(lp).connect(out); src.start(t0); src.stop(t0 + 0.15);
+    const knock = ctx.createOscillator(); knock.frequency.setValueAtTime(95, t0); knock.frequency.exponentialRampToValueAtTime(55, t0 + 0.12);
+    knock.connect(out); knock.start(t0); knock.stop(t0 + 0.14);
+  }
+  // A new pitch the tab doesn't have while it expects another note (within the timing
+  // window): a wrong note. Notes played over rests aren't counted.
+  function checkWrong(t, midi) {
+    const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
+    const [early, late] = TIMINGS[gameTiming], heard = midi - player.shift;
+    const near = [];
+    for (let k = Math.max(0, game.next - 6); k < notes.length && notes[k][0] <= t + early; k++) {
+      const [ns, ne, s, f] = notes[k];
+      if (f === 'x' || Math.max(ne, ns + 0.2) < t - late) continue;
+      near.push({ s, pitch: open[s] + f, label: `${noteName(open[s] + f)}` });
+    }
+    if (!near.length || near.some((x) => x.pitch === heard) || performance.now() - game.wrongAt < 250) return;
+    game.wrongAt = performance.now();
+    mistake(near[near.length - 1].s, 'WRONG', `${noteName(midi)} · tab ${near[near.length - 1].label}`);
+  }
+
+  function gameListen(db, midi, raw) {
     const now = tabTime();
-    // Plucks: the input jumps up (from silence or by PLUCK_DB in 40 ms), or a new pitch
-    // starts (hammer-ons, slides). Times nudged back for the reading's own delay.
-    if ((db > GATE_DB && game.prevDb <= GATE_DB) || db - game.prevDb > PLUCK_DB) game.plucks.push({ t: now - 0.03, used: null });
-    else if (midi !== null && midi !== game.lastMidi) game.plucks.push({ t: now - 0.12, used: null });
-    game.prevDb = db;
-    if (midi !== null) game.heard.push([now - 0.1, midi - player.shift]);   // the tab is for the song as is
+    // Plucks: an attack (the input jumps up from silence, or by PLUCK_DB within 40 ms:
+    // the reading before last), or a new pitch (hammer-ons, slides). Times nudged back
+    // for the readings' own delay. Pitches heard: every clear reading (judging needs a
+    // pluck too, so a stray pitch alone scores nothing).
+    const fix = inputCalibration;                        // this setup's measured delay (Calibrate)
+    const before = Math.min(game.prevDb, game.prevDb2 ?? game.prevDb);
+    const attack = (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
+    if (attack) { game.plucks.push({ t: now - 0.03 - fix, used: null }); game.lastAttack = now; }
+    else if (midi !== null && midi !== game.lastMidi) game.plucks.push({ t: now - 0.12 - fix, used: null });
+    game.prevDb2 = game.prevDb; game.prevDb = db;
+    if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift]);   // the tab is for the song as is
+    // A wrong note needs a real attack just before it: lifting a finger lets the open
+    // string (or another fretted note) ring, which isn't a mistake (the user saw those).
+    if (midi !== null && midi !== game.lastMidi && now - (game.lastAttack ?? -9) < 0.3) checkWrong(now - 0.1 - fix, midi);
     game.lastMidi = midi;
-    judge(now, midi === null ? null : midi - player.shift);
+    judge(now, raw === null ? null : raw - player.shift);
     game.plucks = game.plucks.filter((p) => p.t > now - 2);
     game.heard = game.heard.filter(([t]) => t > now - 2);
   }
@@ -3010,6 +3643,7 @@
         game.laneHitMs[notes[k][2]] = performance.now();
         const before = multiplier();
         game.hits++; game.judged++; game.streak++;
+        game.recent = [...game.recent.slice(-23), 1];
         game.best = Math.max(game.best, game.streak);
         // For the hit animation (on its own clock, performance.now()): a burst on that
         // string, the multiplier badge pulsing when it goes up, streak milestones.
@@ -3022,7 +3656,12 @@
     }
     // ... misses once their window has passed.
     while (game.next < notes.length && (game.result[game.next] || notes[game.next][0] + late + 0.15 < now)) {
-      if (!game.result[game.next]) { game.result[game.next] = 'miss'; game.judged++; game.streak = 0; }
+      if (!game.result[game.next]) {
+        game.result[game.next] = 'miss'; game.judged++; game.recent = [...game.recent.slice(-23), 0];
+        mistake(notes[game.next][2], 'MISS', '');
+        if (game.streak >= 10) game.streakLost = { n: game.streak, at: performance.now() };
+        game.streak = 0;
+      }
       game.next++;
     }
     // Holding a long note you hit, at its pitch: points while it rings.
@@ -3047,16 +3686,19 @@
     seekTo(0);
     Object.assign(game, { on: true, started: false, score: 0, streak: 0, best: 0, hits: 0, judged: 0, next: 0,
                           result: new Array(tabView.data.notes.length).fill(null), hitAt: [], grade: [], laneHit: {}, plucks: [], heard: [],
-                          bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null,
+                          bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
+                          laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0,
                           prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false });
     document.body.classList.add('game-on');
     $('#tab-game').textContent = 'Pause';
     for (let c = 3; c > 0; c--) {                        // 3, 2, 1 on the highway
       game.countdown = c;
+      game.countAt = performance.now();
       await new Promise((r) => setTimeout(r, 900));
       if (!game.on) return;
     }
     game.countdown = 0;
+    game.goAt = performance.now();                       // GO!
     play();
   }
 
@@ -3078,7 +3720,20 @@
     try { bests = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* none */ }
     const before = bests[key] || 0;
     if (game.score > before) { bests[key] = game.score; try { localStorage.setItem(BEST_KEY, JSON.stringify(bests)); } catch { /* not kept */ } }
-    $('#game-score').textContent = game.score.toLocaleString();
+    // 1-5 stars by accuracy, the title by how it ended, the score counting up.
+    const acc = game.judged ? game.hits / game.judged : 0;
+    // Finished: Rock Band-style stars from the score; stopped early: from accuracy.
+    const stars = finished ? Math.floor(starsFor(game.score, tabView.data.notes.length)) : [0.4, 0.6, 0.75, 0.88, 0.95].filter((x) => acc >= x).length;
+    $('#game-stars').replaceChildren(...[0, 1, 2, 3, 4].map((i) => el('span', { className: i < stars ? 'on' : '', textContent: '★' })));
+    $('#game-stars').setAttribute('aria-label', `${stars} of 5 stars`);
+    $('#game-title').textContent = finished ? 'Song complete' : 'Results';
+    const target = game.score, began = performance.now();
+    const count = () => {
+      const k = Math.min(1, (performance.now() - began) / 900);
+      $('#game-score').textContent = Math.round(target * (1 - (1 - k) ** 3)).toLocaleString();
+      if (k < 1) requestAnimationFrame(count);
+    };
+    count();
     $('#game-best').textContent = game.score > before ? (before ? `New best! (was ${before.toLocaleString()})` : 'Your first score for this song') : `Your best: ${before.toLocaleString()}`;
     $('#game-best').classList.toggle('new', game.score > before);
     $('#game-acc').textContent = `${game.judged ? Math.round((game.hits / game.judged) * 100) : 0}%`;
@@ -3128,10 +3783,12 @@
     if ($('#pause-dlg').open) $('#pause-dlg').close();
     for (let c = 3; c > 0; c--) {
       game.countdown = c;
+      game.countAt = performance.now();
       await new Promise((r) => setTimeout(r, 700));
       if (!game.on) return;
     }
     game.countdown = 0;
+    game.goAt = performance.now();                       // GO!
     game.paused = false;
     game.prevDb = -100; game.lastMidi = null;            // what was ringing before the pause isn't a new pluck
     play();
@@ -3145,6 +3802,145 @@
   }
   document.querySelectorAll('#game-timing button').forEach((b) => b.addEventListener('click', () => setTiming(b.dataset.timing)));
   setTiming(gameTiming);
+  // Game look: Rock Band or Guitar Hero (both sideways). Kept per computer.
+  const GAME_LOOK_KEY = 'track-splitter-game-look';
+  let gameLook = pref(GAME_LOOK_KEY) || 'rockband';
+  const showLook = () => document.querySelectorAll('#game-look button').forEach((b) => b.classList.toggle('active', b.dataset.look === gameLook));
+  document.querySelectorAll('#game-look button').forEach((b) => b.addEventListener('click', () => { gameLook = b.dataset.look; setPref(GAME_LOOK_KEY, gameLook); showLook(); }));
+  showLook();
+
+  // Game settings (the pause menu's Settings, or "Game settings" in the Game section):
+  // look, note speed, timing, mistake sound, hear myself + its volume, song volume. They
+  // drive the same settings as the Highway's speed slider, the bass input bubble and
+  // the player's volume, and apply at once.
+  let settingsFromPause = false;
+  function openSettings(fromPause) {
+    settingsFromPause = fromPause;
+    if (fromPause && $('#pause-dlg').open) $('#pause-dlg').close();
+    $('#gs-speed').value = String(hwSpeed); setFill($('#gs-speed'));
+    $('#gs-monitor').checked = $('#input-monitor').checked;
+    $('#gs-monvol').value = $('#input-volume').value; setFill($('#gs-monvol')); $('#gs-monvol-db').textContent = `+${$('#gs-monvol').value} dB`;
+    $('#gs-volume').value = $('#volume').value; setFill($('#gs-volume')); $('#gs-volume-pct').textContent = `${$('#gs-volume').value}%`;
+    $('#settings-dlg').showModal();
+  }
+  function closeSettings() {
+    if ($('#settings-dlg').open) $('#settings-dlg').close();
+    if (settingsFromPause && game.on && game.paused) $('#pause-dlg').showModal();   // back to the pause menu
+  }
+  $('#pause-settings').addEventListener('click', () => openSettings(true));
+  $('#game-settings-btn').addEventListener('click', () => openSettings(false));
+  $('#settings-done').addEventListener('click', closeSettings);
+  $('#settings-dlg').addEventListener('cancel', (e) => { e.preventDefault(); closeSettings(); });
+  const relay = (el, target, event) => { $(target).value = el.value; $(target).dispatchEvent(new Event(event)); setFill(el); };
+  $('#gs-speed').addEventListener('input', (e) => relay(e.target, '#hw-speed', 'input'));
+  $('#gs-monitor').addEventListener('change', (e) => { $('#input-monitor').checked = e.target.checked; $('#input-monitor').dispatchEvent(new Event('change')); });
+  $('#gs-monvol').addEventListener('input', (e) => { relay(e.target, '#input-volume', 'input'); $('#gs-monvol-db').textContent = `+${e.target.value} dB`; });
+  $('#gs-volume').addEventListener('input', (e) => { relay(e.target, '#volume', 'input'); $('#gs-volume-pct').textContent = `${e.target.value}%`; });
+
+  $('#mistake-sound').checked = mistakeSound;
+  $('#mistake-sound').addEventListener('change', (e) => { mistakeSound = e.target.checked; setPref(MISTAKE_SOUND_KEY, mistakeSound ? '1' : '0'); if (mistakeSound) thunk(); });
+  // Rock Band-style stars: they fill with the score against what the song is worth
+  // (100 a note): 0.25, 0.5, 1, 1.6 and 2.4 x that; a good run with multipliers gets 5.
+  const STAR_STEPS = [0.25, 0.5, 1, 1.6, 2.4];
+  function starsFor(score, notes) {
+    const r = score / Math.max(1, 100 * notes);
+    const full = STAR_STEPS.filter((x) => r >= x).length;
+    if (full >= 5) return 5;
+    const lo = full ? STAR_STEPS[full - 1] : 0;
+    return full + (r - lo) / (STAR_STEPS[full] - lo);
+  }
+
+  // Show my timing (the Tab section's Highway, no game): the game's pluck + pitch
+  // matching, but each hit only gets a label with how early/late it was, and the last
+  // 16 offsets give an average. The song can be moved around freely.
+  const TIMING_SHOW_KEY = 'track-splitter-show-timing';
+  let timingShown = pref(TIMING_SHOW_KEY) === '1';
+  const practice = { plucks: [], heard: [], prevDb: -100, lastMidi: null, judged: new Set(), labels: [], offsets: [], lastT: 0 };
+  function practiceListen(db, midi, raw) {
+    const now = tabTime();
+    if (Math.abs(now - practice.lastT) > 1) { practice.plucks = []; practice.heard = []; practice.judged.clear(); }   // jumped elsewhere
+    practice.lastT = now;
+    const fix = inputCalibration;                        // same plucks and pitches as the game (gameListen)
+    const before = Math.min(practice.prevDb, practice.prevDb2 ?? practice.prevDb);
+    const attack = (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
+    if (attack) { practice.plucks.push({ t: now - 0.03 - fix, used: null }); practice.lastAttack = now; }
+    else if (midi !== null && midi !== practice.lastMidi) practice.plucks.push({ t: now - 0.12 - fix, used: null });
+    practice.prevDb2 = practice.prevDb; practice.prevDb = db; practice.lastMidi = midi;
+    if (raw !== null) practice.heard.push([now - 0.05 - fix, raw - player.shift]);
+    const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
+    const [early, late, perfect] = TIMINGS[gameTiming];
+    let lo = 0, hi = notes.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (notes[mid][0] < now - late - 0.3) lo = mid + 1; else hi = mid; }
+    for (let k = lo; k < notes.length && notes[k][0] - early <= now; k++) {
+      if (practice.judged.has(k) || notes[k][3] === 'x') continue;
+      const ns = notes[k][0], pitch = open[notes[k][2]] + notes[k][3];
+      const pluck = practice.plucks.find((q) => q.t >= ns - early && q.t <= ns + late && (q.used === null || Math.abs(q.used - ns) < 0.03));
+      if (!pluck || !practice.heard.some(([t, m]) => m === pitch && t >= ns - early && t <= ns + late + 0.15)) continue;
+      pluck.used = ns;
+      practice.judged.add(k);
+      const dt = pluck.t - ns, msOff = Math.round(Math.abs(dt) * 1000);
+      practice.offsets = [...practice.offsets.slice(-15), dt];
+      // Always the number (practice is about the ms): green within the Perfect window,
+      // blue early / amber late outside it; "On time" within 20 ms.
+      practice.labels.push({ s: notes[k][2], at: performance.now(),
+                             text: msOff <= 20 ? 'On time' : `${dt < 0 ? 'Early' : 'Late'} ${msOff} ms`,
+                             colour: Math.abs(dt) < perfect ? '#4ade80' : dt < 0 ? '#60a5fa' : '#fbbf24' });
+    }
+    // Mistakes, as feedback only: a note that went by unplayed while you were playing
+    // (a pluck in the last 1.5 s) is "Missed"; a new pitch the tab doesn't have while it
+    // expects another note is "Wrong".
+    const playing = practice.plucks.some((q) => q.t > now - 1.5);
+    for (let k = lo; k < notes.length && notes[k][0] + late + 0.15 < now; k++) {
+      if (practice.judged.has(k) || notes[k][3] === 'x' || notes[k][0] < now - late - 0.6) continue;
+      practice.judged.add(k);
+      if (playing) practice.labels.push({ s: notes[k][2], at: performance.now(), text: 'Missed', colour: '#f87171' });
+    }
+    if (midi !== null && midi !== practice.prevMidi && now - (practice.lastAttack ?? -9) < 0.3) {   // a real attack, not a finger lifting
+      const t = now - 0.1 - inputCalibration, heard = midi - player.shift;
+      const near = [];
+      for (let k = lo; k < notes.length && notes[k][0] <= t + early; k++) {
+        const [ns, ne, s, f] = notes[k];
+        if (f !== 'x' && Math.max(ne, ns + 0.2) >= t - late) near.push({ s, pitch: open[s] + f });
+      }
+      if (near.length && !near.some((x) => x.pitch === heard) && performance.now() - (practice.wrongAt || 0) > 250) {
+        practice.wrongAt = performance.now();
+        practice.labels.push({ s: near[near.length - 1].s, at: performance.now(), text: `Wrong: ${noteName(midi)}`, colour: '#f87171' });
+      }
+    }
+    practice.prevMidi = midi;
+    practice.plucks = practice.plucks.filter((q) => q.t > now - 2);
+    practice.heard = practice.heard.filter(([t]) => t > now - 2);
+  }
+  $('#timing-show').addEventListener('change', async (e) => {
+    timingShown = e.target.checked;
+    setPref(TIMING_SHOW_KEY, timingShown ? '1' : '0');
+    Object.assign(practice, { labels: [], offsets: [] });
+    if (timingShown && !input.stream) await openInputBar();   // it needs to hear you
+    renderTabHead();
+  });
+
+  // Timing calibration: the delays the Mac/browser report (output, input) aren't always
+  // right, so on the user's setup every note read early. Calibrate takes the current
+  // average (Show my timing, last 16 notes) as on time: seconds subtracted from every
+  // pluck time from then on, in Show my timing and the game. Kept per computer.
+  const CALIBRATION_KEY = 'track-splitter-input-calibration';
+  let inputCalibration = Number(pref(CALIBRATION_KEY)) || 0;
+  $('#timing-calibrate').addEventListener('click', () => {
+    if (practice.offsets.length < 6) { toast('Play along for a few more notes first (at least 6), then press Calibrate.'); return; }
+    const avg = practice.offsets.reduce((a, v) => a + v, 0) / practice.offsets.length;
+    inputCalibration += avg;
+    setPref(CALIBRATION_KEY, String(inputCalibration));
+    Object.assign(practice, { labels: [], offsets: [] });
+    toast(`Calibrated: your notes were ${Math.round(Math.abs(avg) * 1000)} ms ${avg < 0 ? 'early' : 'late'} on average; that now counts as on time.`);
+    renderTabHead();
+  });
+  $('#timing-reset').addEventListener('click', () => {
+    inputCalibration = 0;
+    setPref(CALIBRATION_KEY, '0');
+    Object.assign(practice, { labels: [], offsets: [] });
+    toast('Timing calibration reset.');
+    renderTabHead();
+  });
   $('#pause-dlg').addEventListener('cancel', (e) => { e.preventDefault(); resumeGame(); });   // Escape resumes
   $('#pause-restart').addEventListener('click', () => { $('#pause-dlg').close(); endGame(false); startGame(); });
   $('#pause-quit').addEventListener('click', () => { $('#pause-dlg').close(); endGame(); });
@@ -3160,7 +3956,7 @@
     renderTabHead();
     tabFrame(true);
   });
-  window.addEventListener('resize', () => { if (tabView.open && tabView.data) tabFrame(true); });
+  window.addEventListener('resize', () => { if (tabView.open && tabView.data) { layoutLines(tabView.data); tabFrame(true); } });
 
   // ---------- App shortcut + quit ----------
   const SHORTCUT_KEY = 'track-splitter-shortcut-prompt';

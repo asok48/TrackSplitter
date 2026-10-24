@@ -349,6 +349,96 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   per song and speed (no more narrowing crowded ones): width from the song's quick
   same-string gaps (10th percentile) x speed, 0.7-1.25 x the gem height; the number
   sized for two digits.
+- Game look (user: "more professional", "like an actual game"): game mode has its own
+  renderer, `drawGame` (the Tab section's Highway, `drawHighway`, stays plain and has
+  no game code). A full-window stage (no app chrome; only a pill-shaped Pause over it):
+  dark gradient, two slowly sweeping lights, drifting dust, vignette; the fretboard in
+  perspective, sideways: z = seconds ahead (speed slider: 2.6 s / speed), depth(z) =
+  dd/(z+dd) shrinks gems, tails and lanes toward the right, lanes converge, glowing
+  rails, bar/beat lines across; strike buttons per string (swell and fill on a hit);
+  beveled gems with a shadow and white outlined numbers, one size per song; sparks,
+  flashes, PERFECT!/GOOD, hold glow; HUD: song + timing top left, glowing score, a
+  multiplier ring filling toward the next level, "n NOTE STREAK · %", a GROOVE meter
+  (last 24 notes) and a progress line; countdown 3-2-1-GO!; milestones. Pause and
+  results are `dialog.game-screen`s (purple glow, pill buttons); results show 1-5
+  stars (accuracy 40/60/75/88/95%), "Song complete" or "Results", the score counting
+  up.
+- Game looks and HUD (user: "hard to see what's coming up", "like Rock Band"; a
+  vertical Rock Band track was tried and dropped: "vertical is too confusing, keep it
+  horizontal"; then "you can have Rock Band or Guitar Hero style"): `gameLook`
+  (`track-splitter-game-look`, default rockband), chosen in Game settings.
+  - Both: sideways perspective with far notes at ~half size (dd = Z), speed floor so
+    two notes on a string never touch at the strike line (gemMin 40 px + 12, from the
+    2nd-percentile same-string gap; `minLaneGap`), one gem size per song.
+  - Rock Band (from the user's screenshot): rounded fret buttons; slab gems (lit top,
+    darker front edge, gloss, white number); top right a black score box with a white
+    border and spaced digits, five star medallions under it (silver when earned, gold
+    at five, the next one's ring filling: `starsFor`, score vs 100 a note at 0.25, 0.5,
+    1, 1.6, 2.4); the multiplier badge (blue ring, "4x") at the base of the strike line
+    with a yellow bar up the line toward the next level.
+    The hit flash is a flare in the button's shape (the user disliked a round one).
+  - Guitar Hero (after GH3's HUD, which the user loved): round chrome-ringed buttons,
+    round gems with a white rim, flame bursts; bottom left a metal panel with the
+    score on a green LCD, the multiplier glowing in a dial whose 10-segment ring fills
+    toward the next level, 4 level lights, an odometer streak counter (♪ 045); bottom
+    right the ROCK meter (red/yellow/green, needle from the last 24 notes). The board
+    starts right of the panel (nearX >= 26% of the width).
+  - Groove on the board (user: "make the groove meter look better, incorporate it into
+    the tab", "in Guitar Hero, when you're doing well, it does something similar"):
+    the board's rails and strike line glow by the groove (last 24 notes): green, then
+    yellow, then red and pulsing below 40%; at x4 with groove > 85% the rails thicken
+    and a warm wash lights the board. The separate groove bar is gone.
+  - ROCK meter (Guitar Hero look; the user found the first one cheap): metal bezel with
+    screws, dark glass with a reflection, 24 LED segments red/yellow/green lit up to
+    the needle, "ROCK" in the zone's colour, three zone lamps, a tapered glowing needle
+    on a chrome cap.
+  - Results: finished songs get stars from `starsFor`; stopped early, from accuracy.
+  - Pause is a pill at the top centre (the HUD has the corners).
+- Game settings (user: "a settings page in the pause menu, like changing the look"):
+  `#settings-dlg`, opened from the pause menu's Settings (Done returns to it) or
+  "Game settings" in the Game section: Look, Note speed (drives `#hw-speed`), Timing,
+  Mistake sound, Hear myself + My bass volume (drive the input bubble's), Song volume
+  (drives the player's). Timing and Mistake sound moved here from the Game section.
+- Mistakes (user: "feedback when a mistake is made"): a miss flashes that string's
+  button red with "MISS" rising, and a lost streak of 10+ shows "STREAK LOST · n"; a
+  wrong note (`checkWrong`: a new pitch the tab doesn't have while it expects another
+  note within the window; not over rests) shows "WRONG" + "F2 · tab E♭2". A short thunk
+  (filtered noise + a low knock on the player's context) plays on both unless Mistake
+  sound is off. Labels on one string stack. Show my timing also says "Missed" (only
+  while you're playing) and "Wrong: G1". Wrong notes don't change the score.
+- Responsiveness and finger lifts (user: "it says I missed notes right after I hit
+  them, like when I lift my finger off"; "make it more responsive"): the input is read
+  every 20 ms (was 40). Hits are judged from a pluck plus one clearly pitched reading
+  (`raw`); the steady note (live readout, wrong-note checks) needs 5 readings in a row
+  (~100 ms). An attack is the level rising 3 dB over the reading before last. A wrong
+  note needs a real attack within 0.3 s: lifting a finger lets an open string ring
+  (a new pitch with no attack), which used to flag a mistake. Same in Show my timing.
+  Simulated perfect run: 52 streak, 100%, no stray WRONG/MISS.
+- Lines spacing (user: "make sure all the notes are easy to read and spaced enough"):
+  `layoutLines` re-cuts the tab's bars into lines (up to ~6.5 s) so two notes on a
+  string stay >= 34 px apart, recomputed on resize; numbers only shrink for a close
+  same-string neighbour (other strings are other rows). The Tab section's Highway
+  has the same speed floor and minimum gem.
+- App finish: a refinement layer at the end of the stylesheet (deeper surfaces,
+  34/30 px controls, 10 px radius, gradient primary buttons and active segments,
+  focus rings, frosted player bar, the playing tab line on a card with a glowing
+  playhead, softer dialogs).
+- Show my timing (user: "a toggle for the normal highway that lets you see the timing
+  on the hit"): a switch in the Tab section when the Highway is shown (opens the bass
+  input if needed; `track-splitter-show-timing`). `practiceListen` uses the game's
+  pluck + pitch matching and windows (the Timing choice) without score or locks; each
+  hit rises from its target as "On time" (<= 20 ms) or "Early/Late n ms" (green within
+  the Perfect window, else blue/amber), and top right "Avg: n ms late" over the last
+  16. Jumping elsewhere resets it. Simulated player 60 ms late: average read ~39 ms
+  late (detection timing assumptions; Timing under More shifts it). With the switch on
+  but no bass input, the Highway says so.
+- Timing calibration (user: "it always says I'm early": the Mac/browser's reported
+  output/input delays don't match the real ones): "Calibrate" next to the switch takes
+  the current average (>= 6 notes) as on time; the seconds (`inputCalibration`,
+  `track-splitter-input-calibration`, cumulative) are subtracted from every pluck and
+  heard-pitch time in Show my timing and the game. More → "Reset timing
+  calibration". Simulated player 80 ms early: read 66 ms early, after Calibrate 16 ms
+  (on time), total correction 82 ms after a second Calibrate.
 - Hand thuds (user: "my hand hits the string and it picks it up as a note"): live
   detection now needs a clearly pitched reading (YIN dip < 0.1) and 3 readings in a
   row (~120 ms) to agree (was 2 of 3). Test: 16 damped bass-pitched thuds and noise
