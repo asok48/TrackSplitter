@@ -181,6 +181,8 @@
   #input-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .input-note.match b { color: #4ade80; }
   .input-note.off b { color: #f87171; }
+  /* Guitar: chord names are longer ("C♯m7♭5/G♯"). */
+  .input-note.guitar b { flex: 0 0 5.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #input-record { display: inline-flex; align-items: center; gap: 7px; min-width: 7.5em; justify-content: center; }
   #input-tuner-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
   .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; }
@@ -883,14 +885,14 @@
           <div class="input-bar hidden" id="input-bar">
             <div class="ib-head">
               <span class="ib-grip" aria-hidden="true"></span>
-              <span class="ib-title">Bass input</span>
+              <span class="ib-title" id="input-title">Bass input</span>
               <button type="button" class="icon-btn" id="input-close" aria-label="Stop listening" title="Stop listening">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
               </button>
             </div>
             <div class="ib-col ib-input">
               <div class="ib-row"><span class="ib-section">Input</span>
-                <div class="segmented ib-instrument" id="input-instrument" role="group" aria-label="Instrument" title="Bass: notes from a low B up. Guitar: a guitar's range and strings; notes in another octave count in the game">
+                <div class="segmented ib-instrument" id="input-instrument" role="group" aria-label="Instrument" title="Bass: the notes you play and where they are on the bass. Guitar: the chord you strum (or the note), a guitar's range and strings; notes in another octave count in the game">
                   <button type="button" data-instrument="bass">Bass</button>
                   <button type="button" data-instrument="guitar">Guitar</button>
                 </div></div>
@@ -917,7 +919,7 @@
               <button type="button" class="btn sm" id="input-tuner-btn" aria-pressed="false" title="Tune your bass: the note you play and how far off it is">Tuner</button>
               <button type="button" class="btn sm" id="input-strings" title="Which string you play a note on: calibrate it for your bass">Calibrate strings…</button>
             </div>
-            <div class="ib-col">
+            <div class="ib-col" id="input-record-col">
               <div class="ib-section">Record into your draft</div>
               <div class="segmented" id="record-mode" role="group" aria-label="What a take does" title="Add notes: keep the draft and add what you play that isn't in it. Replace: your take replaces that stretch.">
                 <button type="button" data-rmode="add">Add notes</button>
@@ -4028,7 +4030,9 @@
   const INSTRUMENT_KEY = 'track-splitter-instrument';
   let instrument = (() => { try { return localStorage.getItem(INSTRUMENT_KEY) === 'guitar' ? 'guitar' : 'bass'; } catch { return 'bass'; } })();
   const PITCH_RANGE = { bass: [28, 420], guitar: [70, 1400] };   // Hz: a low B to G4; a dropped low D to a 24th-fret high E
-  const GUITAR = { open: [40, 45, 50, 55, 59, 64], strings: ['E', 'A', 'D', 'G', 'B', 'E'] };
+  const isGuitar = () => instrument === 'guitar';
+  const inputName = () => (isGuitar() ? 'Guitar input' : 'Bass input');
+  const GUITAR = { open: [40, 45, 50, 55, 59, 64], strings: ['E', 'A', 'D', 'G', 'B', 'e'] };
   const samePitch = (heard, written) => heard === written || (instrument === 'guitar' && (heard - written) % 12 === 0);
   const VOLUME_KEY = 'track-splitter-monitor-volume';   // Hear myself boost, dB
   const monitorGain = () => 10 ** (Number($('#input-volume').value) / 20);
@@ -4050,7 +4054,7 @@
     input.stream?.getTracks().forEach((t) => t.stop());
     input.source?.disconnect();
     input.mon?.close();
-    Object.assign(input, { stream: null, source: null, analyser: null, mon: null, monOut: null, recent: [], note: null, lane: null });
+    Object.assign(input, { stream: null, source: null, analyser: null, chordAn: null, mon: null, monOut: null, recent: [], note: null, lane: null });
   }
   async function openInput(deviceId) {
     closeInput();
@@ -4066,6 +4070,11 @@
     const channels = input.stream.getAudioTracks()[0].getSettings().channelCount;
     $('#input-mono').classList.toggle('hidden', channels !== 1);   // known to be one channel
     connectChannel(split, input.analyser);
+    // Chords (guitar): a longer slice, ~170 ms (`heardNotes`).
+    input.chordAn = ctx.createAnalyser();
+    input.chordAn.fftSize = ctx.sampleRate > 50000 ? 16384 : 8192;
+    input.chordBuf = new Float32Array(input.chordAn.fftSize);
+    connectChannel(split, input.chordAn);
     await setMonitor($('#input-monitor').checked);
     const buf = new Float32Array(input.analyser.fftSize);
     input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly
@@ -4319,9 +4328,10 @@
     const prevRaw = input.recent[input.recent.length - 2];
     const newPitch = raw !== null && prevRaw === raw && raw !== input.rawNote;
     if (raw !== null && prevRaw === raw) input.rawNote = raw;
+    if (isGuitar()) listenChords(freshDb, hist);
     input.freshHist = [...hist.slice(-2), freshDb];
     input.freshDb = freshDb;                            // the game's pluck loudness
-    if (input.stringDue && performance.now() >= input.stringDue) { input.stringDue = 0; readString(buf, raw); }
+    if (input.stringDue && performance.now() >= input.stringDue && !isGuitar()) { input.stringDue = 0; readString(buf, raw); }
     // The note shown (and checked for wrong notes) needs 5 readings in a row (~100 ms)
     // to agree: a played note rings that long, a thud from a hand on the strings dies
     // away sooner. Hits are judged sooner: a pluck plus one clear reading (`raw`).
@@ -4331,7 +4341,7 @@
     let shown = steady ?? null;
     if (shown !== null && shown !== input.shownMidi && nowMs - (input.pluckAt || -1e9) > 700) shown = null;
     input.shownMidi = shown;
-    showNote(shown);
+    if (!isGuitar()) showNote(shown);
     if (calib.on) { calibListen(db); return; }
     if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked, newPitch);
     if (game.on && !game.countdown) {
@@ -4354,7 +4364,7 @@
     if (hz) { tuner.hz = [...tuner.hz.slice(-4), hz]; tuner.lastAt = now; }
     else if (now - tuner.lastAt > 600) tuner.hz = [];
     const box = $('#tuner');
-    const tun = instrument === 'guitar' ? GUITAR : shownTuning();
+    const tun = isGuitar() ? GUITAR : shownTuning();
     if (!tuner.hz.length) {
       box.classList.add('idle'); box.classList.remove('in');
       $('#tuner-note').textContent = '–'; $('#tuner-hz').textContent = 'Play an open string'; $('#tuner-cents').textContent = '';
@@ -4373,19 +4383,6 @@
     $('#tuner-strings').replaceChildren(...tun.strings.map((name, s) => el('span', {
       textContent: name, className: tun.open[s] === note ? (inTune ? 'in' : 'near') : '' })));
   }
-  const showInstrument = () => {
-    document.querySelectorAll('#input-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === instrument));
-    $('#tab-input-text').textContent = input.stream ? 'Listening' : (instrument === 'guitar' ? 'Guitar input' : 'Bass input');
-    $('.ib-title').textContent = instrument === 'guitar' ? 'Guitar input' : 'Bass input';
-  };
-  document.querySelectorAll('#input-instrument button').forEach((b) => b.addEventListener('click', () => {
-    instrument = b.dataset.instrument;
-    setPref(INSTRUMENT_KEY, instrument);
-    input.recent = []; input.string = null; tuner.hz = [];
-    showInstrument(); showNote(null);
-    if (tunerOn) showTuner(0);
-  }));
-  showInstrument();
   $('#input-tuner-btn').addEventListener('click', () => {
     tunerOn = !tunerOn;
     $('#tuner').classList.toggle('hidden', !tunerOn);
@@ -4454,6 +4451,223 @@
     return t?.open ? t : { open: CAL_OPEN, strings: ['E', 'A', 'D', 'G'] };
   }
 
+  // Guitar chords (user: "chord recognition for guitar inputs"). YIN finds one pitch; a
+  // strum has 3-6. So: the notes ringing are found in the spectrum one at a time (each
+  // peak a possible fundamental, scored by the harmonics it explains; the best is a note,
+  // its harmonics are taken out, again until what's left is < 18% of the first), then
+  // their pitch classes and lowest note are matched against chord shapes. Tested on chords
+  // built from recorded acoustic and electric guitar notes (50 shapes, open and barre,
+  // 7ths, sus, add9, slash chords, power chords; 44.1 and 48 kHz): one strum right 95% of
+  // the time from 0.3 s on, progressions 96%, 8th-note down-up strumming 83%, melodies
+  // played one note at a time never called a chord. Not yet tried on the user's guitar.
+  function heardNotes(buf, sampleRate) {
+    const L = buf.length, N = 1 << Math.ceil(Math.log2(L * 2)), x = new Float64Array(N);
+    for (let i = 0; i < L; i++) x[i] = buf[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (L - 1)));
+    const S = fftMagnitude(x), df = sampleRate / N;
+    const k0 = Math.max(2, Math.floor(75 / df)), k1 = Math.min(S.length - 3, Math.ceil(5000 / df));
+    let max = 0;
+    for (let k = k0; k <= k1; k++) max = Math.max(max, S[k]);
+    if (!max) return [];
+    // Peaks within 45 dB of the loudest (local maxima over +-2 bins, refined by a parabola
+    // on the log); amplitudes compressed (^0.6) so one loud partial doesn't decide.
+    const peaks = [];
+    for (let k = k0; k <= k1; k++) {
+      const v = S[k];
+      if (v < max * 0.0056 || v < S[k - 1] || v < S[k + 1] || v < S[k - 2] || v < S[k + 2]) continue;
+      const a = Math.log(S[k - 1] + 1e-12), b = Math.log(v), c = Math.log(S[k + 1] + 1e-12), den = a - 2 * b + c;
+      const pk = { f: (k + (den ? 0.5 * (a - c) / den : 0)) * df, a: (v / max) ** 0.6, raw: v / (L / 2) };
+      pk.left = pk.a;
+      peaks.push(pk);
+    }
+    const near = (f) => {                               // the strongest unused peak within 2.5% of f
+      let best = null;
+      for (const pk of peaks) if (pk.left > 0 && Math.abs(pk.f - f) <= f * 0.025 && (!best || pk.left > best.left)) best = pk;
+      return best;
+    };
+    const notes = [];
+    let first = 0;
+    while (notes.length < 6) {
+      let best = null;
+      for (const c of peaks) {                          // fundamentals 75-1200 Hz (E2 to the high frets)
+        if (c.f > 1200 || c.left < 0.06) continue;
+        let s = 0, hits = 0;
+        const used = [];
+        for (let h = 1; h <= 10; h++) {
+          const pk = near(h * c.f);
+          if (pk) { s += pk.left / h ** 0.25; hits++; used.push(pk); }
+        }
+        if (hits < 2 && c.f < 600) continue;
+        if (!best || s > best.s) best = { f: c.f, s, used };
+      }
+      if (!best || (first && best.s < first * 0.18)) break;
+      first ||= best.s;
+      best.used.forEach((pk) => { pk.left = 0; });
+      notes.push({ midi: Math.round(12 * Math.log2(best.f / 440) + 69), s: best.s / first,
+        db: 20 * Math.log10(Math.max(...best.used.map((pk) => pk.raw)) + 1e-12) });
+    }
+    return notes;
+  }
+  // [suffix, intervals, cost]: simpler names win a close call.
+  const CHORDS = [
+    ['', [0, 4, 7], 0], ['m', [0, 3, 7], 0], ['5', [0, 7], 0.05],
+    ['7', [0, 4, 7, 10], 0.08], ['maj7', [0, 4, 7, 11], 0.1], ['m7', [0, 3, 7, 10], 0.08],
+    ['sus4', [0, 5, 7], 0.08], ['sus2', [0, 2, 7], 0.1], ['dim', [0, 3, 6], 0.12], ['aug', [0, 4, 8], 0.15],
+    ['6', [0, 4, 7, 9], 0.12], ['m6', [0, 3, 7, 9], 0.14], ['add9', [0, 2, 4, 7], 0.12],
+    ['m7♭5', [0, 3, 6, 10], 0.14], ['dim7', [0, 3, 6, 9], 0.16], ['7sus4', [0, 5, 7, 10], 0.14],
+  ];
+  const pcOf = (m) => ((m % 12) + 12) % 12;
+  // The chord the notes make, or null (one note, or octaves of it). A pitch class counts
+  // from 0.2 of the strongest; a 4-note chord's added note (6th, 7th, 9th) from 0.3 (strums
+  // often catch a stray one). Leaving out the fifth costs little (guitarists often do);
+  // the lowest note as the root scores, as a chord tone gives a slash chord (C/G).
+  function chordOf(notes) {
+    const w = new Array(12).fill(0);
+    for (const n of notes) w[pcOf(n.midi)] = Math.max(w[pcOf(n.midi)], Math.min(1, n.s));
+    const top = Math.max(...w);
+    if (!top) return null;
+    for (let i = 0; i < 12; i++) w[i] /= top;
+    const pcs = w.map((v, i) => [i, v]).filter(([, v]) => v >= 0.2);
+    if (pcs.length < 2) return null;
+    const bassNote = notes.filter((n) => n.s >= 0.2).reduce((a, b) => (b.midi < a.midi ? b : a)), bass = pcOf(bassNote.midi);
+    let best = null;
+    for (let r = 0; r < 12; r++) {
+      if (w[r] < 0.2) continue;                          // the root has to be heard
+      for (const [suffix, iv, cost] of CHORDS) {
+        if (iv.length === 2 && pcs.length > 2) continue;
+        const set = iv.map((i) => (r + i) % 12);
+        let score = -cost;
+        iv.forEach((i, k) => {
+          const need = iv.length > 3 && [2, 9, 10, 11].includes(i) ? 0.3 : 0.2;
+          score += w[set[k]] >= need ? w[set[k]] : i === 7 && iv.length > 2 ? -0.15 : -0.7;
+        });
+        for (const [pc, v] of pcs) if (!set.includes(pc)) score -= v;
+        score += r === bass ? 0.35 : set.includes(bass) ? 0 : -0.3;
+        if (!best || score > best.score) best = { score, r, suffix, set };
+      }
+    }
+    if (!best || best.score < 0.6) return null;
+    const heard = best.set.filter((pc) => w[pc] >= 0.2);
+    return { name: NOTE_NAMES[best.r] + best.suffix + (bass !== best.r ? `/${NOTE_NAMES[bass]}` : ''),
+             pcs: heard, notes: heard.map((pc) => NOTE_NAMES[pc]), bassMidi: bassNote.midi };
+  }
+  // Follows what's ringing, strum to strum. `pluck(t)` at each attack (a strum is attacks
+  // less than 0.25 s apart); readings (`add`, every 0.1 s) use only the sound since the
+  // strum began (`windowFor`, 85-170 ms), so the chord before doesn't leak in, and each
+  // note's salience is averaged over the readings since. A chord is shown once two
+  // readings agree (three for 4-note chords and for the chord shown plus a note, G ->
+  // Gadd9: the attack often adds a stray note). A new chord needs 2 notes that started at this strum (louder than just
+  // before it), or the same chord as the strum before: a note over strings still ringing
+  // isn't a chord. The chord shown stays through re-strums of it (all or some strings: an
+  // upstroke) and while it dies away; another bass note makes a slash chord when it's
+  // lower, or when the old one has stopped.
+  function chordTracker() {
+    const t = { sum: new Map(), n: 0, chord: null, last: null, prevRaw: null, runs: 0, none: 0, strumAt: -9, lastPluck: -9, before: new Map(), levels: new Map() };
+    const within = (ch, pcs) => pcs.every((pc) => ch.pcs.includes(pc));
+    t.restart = () => { t.sum.clear(); t.n = 0; };
+    t.clear = () => { t.restart(); Object.assign(t, { chord: null, last: null, prevRaw: null, runs: 0, none: 0, before: new Map(), levels: new Map() }); };
+    t.pluck = (now) => {
+      if (now - t.lastPluck > 0.25) { t.strumAt = now; t.before = t.levels; }
+      t.lastPluck = now;
+      t.restart();
+    };
+    t.windowFor = (now, rate) => Math.round(Math.max(4096, Math.min(8192, (now - t.strumAt + 0.01) * 48000)) * rate / 48000);
+    t.add = (notes) => {
+      const levels = new Map();
+      for (const nt of notes) levels.set(pcOf(nt.midi), Math.max(levels.get(pcOf(nt.midi)) ?? -999, nt.db));
+      t.levels = levels;
+      // A strong note not heard so far, with no attack heard: a new chord all the same.
+      if (t.n >= 2 && notes.some((nt) => nt.s >= 0.6 && ![...t.sum.keys()].some((m) => pcOf(m - nt.midi) === 0))) { t.restart(); t.before = new Map(); }
+      t.n++;
+      for (const nt of notes) t.sum.set(nt.midi, (t.sum.get(nt.midi) || 0) + nt.s);
+      const avg = [...t.sum].map(([midi, s]) => ({ midi, s: s / t.n }));
+      const top = Math.max(0, ...avg.map((a) => a.s));
+      let now = top ? chordOf(avg.map((a) => ({ midi: a.midi, s: a.s / top }))) : null;
+      const held = t.chord, left = avg.filter((a) => a.s >= 0.2 * top).map((a) => pcOf(a.midi));
+      const oldBass = held && avg.some((a) => a.midi === held.bassMidi && a.s >= 0.2 * top);
+      if (held && within(held, left) && (!now || now.bassMidi === held.bassMidi || (now.bassMidi > held.bassMidi && oldBass))) {
+        t.none = 0; t.last = now;
+        return held;
+      }
+      if (now) {
+        const raw = now.name, rising = [...levels].filter(([pc, db]) => now.pcs.includes(pc) && db > (t.before.get(pc) ?? -999) + 0.5).length;
+        if (rising < 2 && raw !== t.prevRaw) now = null;
+        t.prevRaw = raw;
+      }
+      t.runs = now && t.last?.name === now.name ? t.runs + 1 : 1;
+      t.last = now;
+      const need = now?.pcs.length > 3 || (held && now && now.pcs.length > held.pcs.length && within(now, held.pcs)) ? 3 : 2;
+      if (now && t.runs >= need) { t.chord = now; t.none = 0; }
+      else if (!now && ++t.none >= 2) t.chord = null;
+      return t.chord;
+    };
+    return t;
+  }
+
+  const chords = chordTracker();
+  // Guitar mode, every 20 ms from `listen`: strums found like plucks (the newest 20 ms
+  // 4 dB over the readings before), a reading 0.14 s after a strum and every 0.1 s after.
+  // Guitar pickups put out less than a bass (and the interface gain is kept low), so it
+  // listens from -60 dB and clears below -66 dB: simulated chords at -44 dB peaks were as
+  // right as loud ones (96%), at -54 dB 91%.
+  function listenChords(freshDb, hist) {
+    const now = performance.now() / 1000;
+    if (freshDb < -66) {
+      if (!chords.quietSince) chords.quietSince = now;
+      else if (now - chords.quietSince > 0.3 && (chords.chord || chords.n)) { chords.clear(); showChord(null, []); }
+      return;
+    }
+    chords.quietSince = 0;
+    if (freshDb > -60 && hist.length && freshDb - Math.min(...hist) > 4 && now - chords.lastPluck > 0.09) { chords.pluck(now); chords.next = now + 0.14; }
+    if (now < (chords.next || 0) || !input.chordAn) return;
+    chords.next = now + 0.1;
+    input.chordAn.getFloatTimeDomainData(input.chordBuf);
+    const L = Math.min(input.chordBuf.length, chords.windowFor(now, ctx.sampleRate));
+    const notes = heardNotes(input.chordBuf.subarray(input.chordBuf.length - L), ctx.sampleRate);
+    showChord(chords.add(notes), notes);
+  }
+  // The chord and its notes ("Am7", "A C E G"), or a single note and where it is on the
+  // neck; between the two (notes that make no chord yet) what's shown stays.
+  function showChord(ch, notes) {
+    input.note = null; input.lane = null; input.match = false;
+    $('.input-note').classList.remove('match', 'off', 'other');
+    $('#tab-input').classList.remove('match', 'off');
+    let big = '–', small = 'Strum a chord';
+    if (ch) { big = ch.name; small = ch.notes.join(' '); }
+    else {
+      const strong = notes.filter((n) => n.s >= 0.3);
+      if (strong.length && strong.every((n) => pcOf(n.midi) === pcOf(strong[0].midi))) {
+        const m = Math.min(...strong.map((n) => n.midi));
+        big = noteName(m);
+        small = GUITAR.open.map((o, s) => [s, m - o]).filter(([, f]) => f >= 0 && f <= 22).sort((a, b) => a[1] - b[1])
+          .slice(0, 3).map(([s, f]) => `${GUITAR.strings[s]}${f}`).join(' · ');
+      } else if (notes.length) return;
+    }
+    $('#input-note').textContent = big;
+    $('#input-where').textContent = small;
+    if (!rec.active) $('#tab-input-text').textContent = big === '–' ? 'Listening' : big;
+  }
+  // Bass or guitar: Guitar shows chords (and single notes on a 6-string in standard
+  // tuning) and the tuner shows its strings; Record and Calibrate strings are bass only.
+  function setInstrument(inst) {
+    instrument = inst;
+    setPref(INSTRUMENT_KEY, inst);
+    document.querySelectorAll('#input-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === inst));
+    if (isGuitar() && rec.active) stopRecording();
+    $('#input-record-col').classList.toggle('hidden', isGuitar());
+    $('#input-strings').classList.toggle('hidden', isGuitar());
+    $('#input-title').textContent = inputName();
+    $('.input-note').classList.toggle('guitar', isGuitar());
+    $('#tab-input').title = isGuitar() ? 'Your guitar through an audio interface: see the chords you play, hear yourself'
+      : 'Your bass through an audio interface: see the notes you play, hear yourself, record your own tab';
+    $('#input-tuner-btn').title = `Tune your ${isGuitar() ? 'guitar' : 'bass'}: the note you play and how far off it is`;
+    chords.clear(); input.recent = []; input.string = null; tuner.hz = [];
+    if (isGuitar()) showChord(null, []); else showNote(null);
+    $('#tab-input-text').textContent = input.stream ? 'Listening' : inputName();
+    if (tunerOn) showTuner(0);
+  }
+  document.querySelectorAll('#input-instrument button').forEach((b) => b.addEventListener('click', () => setInstrument(b.dataset.instrument)));
+  setInstrument(instrument);
+
   async function openInputBar() {
     $('#input-bar').classList.remove('hidden');
     $('#tab-input').setAttribute('aria-pressed', 'true');
@@ -4502,7 +4716,7 @@
     $('#input-bar').classList.add('hidden');
     $('#tab-input').setAttribute('aria-pressed', 'false');
     $('#tab-input').classList.remove('listening', 'match', 'off');
-    $('#tab-input-text').textContent = instrument === 'guitar' ? 'Guitar input' : 'Bass input';
+    $('#tab-input-text').textContent = inputName();
   }
   // The button opens the input (first time) or shows/hides its bubble; clicking
   // elsewhere hides the bubble but keeps listening (the button then shows the note).
