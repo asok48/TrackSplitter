@@ -18,6 +18,7 @@
 """
 
 import json
+import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -51,7 +52,10 @@ def _model_output(audio, on_progress):
     global _session
     if _session is None:
         import onnxruntime
-        _session = onnxruntime.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
+        opts = onnxruntime.SessionOptions()
+        if os.environ.get("TRACK_SPLITTER_THREADS"):     # the background learner: a few threads only
+            opts.intra_op_num_threads = int(os.environ["TRACK_SPLITTER_THREADS"])
+        _session = onnxruntime.InferenceSession(str(MODEL_PATH), opts, providers=["CPUExecutionProvider"])
     overlap = OVERLAP_FRAMES * FFT_HOP
     hop = AUDIO_N_SAMPLES - overlap
     x = np.concatenate([np.zeros(overlap // 2, np.float32), audio.astype(np.float32)])

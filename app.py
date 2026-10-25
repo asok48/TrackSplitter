@@ -12,6 +12,7 @@ static/index.html.
 import bisect
 import hashlib
 import json
+import multiprocessing
 import os
 import queue
 import re
@@ -898,19 +899,24 @@ def imported_tabs():
 
 
 def learn_sources():
-    return {rel(song_dir): data["made"] for song_dir, data in imported_tabs().items()}
+    """What learning was fitted to: each imported tab's time, with the user's "make repeats
+    match" choices when it has some (changing them re-learns the fingering)."""
+    return {rel(song_dir): [data["made"], data["unify"]] if data.get("unify") else data["made"]
+            for song_dir, data in imported_tabs().items()}
 
 
 def learn_from_imports(report=lambda fraction=None, step=None: None):
     """Fit the note settings and the fingering costs to all imported tabs and save them."""
     report(0.0, "Reading your imported tabs")
+    sources = learn_sources()   # as they are now: changes made meanwhile cause another round
     fingers, songs = [], []
     for song_dir, data in imported_tabs().items():
         report(None, f"Reading {song_dir.name}")
         strings = data.get("open") or (tab.TUNINGS[data["tuning"]][1] if data["tuning"] in tab.TUNINGS else None)
         if not strings:
             continue
-        played = [(n[0], strings[n[2]] + n[3], n[2], n[3]) for n in data["notes"] if not n[4]]
+        # The tab as the user plays it: their "make repeats match" choices are right answers too.
+        played = [(n[0], strings[n[2]] + n[3], n[2], n[3]) for n in unified_notes(data) if not n[4]]
         fingers.append((strings, played))
         track = bass_track(song_dir)
         if track and played:   # note learning reruns detection, so it needs the bass on its own
@@ -955,7 +961,7 @@ def learn_from_imports(report=lambda fraction=None, step=None: None):
     style = tab.learn_style(fingers, on_progress=lambda f: report(0.85 + 0.15 * f)) if after > before else None
     temp = LEARNED_FILE.with_suffix(".tmp")   # written whole, then swapped in: tabs read it meanwhile
     temp.write_text(json.dumps({
-        "made": time.time(), "sources": learn_sources(), "rules": LEARN_RULES, "notes": notes, "note_models": models,
+        "made": time.time(), "sources": sources, "rules": LEARN_RULES, "notes": notes, "note_models": models,
         "fingering": {"style": style, "tabs": len(fingers), "before": round(before, 3), "after": round(after, 3)}}),
         encoding="utf-8")
     temp.replace(LEARNED_FILE)
@@ -1370,7 +1376,167 @@ def resync_import(song_dir, imported):
     except Exception as err:   # keep the old one rather than fail the page
         print(f"Couldn't sync {source.name} again: {err}")
         return imported
-    return read_import(song_dir) or imported
+    fresh = read_import(song_dir)
+    if not fresh:
+        return imported
+    # Same tab, synced again: it keeps its time, which is what tells the learner whether
+    # the imported tabs changed (a new time made it re-learn everything at the next start).
+    fresh["made"] = imported.get("made", fresh["made"])
+    if imported.get("unify"):   # the user's "make repeats match" choices
+        fresh["unify"] = imported["unify"]
+    (song_dir / IMPORT_FILE).write_text(json.dumps(fresh), encoding="utf-8")
+    return fresh
+
+
+def import_opens(imported):
+    """An imported tab's open-string MIDI notes (its own tuning), or None."""
+    w = imported["tuning"]
+    return imported.get("open") or (tab.TUNINGS[w][1] if w in tab.TUNINGS else None)
+
+
+def _bar_map(notes, idx, opens):
+    """Where a bar plays each pitch: {pitch: (string, fret)}, the usual place if it varies."""
+    seen = {}
+    for i in idx:
+        n = notes[i]
+        seen.setdefault(opens[n[2]] + n[3], []).append((n[2], n[3]))
+    return {p: max(set(v), key=v.count) for p, v in seen.items()}
+
+
+def _similar(a, b):
+    """Share of two pitch sequences that lines up in order (longest common subsequence)."""
+    prev = [0] * (len(b) + 1)
+    for x in a:
+        cur = [0]
+        for k, y in enumerate(b):
+            cur.append(prev[k] + 1 if x == y else max(prev[k + 1], cur[k]))
+        prev = cur
+    return prev[-1] / max(len(a), len(b))
+
+
+def repeat_groups(imported):
+    """Parts the imported tab repeats but plays in different places: bars (3+ played notes)
+    whose pitches mostly match (>= 75% in order: a pickup note or a changed last note still
+    counts; user: an A7 A7 A9 ending against a D2 D4 D4 one wasn't caught) and that put a
+    pitch they share on different strings. {key: [ways]}, key = the first such bar's
+    pitches; each way = {"map": {pitch: (string, fret)}, "bars": [(start, note indexes,
+    pitches)]}, the most played way first; only groups with more than one way."""
+    opens = import_opens(imported)
+    starts = sorted({b for line in imported["lines"] for b in line[2]})
+    if not opens or not starts:
+        return {}
+    notes, by_bar = imported["notes"], {}
+    for i, n in enumerate(notes):
+        if not n[4]:
+            by_bar.setdefault(max(0, bisect.bisect_right(starts, n[0] + 0.02) - 1), []).append(i)
+    clusters = []   # [first bar's pitches, [bars]]
+    for b in sorted(by_bar):
+        idx = by_bar[b]
+        if len(idx) < 3:
+            continue
+        pitches = [opens[notes[i][2]] + notes[i][3] for i in idx]
+        bar = (starts[b], idx, pitches)
+        home = next((c for c in clusters if _similar(c[0], pitches) >= 0.75), None)
+        if home:
+            home[1].append(bar)
+        else:
+            clusters.append([pitches, [bar]])
+    groups = {}
+    for first, bars in clusters:
+        ways = []   # a bar joins the first way that plays every pitch they share in the same place
+        for bar in bars:
+            fmap = _bar_map(notes, bar[1], opens)
+            way = next((w for w in ways if all(w["map"][p] == f for p, f in fmap.items() if p in w["map"])), None)
+            if way:
+                way["map"].update({p: f for p, f in fmap.items() if p not in way["map"]})
+                way["bars"].append(bar)
+            else:
+                ways.append({"map": dict(fmap), "bars": [bar]})
+        if len(ways) > 1:
+            ways.sort(key=lambda w: (-len(w["bars"]), w["bars"][0][0]))
+            groups[",".join(map(str, first))] = ways
+    return groups
+
+
+def _rule_map(key, rule):
+    """A saved "make repeats match" choice as {pitch: (string, fret)}. Older ones were a
+    fingering per note of the key's pitches."""
+    if isinstance(rule, dict):
+        return {int(p): tuple(f) for p, f in rule.items()}
+    return {int(p): tuple(f) for p, f in zip(key.split(","), rule)}
+
+
+def fit_costs(imported, ways, notes=None):
+    """How hard each way is to play in each of the group's bars, with the bar before and
+    the bar after as the tab writes them (user: "the easier way to play based off the
+    previous bar and following bar"): tab._difficulty (hand shifts, quick jumps, string
+    skips) over those three bars, the neighbours as `notes` has them (the user's other
+    choices applied) or as written. {bar start: [cost per way]}."""
+    notes, opens = notes or imported["notes"], import_opens(imported)
+    starts = sorted({b for line in imported["lines"] for b in line[2]})
+    played = [i for i, n in enumerate(notes) if not n[4]]
+    times = [notes[i][0] for i in played]
+    out = {}
+    for way in ways:
+        for start, idx, pitches in way["bars"]:
+            k = bisect.bisect_left(starts, start)
+            lo = starts[k - 1] if k > 0 else start
+            hi = starts[k + 2] if k + 2 < len(starts) else float("inf")
+            window = played[bisect.bisect_left(times, lo - 0.02):bisect.bisect_left(times, hi - 0.02)]
+            mine = set(idx)
+            costs = []
+            for other in ways:
+                pos = [tuple(other["map"].get(opens[notes[i][2]] + notes[i][3], (notes[i][2], notes[i][3])))
+                       if i in mine else (notes[i][2], notes[i][3]) for i in window]
+                costs.append(tab._difficulty([notes[i][0] for i in window], pos) * len(window))
+            out[start] = costs
+    return out
+
+
+def best_here(costs, own):
+    """The way that fits a bar best; on a tie the one the tab already plays there."""
+    return own if costs[own] <= min(costs) + 1e-9 else costs.index(min(costs))
+
+
+def unify_rules(imported, groups):
+    """The import's saved choices as {group key: {pitch: (string, fret)}}. Choices saved
+    before near repeats were grouped are keyed by one exact pitch sequence: each goes to the
+    group with a bar playing exactly that (later ones win where they overlap)."""
+    out = {}
+    for key, rule in (imported.get("unify") or {}).items():
+        if rule == "easiest":   # each bar the way that fits it best
+            if key in groups:
+                out[key] = rule
+            continue
+        if isinstance(rule, dict):
+            out.setdefault(key, {}).update(_rule_map(key, rule))
+            continue
+        pitches = [int(p) for p in key.split(",")]
+        home = next((k for k, ways in groups.items() if any(b[2] == pitches for w in ways for b in w["bars"])), None)
+        if home:
+            out.setdefault(home, {}).update(_rule_map(key, rule))
+    return out
+
+
+def unified_notes(imported, skip=None):
+    """The imported tab's notes with the user's "make repeats match" choices applied (all
+    but `skip`): in every bar of a group with a chosen way, each pitch that way plays goes
+    where it plays it; then the groups set to "easiest", each bar the way that fits it best
+    between its neighbours as they now are."""
+    notes = [list(n) for n in imported["notes"]]
+    if not imported.get("unify") or not import_opens(imported):
+        return notes
+    groups = repeat_groups(imported)
+    rules = {k: r for k, r in unify_rules(imported, groups).items() if k != skip}
+    for key in sorted(rules, key=lambda k: rules[k] == "easiest"):
+        costs = fit_costs(imported, groups[key], notes) if rules[key] == "easiest" else None
+        for own, way in enumerate(groups[key]):
+            for start, idx, pitches in way["bars"]:
+                fmap = groups[key][best_here(costs[start], own)]["map"] if costs else rules[key]
+                for i, p in zip(idx, pitches):
+                    if p in fmap:
+                        notes[i][2], notes[i][3] = fmap[p]
+    return notes
 
 
 def easiest_tunings(song_dir, imported, opens):
@@ -1448,7 +1614,7 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
                 "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings}
         # Dead (muted) notes, written "x", are left out: the user asked for no x's. A 5th
         # value says the note is slid or hammered into (the game doesn't call it messy).
-        played = [n for n in imported["notes"] if not n[4]]
+        played = [n for n in unified_notes(imported) if not n[4]]
         legato = lambda n: bool(n[5]) if len(n) > 5 else False
         if tuning in (None, written) or tuning not in tab.TUNINGS or not opens:
             return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3], legato(n)] for n in played]}
@@ -1614,7 +1780,7 @@ def start_draft(req: DraftRequest):
         opens = imported.get("open") or tab.TUNINGS.get(imported["tuning"], (None, None))[1]
         if not opens:
             raise HTTPException(400, "Couldn't read that tab's tuning.")
-        draft.update(base=[[n[0], n[1], opens[n[2]] + n[3]] for n in imported["notes"] if not n[4]],
+        draft.update(base=[[n[0], n[1], opens[n[2]] + n[3]] for n in unified_notes(imported) if not n[4]],
                      lines=imported["lines"], tuning=imported["tuning"] if imported["tuning"] in tab.TUNINGS else None,
                      from_name=imported["name"])
     else:
@@ -1651,6 +1817,82 @@ def remove_import(req: IdRequest):
     return {"ok": True}
 
 
+@api.get("/api/tab/repeats")
+def tab_repeats(song: str):
+    """Repeated parts of the imported tab played in different places: per group each way
+    (where it plays each pitch, its bars, and its first bar's notes to draw) and the one
+    chosen, if any."""
+    imported = read_import(library_path(song, 2))
+    if not imported:
+        raise HTTPException(404, "This song has no imported tab.")
+    groups = repeat_groups(imported)
+    names, rules, out = imported.get("strings") or [], unify_rules(imported, groups), []
+    starts = sorted({b for line in imported["lines"] for b in line[2]})
+    notes = imported["notes"]
+    as_json = lambda fmap: {str(p): list(fmap[p]) for p in sorted(fmap)}
+    for key, ways in groups.items():
+        costs, variants = fit_costs(imported, ways, unified_notes(imported, skip=key)), []
+        # Used everywhere, how hard each way is over all the group's bars (with their
+        # neighbours); and how many bars each way fits best (Easiest in each place).
+        totals = [sum(costs[b[0]][k] for w in ways for b in w["bars"]) for k in range(len(ways))]
+        fits = [0] * len(ways)
+        for own, w in enumerate(ways):
+            for b in w["bars"]:
+                fits[best_here(costs[b[0]], own)] += 1
+        for way in ways:
+            start, idx, pitches = way["bars"][0]
+            # Where each note sits in its bar (0-1), so the ways draw as tab lines in step.
+            k = bisect.bisect_left(starts, start)
+            length = (starts[k + 1] if k + 1 < len(starts) else notes[idx[-1]][1]) - start
+            variants.append({"map": as_json(way["map"]), "bars": [b[0] for b in way["bars"]], "pitches": pitches,
+                             "fingering": [[notes[i][2], notes[i][3]] for i in idx],
+                             "times": [round(max(0.0, notes[i][0] - start) / max(length, 0.1), 4) for i in idx],
+                             "easiest": totals[len(variants)] <= min(totals) + 1e-9 and len(set(round(t, 6) for t in totals)) > 1,
+                             "fits": fits[len(variants)]})
+        out.append({"key": key, "notes": [note_name(int(p)) for p in key.split(",")],
+                    "bars": sum(len(w["bars"]) for w in ways),
+                    "chosen": rules.get(key) if rules.get(key) == "easiest" else as_json(rules[key]) if key in rules else None,
+                    "variants": variants})
+    out.sort(key=lambda g: (-g["bars"], min(v["bars"][0] for v in g["variants"])))
+    return {"groups": out, "strings": names}
+
+
+class UnifyRequest(BaseModel):
+    song: str
+    key: Optional[str] = None     # a group's key; none (with no map) = put all back
+    map: Optional[dict] = None    # {pitch: [string, fret]}: play these pitches there in all its bars; none = as written
+    easiest: bool = False         # instead: each bar the way that fits it best between its neighbours
+
+
+@api.post("/api/tab/repeats")
+def set_repeats(req: UnifyRequest):
+    """Make every bar of a repeated part play its pitches in one place (or put it back as
+    written). Kept in the import as "unify", apart from its notes, so it survives re-syncs."""
+    song_dir = library_path(req.song, 2)
+    imported = read_import(song_dir)
+    if not imported:
+        raise HTTPException(404, "This song has no imported tab.")
+    groups = repeat_groups(imported)
+    rules = unify_rules(imported, groups)   # older saved choices move to the new groups here
+    if req.key is None:
+        rules = {}
+    elif req.easiest:
+        if req.key not in groups:
+            raise HTTPException(400, "That part isn't in the tab.")
+        rules[req.key] = "easiest"
+    elif req.map is None:
+        rules.pop(req.key, None)
+    else:
+        chosen = {int(p): tuple(f) for p, f in req.map.items()}
+        if not any(w["map"] == chosen for w in groups.get(req.key) or []):
+            raise HTTPException(400, "That way of playing it isn't in the tab.")
+        rules[req.key] = chosen
+    imported["unify"] = {k: m if m == "easiest" else {str(p): list(m[p]) for p in sorted(m)} for k, m in rules.items()}
+    (song_dir / IMPORT_FILE).write_text(json.dumps(imported), encoding="utf-8")
+    queue_learning()   # the choices are learned from too
+    return {"ok": True, "chosen": len(rules)}
+
+
 def queue_learning():
     """Refit what's learned from imported tabs when they changed, on the learner thread
     (not the job queue: with several tabs it takes a minute or more, and tabs and
@@ -1659,10 +1901,33 @@ def queue_learning():
 
 
 learn_wanted = threading.Event()
+LEARN_DELAY = 20   # seconds after startup before learning may start
 learning = {"running": False}   # what the learner is doing, for GET /api/learning
 
 
+def _learn_in_child(out_dir, progress):
+    """Learning, in its own process (started by `learner`): lowest CPU priority and few
+    threads. In the server's own process it held Python's lock for minutes, so the page's
+    requests (tabs, audio) waited behind it and the app crawled at startup (the user:
+    "when the app loads and does the learning, it slows everything down a ton")."""
+    global OUTPUT_DIR, LEARNED_FILE
+    try:
+        os.nice(15)
+    except (AttributeError, OSError):   # Windows has no nice
+        pass
+    os.environ["TRACK_SPLITTER_THREADS"] = "2"
+    torch.set_num_threads(2)
+    OUTPUT_DIR = Path(out_dir)
+    LEARNED_FILE = OUTPUT_DIR / ".learned-from-tabs.json"
+    try:
+        learn_from_imports(lambda fraction=None, step=None: progress.put(("progress", fraction, step)))
+        progress.put(("done", None, None))
+    except Exception as e:
+        progress.put(("error", str(e), None))
+
+
 def learner():
+    time.sleep(LEARN_DELAY)   # let the app and the page start first
     while True:
         learn_wanted.wait()
         learn_wanted.clear()   # tabs imported while learning set it again: one more round
@@ -1671,14 +1936,28 @@ def learner():
             continue
         learning.clear()
         learning.update(running=True, fraction=0.0, step="Starting", started=time.time(), tabs=len(learn_sources()))
-
-        def report(fraction=None, step=None):
-            if fraction is not None:
-                learning["fraction"] = fraction
-            if step:
-                learning["step"] = step
         try:
-            learn_from_imports(report)
+            ctx = multiprocessing.get_context("spawn")
+            progress = ctx.Queue()
+            child = ctx.Process(target=_learn_in_child, args=(str(OUTPUT_DIR), progress), daemon=True)
+            child.start()
+            while True:
+                try:
+                    kind, a, b = progress.get(timeout=1)
+                except queue.Empty:
+                    if not child.is_alive():
+                        raise RuntimeError(f"the learning process stopped (exit code {child.exitcode})")
+                    continue
+                if kind == "progress":
+                    if a is not None:
+                        learning["fraction"] = a
+                    if b:
+                        learning["step"] = b
+                elif kind == "error":
+                    raise RuntimeError(a)
+                else:
+                    break
+            child.join(timeout=10)
         except Exception as e:   # tried again at the next start or import
             print(f"Couldn't learn from the imported tabs: {e}")
             learning["error"] = str(e)

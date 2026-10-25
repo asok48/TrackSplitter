@@ -269,6 +269,14 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     521 -> 462 found: drums leak into the bass track). In the same passage the learned
     fingering plays A7/A9 where the tab moves down to D2/D4/D6 (the costs prefer the
     song's usual 7th position, 90% right for the song; not the usual-place rounds).
+  - Runs in its own process (`learner` spawns `_learn_in_child`: nice 15, the note model
+    on 2 threads, torch 2), 20 s after startup (`LEARN_DELAY`), reporting progress over a
+    queue (user: "when the app loads and does the learning, it slows everything down a
+    ton"). Measured on the test library with a forced re-learn: the server answered tab
+    requests in 4-13 ms either way, so the slowdown was the whole Mac (learning at normal
+    priority on every core); now the server sits at 0% CPU and the child at nice 19.
+    Re-syncing an import keeps its "made" time: the learner compares those, and a new
+    time made it re-learn everything at the next start.
   - `LEARN_RULES` in app.py: bump when learning changes; saved learning is redone at the
     next start (learning otherwise reruns only when the imported tabs change, so the
     note models never got learned in the user's library after the update).
@@ -282,9 +290,13 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     run alongside other heavy work took 22 min.
   - The tab view's subtitle says what's in use ("Fingering learned from your imported
     tab (matches it 99%, was 79%)", "Notes tuned to your imported tabs (...)").
-- Page: Tab button in the player opens the view over the song list: previous line
-  dimmed, current large with playhead and the sounding note highlighted, next two
-  below; slides up on each new line; click a line to seek; tuning picker (choice kept
+- Page: Tab button in the player opens the view over the song list. Lines view: two
+  lines at full size, the one being played on top (on the card, with the playhead and
+  the sounding note highlighted), the next below; on each new line the line below moves
+  up and the one after fades in underneath, nothing slides (`buildSlots`, `makeSlot`;
+  user: "show the current and next line", "not have to keep shifting my eyes", "the
+  previous line should change to the current line so I can see the next"; it was
+  previous / current / next / next-but-one sliding up every line). Click a line to seek; tuning picker (choice kept
   per song in localStorage); lines shrink to fit (5 strings, small windows). The
   playhead follows `audioNow()`, the audio clock smoothed between its updates (with the
   'playback' latency setting `ctx.currentTime` moves in ~23 ms steps; at 120 Hz the
@@ -327,6 +339,15 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   repeat ticks (see Game looks); `track-splitter-highway-speed`)
   replaced the speed-from-the-quickest-notes rule above. (Crowded gems used to get
   narrower; now every gem in a song is one size, see "Gem size".)
+- Toolbar cleanup (user: "it's getting really crowded and hard to use and gets messy
+  when things are selected causing everything to move around"; "I don't even want the
+  subtitle"): the Tab section's row is fixed: source, view, tuning (210 px), View ▾,
+  Bass input, More ▾. View ▾ (`#tab-viewopts`) holds what depends on the view: speed,
+  Scroll, Flat, Split repeated notes, raise ½ step, Show my timing + Calibrate (one menu
+  open at a time). What comes and goes floats over the tab (`.tab-stage` / `.tab-float`):
+  the timing average top right, the draft's Delete note / Undo top left. The subtitle is
+  hidden; its text is the song name's tooltip. Checked: no toolbar control moves when
+  switching views, sources or toggling any View setting.
 - Header (user: "really crowded", "put the game in a different section", "make the input
   a bubble popup"): title + subtitle, and top right [Tab | Game] (`#tab-section`,
   `tabView.section`, `#tab-view[data-section]`; `.only-tab` / `.only-game` elements) and
@@ -344,6 +365,20 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     The note readout and Record button have fixed widths.
   - Highway tilt: rotateY(12deg) from the left edge, so the far end recedes (-12deg
     brought it closer and cut the score off); 6deg in a game, to use more width.
+- Scroll (the Lines view's switch, `track-splitter-tab-scroll`; user: "still hard to read
+  the tab, maybe a horizontal scroll toggle so lines stop shifting"): `drawTabScroll`, one
+  continuous tab staff on a canvas gliding right to left past a fixed playhead a fifth
+  of the way in: thin strings up to 76 px apart, plain numbers up to 34 px on a gap in
+  the string (crowded ones shrink to their room, down to 60%), the sounding note
+  highlighted, bar and faint beat lines (`d.barTimes`), soft bars for held notes,
+  Show my timing marks above notes, string names in a fixed column. Speed: the slider
+  (shown in this mode), never so slow that ordinary notes touch (`typicalLaneGap`).
+  Click plays/pauses.
+- Flat (Tab section Highway, `track-splitter-highway-flat`; user: "a flat highway in the
+  tab view, make it a toggle"): a switch next to the speed slider takes the lean off.
+  Spacing (user: "more space on the highway"): the slider rules, but never so slow that
+  the song's ordinary notes on a string overlap (`typicalLaneGap`, the median same-string
+  gap; Wow! Wow! Wow!'s 8ths piled up at the slowest setting); lanes up to 140 px.
 - Highway look (user: "make it look better too"): dark rounded backdrop, each lane
   tinted in its string's colour and its string drawn through it, bar lines plus
   fainter beat lines (from bpm), a glowing hit line with a target ring per string
@@ -362,10 +397,13 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   and plays on from the same spot (no seeking); Escape = Resume; Restart starts over;
   Quit ends with the results. The song's end (its onended resets the position to 0)
   still ends the game.
-- Timing (user: "wiggle room"): Relaxed (default) / Normal / Tight in the Game section,
-  hit windows early/late/Perfect 0.25/0.3/0.1, 0.15/0.2/0.07, 0.1/0.12/0.05 s
-  (`TIMINGS`, `track-splitter-game-timing`); best scores per song + tab + timing. A
-  player 0.2 s late: Relaxed 7/7, Tight 1/7.
+- Timing: Relaxed (default) / Normal / Tight (`TIMINGS`, `track-splitter-game-timing`),
+  hit windows early/late/Perfect 0.12/0.14/0.05, 0.09/0.10/0.04, 0.06/0.07/0.03 s (user:
+  "we need to bring the range for a hit way down"; they were 0.25/0.3/0.1, 0.15/0.2/0.07,
+  0.1/0.12/0.05 when the user wanted wiggle room and plucks were read ~120 ms late).
+  Best scores per song + tab + timing. Simulated on-time player: Relaxed 29/29, Normal
+  28/29, Tight 27/29; 0.2 s late on Relaxed: 2/28 (it used to score). Calibrate timing
+  matters more now.
 - Hit animation (user: "when I hit a note, make animation like guitar hero", "and when
   I hold"): on its own clock (performance.now()), drawn with 'lighter' blending: per
   hit a radial flash at the target and 18 sparks in the string's colour (+8 gold on a
@@ -492,6 +530,10 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   Mistake sound, Hear myself + My bass volume (drive the input bubble's), Song volume
   (drives the player's). Timing and Mistake sound moved here from the Game section.
   Also Difficulty and Timing calibration (opens the calibration screen).
+- Miss timing (user: "the miss indicator, it's really delayed"; it looked like ghost
+  notes): a note is missed `MISS_AFTER` (0.06 s, was 0.15) after its late window closes,
+  in the game and Show my timing: on Relaxed ~0.36 s after the note instead of ~0.45 s
+  (shorter on Normal/Tight). Simulated on-time player: 38/38, streak unbroken.
 - Mistakes (user: "feedback when a mistake is made"): a miss flashes that string's
   button red with "MISS" rising, and a lost streak of 10+ shows "STREAK LOST · n"; a
   wrong note (`checkWrong`: a new pitch the tab doesn't have while it expects another
@@ -517,8 +559,17 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   ms after the note's time (p90 274 -> ~255); misses cluster at 56-69 s in both old and
   new (that passage of the separated track doesn't match the tab).
 - Lines spacing (user: "make sure all the notes are easy to read and spaced enough"):
-  `layoutLines` re-cuts the tab's bars into lines (up to ~6.5 s) so two notes on a
-  string stay >= 34 px apart, recomputed on resize; numbers only shrink for a close
+  `layoutLines` re-cuts the tab's bars into lines, recomputed on resize: one bar count
+  per line for the whole song (8, 4, 2 or 1, the most that keeps 80% of lines with two
+  notes on a string >= 28 px apart, within ~6.5 s), lines every N bars from the top.
+  Readability (user: Wow! Wow! Wow! "so hard to follow along"): faint beat lines inside
+  each bar (beats from the tab's bpm, else 4) so steady 8ths show their pulse, and hold
+  bars only for notes held >= 0.45 s (every 8th's bar ran into the next and smeared the
+  strings). At 650 px of tab Wow! is 1 bar a line (1.9 s); ~1100 px gives 2.
+  It used to pack each line greedily, so lines ran 1-4 bars (Fireman & Dancer 1.6-6.4 s)
+  and the playhead sped up and slowed down, and odd-length lines split repeated riffs
+  differently (user: "standardize the speed"). Now Fireman 2 bars (3.2 s) every line,
+  Electra 2, Amsterdam 2, Save Yourself 1 (busy 16ths) at 1280 px wide; numbers only shrink for a close
   same-string neighbour (other strings are other rows). The Tab section's Highway
   has the same speed floor and minimum gem.
 - App finish: a refinement layer at the end of the stylesheet (deeper surfaces,
@@ -538,6 +589,9 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   Highway (`tabMode` 'whole', `wholeFrame`): every line at the small size in a scrolling
   column, the playing one on the card with a playhead and note highlights, kept centred
   unless you scrolled in the last 4 s; click a line to jump.
+  Hand scrolling is told apart by wheel/touch/keys/scrollbar, not 'scroll' events: the
+  page's own smooth follow-scroll counted as the user's and following stopped for good
+  (user: "whole tab should still scroll"; at 0:30 the playing line was below the view).
 - String detection (user: "a 5 on the E is an A but shows as an open A"): the same pitch
   on another string sounds different (how sharp the overtones run, inharmonicity B; the
   levels of harmonics 2-6). Measured on the user's two test takes (scratch analysis;
@@ -568,6 +622,15 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     fast take as a simulated Scarlett: 155 notes saved, self-check 92%; their slow take
     then read live: right 87% of the notes it named, half named (that test calibration
     had big gaps on the A string). Not yet tried on the real bass.
+- Show my timing in every Tab view (user: "why can't I view the timing anymore", then
+  "show my timing in the Lines and Whole tab views too"): the switch, Calibrate and
+  listening work in Lines / Highway / Whole tab. Lines and Whole tab mark each note
+  played (`practice.marks`, `markTiming`): ✓ within 20 ms, −n / +n ms early / late, ✗
+  missed, "G?" a wrong note, in the Highway's colours (green within the Perfect window,
+  blue early, amber late), set as style (the tab numbers' CSS fill beat the attribute);
+  Whole tab only decorates the lines around the playing one. The average of the last 16
+  sits next to the switch (`#timing-avg`; the Highway draws its own). Marks clear on a
+  jump, toggling, Calibrate and Reset.
 - Timing calibration (user: "it always says I'm early": the Mac/browser's reported
   output/input delays don't match the real ones; then "a calibrate page where it does
   it for you with a made-up set of notes"): `#calib-dlg`, opened from Calibrate (next
@@ -585,6 +648,14 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   detection now needs a clearly pitched reading (YIN dip < 0.1) and 3 readings in a
   row (~120 ms) to agree (was 2 of 3). Test: 16 damped bass-pitched thuds and noise
   bursts gave no note; a perfect game run still scored 83/84.
+- Too-quiet plucks (user: a note "too quiet to actually hear" still counted): in a game a
+  pluck counts only if it's no more than 15 dB below the median of the player's last 40
+  pluck levels (once there are 8). Each pluck's level is the newest 20 ms (`freshDb`),
+  its max over the 60 ms after the attack; hammer-ons/slides use the level then. A miss
+  with only quiet plucks in its window says "MISS · too soft". Simulated Scarlett on
+  Electra from 30 s: 31/31; a 4 s stretch 26 dB down: its 10 notes missed, the rest hit;
+  10 dB down: 31/31. (A test start via `track-splitter-game-start` counts the notes before
+  it as misses: "31 of 66" there means all 31 after it.)
 - Game (user: "a guitar hero style game that keeps score; once you start, you can
   only stop it, you can't move around"): Start in the Game section (any tab:
   imported, automatic, mine) opens the bass input if needed, switches to the Highway,
@@ -672,6 +743,37 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   the dropped D and open A), YOLO and Wow! Wow! Wow! standard. Tuning choices are
   kept per song and per tab source (`song|imported`), so one tab's doesn't re-finger
   another's.
+- Make repeats match (user: "find repeated parts in tabs that are the same but played
+  differently and allow me to choose ... to all match to one"): More ▾ → "Make repeats
+  match…" (imported tab, in its written tuning).
+  - Finding (`repeat_groups()`): bars (from `lines`, 3+ played notes, dead ones left out)
+    whose pitches mostly match (>= 75% in order, `_similar`: LCS; a pickup note or a
+    changed last note still counts) join the first such bar's group (key = its pitches).
+    Within a group, bars that put a shared pitch on another string are another way; a
+    way = {pitch: (string, fret)} (`_bar_map`). Exact matches only missed Sha-La-La-Lady's
+    A7 A7 A9 vs D2 D4 D4 endings (the user's screenshot); now 11 groups there.
+  - Choosing: "Use everywhere" (`POST /api/tab/repeats` {song, key, map}) plays each
+    pitch the way plays where it does, in every bar of the group; "Easiest in each place"
+    ({key, easiest: true}; user: "the easier way to play based off the previous bar and
+    following bar") gives each bar the way with the lowest `tab._difficulty` over that bar
+    and its two neighbours (`fit_costs`, `best_here`: ties keep what the tab has),
+    with the user's other choices applied to the neighbours (scored as written, a bar kept
+    D2/D4 while the next, chosen A7/A9, jumped back). "Easiest" marks the way that's
+    easiest used everywhere. Saved in the import's `unify` ({key: {pitch: [s, f]}} or
+    "easiest"); older choices (a fingering per note of an exact pitch key) move to the group
+    with a bar of that key (`unify_rules`) and are rewritten on the next save.
+    `map: null` = back as written, no key = all back.
+  - Dialog: each way drawn as a line of tab (`repeatLine`, SVG; user: "show the lines to
+    compare"), notes where they fall in the bar (`times` 0-1 of the way's first bar),
+    notes placed differently from the most common way lit; "Way n · bars · times"
+    (clickable).
+  - `unified_notes()` applies the choices (maps first, then "easiest" groups) wherever the
+    import's notes are shown or copied (get_tab, drafts); the file and synced notes stay
+    as they were, and `resync_import` carries `unify` over. Learning from imported tabs
+    uses the choices too (user: "can we make it use my choices?"): `learn_from_imports`
+    fingers from `unified_notes`, `learn_sources()` records a tab's `unify` with its time,
+    and `set_repeats` queues learning (~2-3 min on the test library); a restart with
+    nothing changed doesn't re-learn.
 - Dead notes ("x") are left out of imported tabs when shown (user: "remove Xs in
   tabs"; Amsterdam's .gp had 223 of 868), so they're not in the views or the game;
   the saved import still has them (`notes[i][4]`).
@@ -703,6 +805,14 @@ with the band.
     needle -50..+50 cents (green within 5), "n cents flat: tune up", and the strings of
     the bass as tuned now with the matching one lit. Simulated A 10 cents flat read
     "10 cents flat", then "In tune".
+  - Ghost notes (user: "a ton of ghost notes, even with my hands off the bass"): mains hum
+    (60 Hz falls between A#1 and B1) and noise were read as notes. Now: a noise gate 10 dB
+    above the input's own quiet level (`input.floorDb`: 20th percentile of the last ~10 s
+    of readings with no pluck in the 1.5 s before; at least -50 dBFS); a reading must be
+    within 40 cents of a note (hum is ~50 off); the readout only takes a new note after a
+    pluck in the 0.7 s before (`input.shownMidi`). The tuner still shows out-of-tune
+    pitches. Simulated 60 Hz hum (+ harmonics, ~-30 dBFS) and hiss: 0 notes in 9 s;
+    Electra's bass over them in the game: 29/29 after the start, streak unbroken.
   - Dropouts (user: "bass randomly cut off, I had to change my input and back"): when
     the input track ends, or stays muted for 1.5 s, the same input is opened again
     (`reopenInput`, with a toast), and the player's audio clock is resumed if it gets
