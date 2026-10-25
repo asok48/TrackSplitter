@@ -958,6 +958,47 @@ with the band.
   a stand-in take sent 0.25 s off was realigned to 6 ms. The user tried the real
   Scarlett and said it seems to work.
 
+## Guitar chords (input drawer)
+
+The user asked for chord recognition for guitar input. It uses the same Bass | Guitar
+switch as the guitar mode above (`instrument`, `track-splitter-instrument`; the chords
+branch had its own switch, `track-splitter-input-instrument`, merged into that one).
+Guitar mode also: the note readout shows the chord ("Am7" / "A C E G", also on the input
+button), or a single note with where it is on a standard-tuned 6-string ("A3 · G2 · D7 ·
+A12"); the tuner shows E A D G B e; Record and Calibrate strings are hidden (bass only).
+The game and Show my timing still use the guitar mode's octave matching (`samePitch`).
+- `heardNotes` (a second analyser, 8192 samples, 16384 above 50 kHz): iterative
+  harmonic multi-pitch. FFT peaks within 45 dB of the loudest; each peak 75-1200 Hz is a
+  possible fundamental scored by the peaks at its first 10 harmonics (2.5%, ^0.6
+  amplitudes, 1/h^0.25); the best becomes a note and its peaks are used up; repeat until
+  < 18% of the first (max 6). Octave doublings vanish (harmless: only pitch classes and
+  the lowest note matter). A note-template NMF version was tried and was worse on real
+  guitar notes (50% vs 70% single readings).
+- `chordOf`: pitch classes from 0.2 of the strongest, scored against 16 shapes (maj,
+  m, 5, 7, maj7, m7, sus4, sus2, dim, aug, 6, m6, add9, m7♭5, dim7, 7sus4): +weight per
+  chord tone, -0.7 per missing one (fifth -0.15), -weight per extra note, +0.35 when the
+  lowest note is the root, a small cost per shape so simpler names win; added notes
+  (6/7/9) need 0.3. Lowest note a chord tone other than the root -> slash chord.
+- `chordTracker`: strums found like plucks (newest 20 ms 4 dB over the readings
+  before, from -60 dB; guitar is quieter than bass), a reading 0.14 s after a strum then
+  every 0.1 s, using only the sound since the strum (85-170 ms) and averaging each
+  note's salience since. Shown when 2 readings agree (3 for 4-note chords or the chord
+  shown plus a note). A new chord needs 2 notes louder than just before the strum, or
+  the same chord as the strum before (stops a note over ringing strings becoming a
+  chord). The chord shown stays through re-strums, upstrokes and dying away; a slash
+  chord change needs a lower bass note, or the old one stopped. Cleared below -66 dB.
+- Tested (scratch, not in the repo) on chords built from recorded guitar notes
+  (tonejs-instruments acoustic + electric samples, shifted by resampling; random strum
+  speed/direction, detune, levels; 44.1/48 kHz): 50 chord shapes, one strum: right 95%
+  of 0.1 s frames from 0.3 s on; 4-chord progressions 96% (median 0.37 s to show);
+  strummed down-up 8ths 83%; one-note melodies never called chords (let-ring melodies
+  over held strings sometimes are, arguably right); same at -44 dB peaks, 91% at -54.
+  In the page (headless Chromium, simulated Scarlett playing a rendered take): every
+  chord named, no page errors. Not yet tried on the user's real guitar.
+- Weak spots: synthesized (Karplus-Strong) strings were misleading, so tests use real
+  samples; sustained strumming sometimes flashes an add9/6 from the attack; acoustic
+  body resonance can put a false low bass note in (Dsus2 heard as Asus4).
+
 ## UI (static/index.html)
 
 - Sidebar: All songs, artists (hover ... -> rename/merge, delete; + New artist; drop a
