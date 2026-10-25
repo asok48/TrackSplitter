@@ -1702,6 +1702,59 @@ async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(
     return {"job": job_id}
 
 
+# Calibrations (string detection, timing) made in the page, kept in the library folder
+# too (user: "save our string detection data so we don't ever need to do it again"): the
+# browser's own storage goes with cleared site data or another browser. The page mirrors
+# them here and restores from here. A replaced or removed value is kept as "previous".
+CALIBRATION_KEYS = {"track-splitter-string-calibration", "track-splitter-input-calibration"}
+calibration_lock = threading.Lock()   # the page saves both at once at start
+
+
+def calibration_file():
+    return OUTPUT_DIR / ".calibration.json"   # OUTPUT_DIR is read now: tests point it elsewhere
+
+
+def read_calibration():
+    try:
+        return json.loads(calibration_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+@api.get("/api/calibration")
+def get_calibration():
+    return {k: v for k, v in read_calibration().items() if k in CALIBRATION_KEYS}
+
+
+class CalibrationValue(BaseModel):
+    key: str
+    value: Optional[str] = None   # none: forget it
+
+
+@api.post("/api/calibration")
+def set_calibration(req: CalibrationValue):
+    if req.key not in CALIBRATION_KEYS or (req.value and len(req.value) > 2_000_000):
+        raise HTTPException(400, "Not a calibration this app keeps.")
+    with calibration_lock:
+        save_calibration(req.key, req.value)
+    return {"ok": True}
+
+
+def save_calibration(key, value):
+    data = read_calibration()
+    old = data.get(key)
+    if old is not None and old != value:
+        data.setdefault("previous", {})[key] = old
+    if value is None:
+        data.pop(key, None)
+    else:
+        data[key] = value
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    temp = calibration_file().with_suffix(".tmp")   # written whole, then swapped in
+    temp.write_text(json.dumps(data), encoding="utf-8")
+    temp.replace(calibration_file())
+
+
 @api.get("/api/learning")
 def learning_status():
     """What learning from imported tabs is doing now, and what it learned last time."""

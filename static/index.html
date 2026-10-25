@@ -4034,6 +4034,13 @@
   const monitorGain = () => 10 ** (Number($('#input-volume').value) / 20);
   const pref = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const setPref = (key, value) => { try { localStorage.setItem(key, value); } catch { /* not kept */ } };
+  // Calibrations are also kept in the library folder (the browser's storage goes with
+  // cleared site data or another browser): saved there whenever they change, and restored
+  // from there at start (`restoreCalibrations`).
+  const keepCalibration = (key, value) => {
+    setPref(key, value);
+    postJSON('/api/calibration', { key, value: value || null }).catch(() => { /* kept in this browser at least */ });
+  };
   // Which input: 0, 1, or 'both' (the default: summed, so an instrument is heard whichever
   // input it's in; a guitar on a 2i2's Input 2 wasn't, as the choice was hidden when the
   // browser didn't report two channels, and Input 1 was used).
@@ -4656,6 +4663,11 @@
   // the note on Relaxed, while the next note was being played (user: "the miss indicator,
   // it's really delayed"; it looked like ghost notes).
   const MISS_AFTER = 0.06;
+  // A pluck's own pitch reads clearly 20-200 ms after it on the user's bass (the attack
+  // blurs the first readings; median ~90 ms): a note with a pluck in its window waits that
+  // long for it before it's a miss. Without this, once a pluck needed its own pitch, slightly
+  // late plucks were called misses (user: "timing in game is a little too strict now").
+  const PITCH_WAIT = 0.22;
   const TIMING_KEY = 'track-splitter-game-timing';
   let gameTiming = (() => { try { return localStorage.getItem(TIMING_KEY) || 'relaxed'; } catch { return 'relaxed'; } })();
   const BEST_KEY = 'track-splitter-game-best';
@@ -4731,9 +4743,9 @@
       else { p.final = true; game.levels = [...(game.levels || []).slice(-39), p.db]; }
     }
     if (attack) { game.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null, db: fd, at: now }); game.lastAttack = now; }
-    if (newPitch) game.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, final: true, db });   // how loud the string is
+    if (newPitch) game.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, final: true, db, at: now });   // how loud the string is
     game.prevDb2 = game.prevDb; game.prevDb = db;
-    if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift]);   // the tab is for the song as is
+    if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
     // A wrong note needs a real attack just before it: lifting a finger lets the open
     // string (or another fretted note) ring, which isn't a mistake (the user saw those).
     if (midi !== null && midi !== game.lastMidi && now - (game.lastAttack ?? -9) < 0.3) checkWrong(now - 0.1 - fix, midi);
@@ -4757,7 +4769,14 @@
       // once there are 8) doesn't count: a brushed or barely touched string registered as a
       // hit though it couldn't be heard (user: "that shouldn't count in game mode").
       // Hammer-ons and slides (soft: no pluck of their own) by how loud the string is then.
-      const cands = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03) && p.db >= quietBelow);
+      // A pluck counts only with the note's pitch read after it (a reading taken later than
+      // the attack; a pitch change is its own reading). A hand landing on a ringing string
+      // looks like an attack, and paired with the pitch heard before it, muting a note just
+      // ahead of a repeat of it scored the repeat (user: "my hand hitting the string after
+      // I pick is causing it to register"). Measured on the user's hand touch test: plucks
+      // with their pitch read after them 81 of 84; touches 6 of 46, 1 the old note.
+      const ownPitch = (p) => pitch === null || game.heard.some(([, m, at]) => samePitch(m, pitch) && at >= p.at + (p.soft ? 0 : 0.015) && at <= p.at + PITCH_WAIT + 0.02);
+      const cands = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03) && p.db >= quietBelow && ownPitch(p));
       const match = pitch === null ? null : game.heard.find(([t, m]) => samePitch(m, pitch) && t >= ns - early && t <= ns + late + 0.15);
       const heard = pitch === null || !!match;
       // The pluck that started this note: the last one before its pitch was first heard.
@@ -4820,7 +4839,10 @@
       }
     }
     // ... misses once their window has passed.
-    while (game.next < notes.length && (game.result[game.next] || notes[game.next][0] + late + MISS_AFTER < now)) {
+    // Plucked in its window but its pitch not read yet: not a miss yet.
+    const waiting = (k) => game.plucks.some((p) => p.used === null && p.db >= quietBelow && now - p.at < PITCH_WAIT
+                                                  && p.t >= notes[k][0] - early && p.t <= notes[k][0] + late);
+    while (game.next < notes.length && (game.result[game.next] || (notes[game.next][0] + late + MISS_AFTER < now && !waiting(game.next)))) {
       if (!game.result[game.next]) {
         game.result[game.next] = 'miss'; game.judged++; game.recent = [...game.recent.slice(-23), 0];
         const ns = notes[game.next][0];
@@ -5136,10 +5158,10 @@
     const fix = inputCalibration;                        // same plucks and pitches as the game (gameListen)
     const before = Math.min(practice.prevDb, practice.prevDb2 ?? practice.prevDb);
     const attack = fresh || (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
-    if (attack) { practice.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null }); practice.lastAttack = now; }
-    if (newPitch) practice.plucks.push({ t: now - 0.06 - fix, used: null });
+    if (attack) { practice.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null, at: now }); practice.lastAttack = now; }
+    if (newPitch) practice.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, at: now });
     practice.prevDb2 = practice.prevDb; practice.prevDb = db; practice.lastMidi = midi;
-    if (raw !== null) practice.heard.push([now - 0.05 - fix, raw - player.shift]);
+    if (raw !== null) practice.heard.push([now - 0.05 - fix, raw - player.shift, now]);
     const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
     const [early, late, perfect] = TIMINGS[gameTiming];
     let lo = 0, hi = notes.length;
@@ -5147,8 +5169,10 @@
     for (let k = lo; k < notes.length && notes[k][0] - early <= now; k++) {
       if (practice.judged.has(k) || notes[k][3] === 'x') continue;
       const ns = notes[k][0], pitch = open[notes[k][2]] + notes[k][3];
-      const pluck = practice.plucks.find((q) => q.t >= ns - early && q.t <= ns + late && (q.used === null || Math.abs(q.used - ns) < 0.03));
-      if (!pluck || !practice.heard.some(([t, m]) => samePitch(m, pitch) && t >= ns - early && t <= ns + late + 0.15)) continue;
+      // As in the game: the pluck needs the note's pitch read after it (not a hand touch).
+      const ownPitch = (q) => practice.heard.some(([, m, at]) => samePitch(m, pitch) && at >= q.at + (q.soft ? 0 : 0.015) && at <= q.at + PITCH_WAIT + 0.02);
+      const pluck = practice.plucks.find((q) => q.t >= ns - early && q.t <= ns + late && (q.used === null || Math.abs(q.used - ns) < 0.03) && ownPitch(q));
+      if (!pluck) continue;
       pluck.used = ns;
       practice.judged.add(k);
       const dt = pluck.t - ns, msOff = Math.round(Math.abs(dt) * 1000);
@@ -5165,6 +5189,7 @@
     const playing = practice.plucks.some((q) => q.t > now - 1.5);
     for (let k = lo; k < notes.length && notes[k][0] + late + MISS_AFTER < now; k++) {
       if (practice.judged.has(k) || notes[k][3] === 'x' || notes[k][0] < now - late - 0.6) continue;
+      if (practice.plucks.some((q) => q.used === null && now - q.at < PITCH_WAIT && q.t >= notes[k][0] - early && q.t <= notes[k][0] + late)) continue;   // its pitch may still come
       practice.judged.add(k);
       if (playing) {
         practice.labels.push({ s: notes[k][2], at: performance.now(), text: 'Missed', colour: '#f87171' });
@@ -5468,7 +5493,7 @@
   $('#strcal-save').addEventListener('click', () => {
     const c = checkStrings(strcal.samples);
     stringCal = { at: Date.now(), samples: strcal.samples, right: c?.right ?? 0, margin: Math.max(2, c?.margin ?? 2) };
-    setPref(STRING_CAL_KEY, JSON.stringify(stringCal));
+    keepCalibration(STRING_CAL_KEY, JSON.stringify(stringCal));
     stringModel = fitStrings(stringCal.samples);
     toast(`Strings calibrated: the note readout and the highway now show the string when it's sure.`);
     $('#strcal-reset').classList.remove('hidden');
@@ -5480,10 +5505,26 @@
   $('#input-strings').addEventListener('click', openStringCal);
   $('#gs-strings').addEventListener('click', () => { $('#settings-dlg').close(); openStringCal(); });
   $('#strcal-reset').classList.toggle('hidden', !stringModel);
+  // At start: what the library folder has wins (it's the lasting copy); one only this
+  // browser has (made before calibrations were kept there) is copied there.
+  (async () => {
+    let saved;
+    try { saved = await api('/api/calibration'); } catch { return; }
+    for (const key of [STRING_CAL_KEY, CALIBRATION_KEY]) {
+      const here = pref(key) || '';
+      if (saved[key] !== undefined && saved[key] !== here) setPref(key, saved[key]);
+      else if (saved[key] === undefined && here && here !== '0') postJSON('/api/calibration', { key, value: here }).catch(() => {});
+    }
+    try { stringCal = JSON.parse(pref(STRING_CAL_KEY) || 'null'); } catch { stringCal = null; }
+    stringModel = stringCal?.samples?.length ? fitStrings(stringCal.samples) : null;
+    $('#strcal-reset').classList.toggle('hidden', !stringModel);
+    inputCalibration = Number(pref(CALIBRATION_KEY)) || 0;
+    $('#timing-reset').classList.toggle('hidden', !inputCalibration);
+  })();
   $('#strcal-reset').addEventListener('click', () => {
     closeMore();
     stringCal = stringModel = null; input.string = null;
-    setPref(STRING_CAL_KEY, '');
+    keepCalibration(STRING_CAL_KEY, '');
     $('#strcal-reset').classList.add('hidden');
     toast('String calibration reset.');
   });
@@ -5495,7 +5536,7 @@
   $('#calib-dlg').addEventListener('cancel', (e) => { e.preventDefault(); closeCalibration(); });
   $('#calib-save').addEventListener('click', () => {
     inputCalibration = calib.result;
-    setPref(CALIBRATION_KEY, String(inputCalibration));
+    keepCalibration(CALIBRATION_KEY, String(inputCalibration));
     Object.assign(practice, { labels: [], offsets: [] }); practice.marks.clear();
     toast(`Timing calibrated: your notes reach the app ${Math.round(Math.abs(calib.result) * 1000)} ms ${calib.result < 0 ? 'early' : 'late'}; that now counts as on time.`);
     renderTabHead();
@@ -5503,7 +5544,7 @@
   });
   $('#timing-reset').addEventListener('click', () => {
     inputCalibration = 0;
-    setPref(CALIBRATION_KEY, '0');
+    keepCalibration(CALIBRATION_KEY, '');
     Object.assign(practice, { labels: [], offsets: [] }); practice.marks.clear();
     toast('Timing calibration reset.');
     renderTabHead();

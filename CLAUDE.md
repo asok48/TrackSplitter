@@ -122,6 +122,8 @@ Lives in `~/Music/Track Splitter/`, outside the project, so app updates never to
   <Song> [HQ] (no drums & vocals).mp3 / ... (drums & vocals only).mp3
   .bass-tab.json               bass tab: notes, lines (bars), bpm, suggested tuning, fingering per tuning
   (library root) .learned-from-tabs.json   note settings + fingering costs learned from imported tabs
+  (library root) .calibration.json         string + timing calibrations (copies of the page's; "previous" keeps replaced ones)
+  (library root) .bass-recordings/         the user's labelled test recordings (FLAC) + recorder pages and analysis scripts; README.txt
   .song.json                   {"sha1", "source", "added", "versions"}: sha1 of the original spots
                                repeat uploads; versions = {" [HQ] (no bass)": {"level": 30, "fast": false}}, keyed by
                                name minus the song title (survives renames), for one-click Redo
@@ -618,7 +620,17 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     spot (the expected pitch only; full spots move on by themselves), a fretboard
     showing progress, Back / Skip, Save once every string has its open note and two
     fretted spots. Saved per computer (`track-splitter-string-calibration`: samples,
-    margin, self-check). More → "Reset string calibration". End to end with the user's
+    margin, self-check). More → "Reset string calibration".
+    Both calibrations (strings, timing) are also kept in the library folder (user: "save
+    our string detection data so we don't ever need to do it again"): `keepCalibration`
+    saves to localStorage and `POST /api/calibration` ({key, value}, null forgets;
+    `<library>/.calibration.json`, a lock since the page saves both at once, a replaced or
+    removed value kept under "previous"); at start the page takes the library's copy, or
+    uploads one only the browser has. Tested: an existing calibration was copied on the
+    first load; with the browser's storage cleared it came back (96 samples, 42 ms).
+    The labelled recordings behind string detection and the hand-touch rule are in
+    `<library>/.bass-recordings/` (FLAC, identical to the float WAVs; hidden folders
+    aren't listed as artists). End to end with the user's
     fast take as a simulated Scarlett: 155 notes saved, self-check 92%; their slow take
     then read live: right 87% of the notes it named, half named (that test calibration
     had big gaps on the A string). Not yet tried on the real bass.
@@ -648,6 +660,29 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   detection now needs a clearly pitched reading (YIN dip < 0.1) and 3 readings in a
   row (~120 ms) to agree (was 2 of 3). Test: 16 damped bass-pitched thuds and noise
   bursts gave no note; a perfect game run still scored 83/84.
+- Hand touches (user: "my hand hitting the string after I pick is causing it to
+  register"): a pluck counts (game `judge`, Show my timing) only with the note's pitch
+  read after it (a reading taken >= 15 ms after the attack was detected; plucks and
+  readings carry `at`, the moment read; a pitch-change pluck is its own reading). Before,
+  any reading in the window counted, so a hand muting a ringing note just ahead of a
+  repeat of that note scored the repeat. Measured on a labelled recording of the user's
+  bass (scratch recorder page `touch.html`: pluck and let ring / stop with picking hand /
+  fretting hand / touch only / normal 8ths / moving around): touches never gave a clear
+  pitch within 100 ms (0 of 21) and die away (median -15 dB at 150 ms vs -2.6 for
+  plucks), but look like attacks (the touch-only step alone made 21). Replaying it, tab
+  notes at touches on a ringing note: old rule scored 17 of 17, new 2 of 17; real plucks
+  35 of 35 both. Electra simulated: 31/31 as before. On the earlier string-test takes the
+  attack rule also fires ~1 extra per 2 plucks (touches and a ringing low note's 20 ms
+  peaks wobbling); level, high-frequency and sustain rules couldn't separate those from
+  fast re-plucks, so attacks stay as they are and the pitch rule does the work.
+  Waiting for the pitch (user: "timing in game is a little too strict now"): a pluck's
+  own pitch reads clearly 20-200 ms after it on the user's bass (median ~90 ms; the attack
+  blurs the first readings), so a note with an unused pluck in its window isn't a miss
+  until `PITCH_WAIT` (0.22 s) after that pluck, and the pitch may come up to then (game
+  and Show my timing). The miss timer alone (window end + `MISS_AFTER`) cut slightly late
+  plucks off even before: replaying the touch take on Normal 50 ms late, pluck-then-stop
+  notes counted 20/35 (old), 19/35 (pitch after the pluck), 35/35 with the wait; touches
+  still 4/17. Electra simulated: Relaxed 30/31, Normal 30/31, Normal 60 ms late 29/31.
 - Too-quiet plucks (user: a note "too quiet to actually hear" still counted): in a game a
   pluck counts only if it's no more than 15 dB below the median of the player's last 40
   pluck levels (once there are 8). Each pluck's level is the newest 20 ms (`freshDb`),
