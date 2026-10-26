@@ -636,7 +636,7 @@ IMPORT_FILE = ".bass-tab-imported.json"
 #    written ones (Save Yourself, I'll Hold Them Back was 1.3-1.7 s early for two minutes
 #    and 15% of its notes were squeezed together).
 # 3: notes keep whether they're slid or hammered into (Guitar Pro marks), for the game.
-IMPORT_RULES = 3
+IMPORT_RULES = 4
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 
 
@@ -1753,6 +1753,65 @@ def save_calibration(key, value):
     temp = calibration_file().with_suffix(".tmp")   # written whole, then swapped in
     temp.write_text(json.dumps(data), encoding="utf-8")
     temp.replace(calibration_file())
+
+
+# Game checks (user: "inconsistencies with the game and picking up random notes, can we
+# make a test page to figure out what is going on"): a game recorded with "Record games
+# for checking" on: the page's run (settings, every 20 ms reading, plucks, hits, misses with
+# why, wrong notes, the notes played) and the input as heard, kept in
+# <library>/.game-checks/<date time> <song>/ (run.json, input.flac); /check.html shows them.
+def checks_dir():
+    return OUTPUT_DIR / ".game-checks"
+
+
+def check_path(check_id):
+    path = checks_dir() / check_id
+    if "/" in check_id or "\\" in check_id or check_id.startswith(".") or not (path / "run.json").exists():
+        raise HTTPException(404, "That game check doesn't exist.")
+    return path
+
+
+@api.post("/api/game-checks")
+async def save_game_check(run: str = Form(...), audio: UploadFile = File(...)):
+    data = json.loads(run)
+    check_id = f"{time.strftime('%Y-%m-%d %H-%M-%S')} {clean_name(data.get('title') or 'song') or 'song'}"
+    path = checks_dir() / check_id
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "run.json").write_text(run, encoding="utf-8")
+    wav = path / "input.wav"
+    wav.write_bytes(await audio.read())
+    done = subprocess.run([FFMPEG, "-loglevel", "error", "-y", "-i", str(wav), "-c:a", "flac", "-sample_fmt", "s32",
+                           str(path / "input.flac")], capture_output=True)
+    if done.returncode == 0:
+        wav.unlink()   # lossless and ~1/3 the size
+    return {"id": check_id}
+
+
+@api.get("/api/game-checks")
+def list_game_checks():
+    out = []
+    for path in sorted(checks_dir().glob("*/run.json"), reverse=True) if checks_dir().exists() else []:
+        try:
+            run = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        out.append({"id": path.parent.name, "title": run.get("title"), "artist": run.get("artist"), "made": run.get("made"),
+                    "hits": run.get("hits"), "judged": run.get("judged"), "timing": run.get("timing"), "finished": run.get("finished")})
+    return {"checks": out}
+
+
+@api.get("/api/game-checks/{check_id}")
+def get_game_check(check_id: str):
+    return Response((check_path(check_id) / "run.json").read_bytes(), media_type="application/json")
+
+
+@api.get("/api/game-checks/{check_id}/audio")
+def game_check_audio(check_id: str):
+    path = check_path(check_id)
+    audio = next((f for f in (path / "input.flac", path / "input.wav") if f.exists()), None)
+    if not audio:
+        raise HTTPException(404, "No recording in that game check.")
+    return FileResponse(audio, media_type="audio/flac" if audio.suffix == ".flac" else "audio/wav")
 
 
 @api.get("/api/learning")

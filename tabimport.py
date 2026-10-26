@@ -654,59 +654,86 @@ def _sync_text(track, notes, playable, tab_p, heard, beat):
             "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2)}
 
 
-NUDGE_MAX, NUDGE_SHARE = 0.1, 0.35   # how far a heard note may move a written one (see _place_in_bars)
+STEADY_MAX = 0.08   # how far (s) a bar may be shifted to fit what's heard (see _place_in_bars)
+
+
+def _bar_fit(pairs):
+    """A bar's shift to fit its heard notes, as (shift at mid, change per second, mid):
+    medians (one wrong match can't pull it), at most 80 ms and 8% faster/slower."""
+    if not pairs:
+        return None
+    xs, ds = np.array([p[0] for p in pairs]), np.array([p[1] for p in pairs])
+    if len(pairs) == 1:
+        return float(np.clip(ds[0], -0.05, 0.05)), 0.0, float(xs[0])
+    slopes = [(ds[j] - ds[i]) / (xs[j] - xs[i]) for i in range(len(xs)) for j in range(i + 1, len(xs)) if xs[j] - xs[i] > 0.05]
+    return (float(np.clip(np.median(ds), -STEADY_MAX, STEADY_MAX)),
+            float(np.clip(np.median(slopes), -0.08, 0.08)) if slopes else 0.0, float(np.median(xs)))
 
 
 def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends_t, audio_len, keep_lengths):
     """Each bar's notes on the recording: matched in order to the heard notes in that bar
-    (guided by where the tab puts them), unmatched ones placed by the tab's own timing
-    between their matched neighbours. keep_lengths: notes keep the tab's lengths (files
-    with rhythm); otherwise each lasts until the next (text tabs)."""
+    (guided by where the tab puts them).
+
+    Files with rhythm (keep_lengths): the tab's rhythm as written, the notes keeping their
+    lengths. Each bar is shifted and stretched as a whole to fit its matched notes, and
+    neighbouring bars meet at the bar line (one shift there, the mean of what both want),
+    so steady 8ths and 16ths stay even. Heard notes used to nudge each note (up to 100 ms
+    or 35% of the gap): a quarter of steady note pairs came out > 25% uneven, up to 47%
+    across bar lines on Sha-La-La-Lady (user: "straight eighth/16th notes ... spaced weird so
+    it makes it hard to hit them"). On the user's 5 file tabs now 0%; notes within 50 ms of
+    a heard one: written rhythm alone 55.8-86.4%, this 56.5-88.9%, the nudging 62.9-94.2%
+    (much of that the nudge itself moving notes onto noisy heard times).
+
+    Text tabs: unmatched notes placed in order between their matched neighbours, each lasting
+    until the next (hand-typed spacing is too sloppy to trust: 72% vs 82% on a test)."""
     out = [[float(n[0]), float(n[1]), n[2], n[3], n[4]] for n in notes]
-    matched = 0
+    matched, bars = 0, []
     for b in range(len(bar_audio)):
         a0 = bar_audio[b]
         a1 = bar_audio[b + 1] if b + 1 < len(bar_audio) else a0 + audio_len(b)
         span = max(1e-6, bar_ends_t[b] - bar_starts_t[b])
         rate = (a1 - a0) / span
         ks = [k for k in range(len(notes)) if notes[k][5] == b]
-        if not ks:
-            continue
         expected = [a0 + (notes[k][0] - bar_starts_t[b]) * rate for k in ks]
         play = [i for i, k in enumerate(ks) if k in playable]
         inside = [h for h in heard if a0 - 0.08 <= h[0] < a1 - 0.08]
         match = (_sync_order([track.strings[notes[ks[i]][2]] + notes[ks[i]][3] for i in play], inside,
                              [expected[i] for i in play], (a1 - a0) / 4) if inside and play else [-1] * len(play))
-        # Where a note sits in the bar: its exact time for files with rhythm; for text tabs
-        # just its place in the order (hand-typed spacing is too sloppy: 72% vs 82% on a test).
-        where = (lambda i: notes[ks[i]][0]) if keep_lengths else (lambda i: i + 1)
-        anchor_x = [bar_starts_t[b] if keep_lengths else 0]
-        anchor_t = [a0]
-        for n_i, (i, j) in enumerate(zip(play, match)):
-            if j < 0:
-                continue
-            matched += 1                                  # heard (the match quality counts it either way)
-            if keep_lengths:
-                # The tab's rhythm is exact; a heard note may only nudge a note (60 ms, or a
-                # quarter of the gap to its neighbours). Further off it's more likely a
-                # wrong match (leakage in the bass track), which squeezed notes together:
-                # on Save Yourself, I'll Hold Them Back 15% of gaps came out < 0.6x as
-                # long as written, and the tab looked like it sped up and stalled.
-                near = [abs(expected[i] - expected[play[m]]) for m in (n_i - 1, n_i + 1) if 0 <= m < len(play) and play[m] != i]
-                near = [g for g in near if g > 0.02]
-                tol = min([NUDGE_MAX] + [NUDGE_SHARE * g for g in near])
-                if abs(inside[j][0] - expected[i]) > tol:
-                    continue
-            anchor_x.append(where(i))
-            anchor_t.append(inside[j][0])
-        anchor_x.append(bar_ends_t[b] if keep_lengths else len(ks) + 1)
+        matched += sum(1 for j in match if j >= 0)   # heard (the match quality counts it either way)
+        if keep_lengths:
+            pairs = [(expected[i], inside[j][0] - expected[i]) for i, j in zip(play, match)
+                     if j >= 0 and abs(inside[j][0] - expected[i]) <= 0.1]   # further off: likely a wrong match
+            bars.append((a0, a1, rate, ks, expected, _bar_fit(pairs)))
+            continue
+        if not ks:
+            continue
+        anchor_x, anchor_t = [0], [a0]
+        for i, j in zip(play, match):
+            if j >= 0:
+                anchor_x.append(i + 1)
+                anchor_t.append(inside[j][0])
+        anchor_x.append(len(ks) + 1)
         anchor_t.append(a1)
         order = np.argsort(anchor_x, kind="stable")
         ax, at = np.array(anchor_x)[order], np.maximum.accumulate(np.array(anchor_t)[order])
         for i, k in enumerate(ks):
-            t = float(np.interp(where(i), ax, at))
-            length = (notes[k][1] - notes[k][0]) * rate
-            out[k][0], out[k][1] = t, t + length
+            out[k][0] = float(np.interp(i + 1, ax, at))
+    if keep_lengths and bars:
+        def shift(b, x):
+            fit = bars[b][5]
+            return None if fit is None else float(np.clip(fit[0] + fit[1] * (x - fit[2]), -STEADY_MAX, STEADY_MAX))
+        edges = []
+        for e in range(len(bars) + 1):
+            x = bars[e][0] if e < len(bars) else bars[-1][1]
+            want = [v for v in (shift(e - 1, x) if e > 0 else None, shift(e, x) if e < len(bars) else None) if v is not None]
+            edges.append(float(np.mean(want)) if want else None)
+        known = [e for e, v in enumerate(edges) if v is not None]
+        edges = [v if v is not None else (float(np.interp(e, known, [edges[k] for k in known])) if known else 0.0)
+                 for e, v in enumerate(edges)]
+        for b, (a0, a1, rate, ks, expected, _) in enumerate(bars):
+            for i, k in enumerate(ks):
+                t = expected[i] + float(np.interp(expected[i], [a0, a1], [edges[b], edges[b + 1]]))
+                out[k][0], out[k][1] = t, t + (notes[k][1] - notes[k][0]) * rate
     if not keep_lengths:
         for k in range(len(out)):   # each note lasts until the next one starts
             nxt = next((out[j][0] for j in range(k + 1, len(out)) if out[j][0] > out[k][0]), out[k][0] + 0.3)

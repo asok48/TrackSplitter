@@ -1200,6 +1200,10 @@
         <button type="button" class="btn sm" id="gs-calibrate">Calibrate timing…</button></div>
       <div class="set-row"><span>Strings</span>
         <button type="button" class="btn sm" id="gs-strings">Calibrate strings…</button></div>
+      <div class="set-row" title="Records your bass and everything the game hears and decides during each game, saved in your library, to look at afterwards on the Game check page"><span>Record games for checking</span>
+        <label class="switch"><input type="checkbox" id="gs-check"><span class="track"></span></label></div>
+      <div class="set-row"><span>Game checks</span>
+        <a class="btn sm" href="/check.html" target="_blank" rel="noopener">Open…</a></div>
     </div>
     <div class="dlg-foot"><button type="button" class="btn primary" id="settings-done">Done</button></div>
   </form>
@@ -4022,6 +4026,60 @@
   let recorderLoaded = null;
   const input = { stream: null, source: null, analyser: null, mon: null, monOut: null, timer: 0, recent: [], note: null, lane: null, match: false };
   const rec = { node: null, sink: null, chunks: [], startedAt: null, songStart: 0, active: false, timer: 0 };
+  // Game check (user: "inconsistencies with the game and picking up random notes, can we
+  // make a test page to figure out what is going on"): with "Record games for checking" on,
+  // a game records the input as heard (both inputs / the chosen one, like the analyser),
+  // every 20 ms reading (`listen`: levels, gate, pitch, pluck signs, the shown note), every
+  // pluck, hit, miss (with why) and wrong note, and saves them with the notes played to
+  // `<library>/.game-checks/` when the game ends; /check.html shows them on a timeline.
+  const CHECK_KEY = 'track-splitter-game-check';
+  const check = { on: false, frames: [], events: [], chunks: [], firstFrame: null, node: null, sink: null };
+  const checkEvent = (e) => { if (check.on) check.events.push(e); };
+  async function startCheck() {
+    recorderLoaded ??= ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([RECORDER], { type: 'application/javascript' })));
+    try { await recorderLoaded; } catch { return; }
+    Object.assign(check, { on: true, frames: [], events: [], chunks: [], firstFrame: null });
+    check.node = new AudioWorkletNode(ctx, 'track-splitter-recorder');
+    check.node.port.postMessage({ channel: inputChannel() });
+    check.sink = ctx.createGain();
+    check.sink.gain.value = 0;                          // keeps it running, silently
+    input.source.connect(check.node).connect(check.sink).connect(ctx.destination);
+    check.node.port.onmessage = ({ data }) => {
+      if (!check.on) return;
+      check.firstFrame ??= data.frame;
+      check.chunks.push(data.data);
+    };
+  }
+  async function finishCheck(played, finished) {
+    check.on = false;
+    try { input.source?.disconnect(check.node); } catch { /* already gone */ }
+    check.node?.disconnect(); check.sink?.disconnect();
+    if (!check.chunks.length || !played) return;
+    const total = check.chunks.reduce((a, c) => a + c.length, 0), samples = new Float32Array(total);
+    let o = 0;
+    for (const c of check.chunks) { samples.set(c, o); o += c.length; }
+    const d = played, cur = state.current, tun = d.tunings.find((x) => x.key === d.tuning);
+    const run = {
+      made: Date.now(), song: game.song, title: cur?.song.title, artist: cur?.song.artist, version: cur?.version.id,
+      source: d.source, tuning: d.tuning, open: tun.open, strings: tun.strings,
+      timing: gameTiming, windows: TIMINGS[gameTiming], miss_after: MISS_AFTER, pitch_wait: PITCH_WAIT, difficulty: gameDiff,
+      input_calibration: inputCalibration, line_sync: syncMs / 1000, output_delay: outputDelay(), shift: player.shift,
+      input_latency: input.stream?.getAudioTracks()[0].getSettings().latency || 0, instrument, channel: inputChannel(),
+      sample_rate: ctx.sampleRate, first_frame: check.firstFrame, finished, score: game.score, hits: game.hits, judged: game.judged, best_streak: game.best,
+      // frames: [ctx time, tab time (the game's clock), song position, level dB, newest-20-ms dB,
+      // gate dB, pitch Hz (0: none), clear in-tune note (raw), steady note, pluck sign, new pitch, shown note]
+      frame_fields: ['ctx', 't', 'pos', 'db', 'fresh_db', 'gate_db', 'hz', 'raw', 'steady', 'plucked', 'new_pitch', 'shown'],
+      frames: check.frames, events: check.events,
+      notes: d.notes.map((n, k) => ({ start: n[0], end: n[1], string: n[2], fret: n[3], result: game.result[k] || null, grade: game.grade[k] || null })),
+    };
+    const form = new FormData();
+    form.append('run', JSON.stringify(run));
+    form.append('audio', wavFile(samples, ctx.sampleRate), 'input.wav');
+    try {
+      const r = await api('/api/game-checks', { method: 'POST', body: form });
+      toast(`Game check saved (${r.id}): Game settings → Game checks.`);
+    } catch (err) { toast(`Couldn't save the game check: ${err.message}`, 'error'); }
+  }
   const INPUT_KEY = 'track-splitter-record-input', CHANNEL_KEY = 'track-splitter-record-channel', MONITOR_KEY = 'track-splitter-monitor';
   // Bass or guitar (user: his brother plays guitar; "add a Bass / Guitar choice"): the
   // pitch range listened for, the strings the tuner and readout use, and whether a note
@@ -4321,6 +4379,15 @@
     const raw = hz && Math.abs(semis - Math.round(semis)) <= 0.4 ? Math.round(semis) : null;   // clearly pitched and in tune, or nothing
     if (tunerOn) showTuner(db > GATE_DB ? hz || pitchOf(buf, ctx.sampleRate) : 0);   // the tuner shows out-of-tune notes too
     input.recent = [...input.recent.slice(-4), raw];
+    // A re-pluck of a note still ringing (user: 8ths and 16ths "lose a bit of accuracy"):
+    // the level barely rises (0.6-3.5 dB on the user's game check of Addictive, under the
+    // attack rule's 4), but the attack blurs the pitch readings for 1-4 of them and then the
+    // same note is back. On their recordings a ringing note did that unplucked once in 91 s,
+    // and after a hand touch 1 time in 25. The number: how many readings it was gone.
+    const rh = input.rawHist = [...(input.rawHist || []).slice(-6), raw];
+    let gone = 0;
+    if (raw !== null) while (gone < rh.length - 2 && rh[rh.length - 2 - gone] === null) gone++;
+    const rePluck = raw !== null && gone >= 1 && gone <= 5 && rh[rh.length - 2 - gone] === raw ? gone : 0;
     // The string: 115 ms after a pluck the analyser holds ~0.03-0.12 s of the new note.
     // Plucks here from the newest 20 ms only: a re-plucked note that's still ringing barely
     // raises the whole 85 ms buffer's peak (fast repeats were missed that way).
@@ -4349,10 +4416,12 @@
     if (shown !== null && shown !== input.shownMidi && nowMs - (input.pluckAt || -1e9) > 700) shown = null;
     input.shownMidi = shown;
     if (!isGuitar()) showNote(shown);
+    if (check.on) check.frames.push([+ctx.currentTime.toFixed(4), +tabTime().toFixed(4), +currentTime().toFixed(4), +db.toFixed(1), +freshDb.toFixed(1),
+                                     +gateDb.toFixed(1), hz ? +hz.toFixed(2) : 0, raw, steady ?? null, plucked ? 1 : 0, newPitch ? 1 : 0, shown]);
     if (calib.on) { calibListen(db); return; }
-    if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked, newPitch);
+    if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked, newPitch, rePluck);
     if (game.on && !game.countdown) {
-      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw, plucked, newPitch); }
+      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw, plucked, newPitch, rePluck); }
       else if (game.started && !game.paused) {
         if (player.offset === 0) endGame();               // the song ended (its end resets the position)
         else pauseGame();                                 // paused (Space): the pause menu
@@ -4929,9 +4998,10 @@
     if (!near.length || near.some((x) => samePitch(heard, x.pitch)) || performance.now() - game.wrongAt < 250) return;
     game.wrongAt = performance.now();
     mistake(near[near.length - 1].s, 'WRONG', `${noteName(midi)} · tab ${near[near.length - 1].label}`);
+    checkEvent({ e: 'wrong', t, at: tabTime(), midi: heard, tab: near.map((x) => x.pitch), s: near[near.length - 1].s });
   }
 
-  function gameListen(db, midi, raw, fresh, newPitch) {
+  function gameListen(db, midi, raw, fresh, newPitch, rePluck = 0) {
     const now = tabTime();
     // Plucks: an attack (the newest 20 ms jumping up, `fresh`; or the input jumping up
     // from silence, or by PLUCK_DB within 40 ms), or a new pitch (two clear readings:
@@ -4957,7 +5027,13 @@
       else { p.final = true; game.levels = [...(game.levels || []).slice(-39), p.db]; }
     }
     if (attack) { game.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null, db: fd, at: now }); game.lastAttack = now; }
+    if (attack) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: fresh ? 'newest 20 ms jumped' : 'level jumped' });
     if (newPitch) game.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, final: true, db, at: now });   // how loud the string is
+    if (newPitch) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'new pitch' });
+    if (rePluck && !attack && !newPitch) {               // timed where the readings blurred
+      game.plucks.push({ t: now - 0.02 * rePluck - 0.01 - fix, used: null, soft: true, final: true, db, at: now });
+      checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'same note back after a blink' });
+    }
     game.prevDb2 = game.prevDb; game.prevDb = db;
     if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
     // A wrong note needs a real attack just before it: lifting a finger lets the open
@@ -4989,7 +5065,12 @@
       // ahead of a repeat of it scored the repeat (user: "my hand hitting the string after
       // I pick is causing it to register"). Measured on the user's hand touch test: plucks
       // with their pitch read after them 81 of 84; touches 6 of 46, 1 the old note.
-      const ownPitch = (p) => pitch === null || game.heard.some(([, m, at]) => samePitch(m, pitch) && at >= p.at + (p.soft ? 0 : 0.015) && at <= p.at + PITCH_WAIT + 0.02);
+      // And read before the next pluck: within PITCH_WAIT it could be the next note's
+      // pitch, which scored notes you didn't play when a riff moved to them (the user's
+      // Addictive game replayed with every tab note 2 semitones off: 97 hits, now 34;
+      // real hits the same, 696/726).
+      const ownPitch = (p) => pitch === null || game.heard.some(([, m, at]) => samePitch(m, pitch) && at >= p.at + (p.soft ? 0 : 0.015) && at <= p.at + PITCH_WAIT + 0.02
+        && !game.plucks.some((q) => q !== p && q.at > p.at && q.at < at - (q.soft ? 0 : 0.015)));
       const cands = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03) && p.db >= quietBelow && ownPitch(p));
       const match = pitch === null ? null : game.heard.find(([t, m]) => samePitch(m, pitch) && t >= ns - early && t <= ns + late + 0.15);
       const heard = pitch === null || !!match;
@@ -5031,6 +5112,7 @@
         }
         game.result[k] = 'hit'; game.hitAt[k] = now;
         game.grade[k] = messy ? 'Messy' : Math.abs(pluck.t - ns) < perfect ? 'Perfect' : 'Good';
+        checkEvent({ e: 'hit', k, at: now, pluck: pluck.t, soft: !!pluck.soft, grade: game.grade[k] });
         game.laneHit[notes[k][2]] = now;
         game.laneHitMs[notes[k][2]] = performance.now();
         const before = multiplier();
@@ -5062,6 +5144,17 @@
         const ns = notes[game.next][0];
         const soft = game.plucks.some((p) => p.db < quietBelow && p.t >= ns - early && p.t <= ns + late);
         mistake(notes[game.next][2], 'MISS', soft ? 'too soft' : '', game.next);
+        if (check.on) {                                  // why, for the game check
+          const pitch = pitchOfNote(game.next), inWin = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late);
+          const heardIn = [...new Set(game.heard.filter(([t]) => t >= ns - early && t <= ns + late + 0.3).map(([, m]) => m))];
+          const loud = inWin.filter((p) => p.db >= quietBelow), free = loud.filter((p) => p.used === null);
+          const reason = !inWin.length ? 'no pluck in the window'
+            : !loud.length ? 'only plucks too soft to count'
+            : !free.length ? 'its pluck went to another note'
+            : pitch !== null && !heardIn.some((m) => samePitch(m, pitch)) ? 'plucked, but its pitch was never heard'
+            : 'plucked, but its pitch was only heard before the pluck';
+          checkEvent({ e: 'miss', k: game.next, at: now, reason, heard: heardIn, plucks: inWin.map((p) => +(p.t - ns).toFixed(3)) });
+        }
         if (game.streak >= 10) game.streakLost = { n: game.streak, at: performance.now() };
         game.streak = 0;
       }
@@ -5095,15 +5188,17 @@
     if (state.mode !== 'without') { state.mode = 'without'; applyMode(); }
     // Starts at the top; for testing, localStorage 'track-splitter-game-start' (seconds,
     // set in the browser's console) starts it later in the song.
-    seekTo(Number(pref('track-splitter-game-start')) || 0);
+    const startAt = Number(pref('track-splitter-game-start')) || 0;
+    seekTo(startAt);
     game.fullData = tabView.data;                        // the whole tab comes back when the game ends
     tabView.data = gameNotesFor(tabView.data);
+    const firstNote = Math.max(0, tabView.data.notes.findIndex((n) => n[0] >= startAt - 0.05));   // a later start skips what's before it
     document.body.classList.toggle('game-tab', gameView === 'tab');
     Object.assign(tabFx, { sparks: [], seen: performance.now() });
     $('#tg-song').innerHTML = '';
     $('#tg-song').append(state.current.song.title, el('span', { textContent: `${state.current.song.artist} · ${DIFFS[gameDiff][0]}` }));
 
-    Object.assign(game, { on: true, started: false, score: 0, streak: 0, best: 0, hits: 0, judged: 0, next: 0,
+    Object.assign(game, { on: true, started: false, score: 0, streak: 0, best: 0, hits: 0, judged: 0, next: firstNote,
                           result: new Array(tabView.data.notes.length).fill(null), hitAt: [], grade: [], laneHit: {}, plucks: [], heard: [],
                           bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
                           laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0,
@@ -5119,6 +5214,7 @@
     }
     game.countdown = 0;
     game.goAt = performance.now();                       // GO!
+    if (pref(CHECK_KEY) === '1' && input.source) await startCheck();
     play();
   }
 
@@ -5137,6 +5233,7 @@
     if (tabView.data) { layoutLines(tabView.data); tabView.line = -1; tabFrame(true); }   // the whole tab's lines again
     if (game.modeBefore && game.modeBefore !== state.mode) { state.mode = game.modeBefore; applyMode(); }
     if (player.playing) pause();
+    if (check.on) finishCheck(game.started ? played : null, finished);
     if (!game.started || !results) return;              // stopped during the countdown, or left
     const total = played?.notes.length || 0;
     const key = bestKey(game.song, game.source);
@@ -5309,6 +5406,8 @@
   $('#gs-volume').addEventListener('input', (e) => { relay(e.target, '#volume', 'input'); $('#gs-volume-pct').textContent = `${e.target.value}%`; });
 
   $('#mistake-sound').checked = mistakeSound;
+  $('#gs-check').checked = pref(CHECK_KEY) === '1';
+  $('#gs-check').addEventListener('change', (e) => setPref(CHECK_KEY, e.target.checked ? '1' : '0'));
   $('#mistake-sound').addEventListener('change', (e) => { mistakeSound = e.target.checked; setPref(MISTAKE_SOUND_KEY, mistakeSound ? '1' : '0'); if (mistakeSound) thunk(); });
   // Rock Band score box and star medallions (top right), for the board and the tab game.
   function rbScore(g, W, notesLen) {
@@ -5365,7 +5464,7 @@
   const TIMING_SHOW_KEY = 'track-splitter-show-timing';
   let timingShown = pref(TIMING_SHOW_KEY) === '1';
   const practice = { plucks: [], heard: [], prevDb: -100, lastMidi: null, judged: new Set(), labels: [], offsets: [], lastT: 0, marks: new Map() };
-  function practiceListen(db, midi, raw, fresh, newPitch) {
+  function practiceListen(db, midi, raw, fresh, newPitch, rePluck = 0) {
     const now = tabTime();
     if (Math.abs(now - practice.lastT) > 1) { practice.plucks = []; practice.heard = []; practice.judged.clear(); practice.marks.clear(); }   // jumped elsewhere
     practice.lastT = now;
@@ -5374,6 +5473,7 @@
     const attack = fresh || (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
     if (attack) { practice.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null, at: now }); practice.lastAttack = now; }
     if (newPitch) practice.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, at: now });
+    if (rePluck && !attack && !newPitch) practice.plucks.push({ t: now - 0.02 * rePluck - 0.01 - fix, used: null, soft: true, at: now });
     practice.prevDb2 = practice.prevDb; practice.prevDb = db; practice.lastMidi = midi;
     if (raw !== null) practice.heard.push([now - 0.05 - fix, raw - player.shift, now]);
     const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
@@ -5384,7 +5484,8 @@
       if (practice.judged.has(k) || notes[k][3] === 'x') continue;
       const ns = notes[k][0], pitch = open[notes[k][2]] + notes[k][3];
       // As in the game: the pluck needs the note's pitch read after it (not a hand touch).
-      const ownPitch = (q) => practice.heard.some(([, m, at]) => samePitch(m, pitch) && at >= q.at + (q.soft ? 0 : 0.015) && at <= q.at + PITCH_WAIT + 0.02);
+      const ownPitch = (q) => practice.heard.some(([, m, at]) => samePitch(m, pitch) && at >= q.at + (q.soft ? 0 : 0.015) && at <= q.at + PITCH_WAIT + 0.02
+        && !practice.plucks.some((o) => o !== q && o.at > q.at && o.at < at - (o.soft ? 0 : 0.015)));
       const pluck = practice.plucks.find((q) => q.t >= ns - early && q.t <= ns + late && (q.used === null || Math.abs(q.used - ns) < 0.03) && ownPitch(q));
       if (!pluck) continue;
       pluck.used = ns;

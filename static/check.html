@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game check · Track Splitter</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0b10; --panel: #121218; --line: #262631; --text: #ececf1; --muted: #8d8d9c; --faint: #5d5d6c;
+          --accent: #8b5cf6; --hit: #4ade80; --miss: #f87171; --messy: #fbbf24; --soft: #a78bfa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { margin: 0; font-size: 18px; }
+  select, button { font: inherit; color: var(--text); }
+  select { height: 34px; border-radius: 10px; background: #191921; border: 1px solid var(--line); padding: 0 10px; max-width: 420px; }
+  button { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.07); cursor: pointer; }
+  button.primary { background: linear-gradient(180deg, #9a6dfa, #7c4ff0); border: 0; font-weight: 700; }
+  label.ctl { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 0; height: calc(100vh - 63px); }
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .summary { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  .chip { padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+  .chip b { color: var(--text); }
+  .chip.bad b { color: var(--miss); } .chip.warn b { color: var(--messy); } .chip.good b { color: var(--hit); }
+  .tools { display: flex; gap: 14px; align-items: center; padding: 8px 18px; flex-wrap: wrap; }
+  .scroller { flex: 1; overflow-x: auto; overflow-y: hidden; position: relative; border-top: 1px solid var(--line); }
+  canvas { display: block; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 18px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  aside { border-left: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
+  aside h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 14px 14px 6px; }
+  .item { padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,.04); cursor: pointer; font-size: 13px; }
+  .item:hover, .item.sel { background: rgba(139, 92, 246, .14); }
+  .item .when { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .item .what { font-weight: 700; }
+  .item .why { color: var(--muted); display: block; font-size: 12px; }
+  .item.miss .what { color: var(--miss); } .item.wrong .what { color: #fb7185; } .item.extra .what { color: #fdba74; } .item.messy .what { color: var(--messy); }
+  #tip { position: fixed; pointer-events: none; background: rgba(10,10,16,.95); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 12px; max-width: 320px; display: none; z-index: 5; white-space: pre-line; }
+  .empty { padding: 40px; color: var(--muted); }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; height: auto; } .scroller { height: 520px; flex: none; } aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Game check</h1>
+  <select id="runs" aria-label="Saved game"></select>
+  <button class="primary" id="play">Play from here</button>
+  <label class="ctl"><input type="checkbox" id="with-song" checked> with the song</label>
+  <label class="ctl">My bass <input type="range" id="vol-bass" min="0" max="4" step="0.1" value="1.5"></label>
+  <label class="ctl">Song <input type="range" id="vol-song" min="0" max="1" step="0.05" value="0.5"></label>
+</header>
+<div class="wrap">
+  <div class="main">
+    <div class="summary" id="summary"></div>
+    <div class="tools">
+      <label class="ctl">Zoom <input type="range" id="zoom" min="60" max="900" value="260"></label>
+      <span class="ctl" id="at"></span>
+    </div>
+    <div class="scroller" id="scroller"><canvas id="cv"></canvas></div>
+    <div class="legend">
+      <span><i style="background:var(--hit)"></i>hit</span><span><i style="background:var(--messy)"></i>messy</span>
+      <span><i style="background:var(--miss)"></i>missed</span>
+      <span><i style="background:#e5e7eb"></i>pluck (attack)</span><span><i style="background:var(--soft)"></i>pluck (new pitch)</span>
+      <span><i style="background:#fb923c"></i>pluck that scored nothing</span>
+      <span><i style="background:var(--hit);border-radius:50%"></i>pitch read, in the tab</span><span><i style="background:#f43f5e;border-radius:50%"></i>pitch read, not in the tab there</span>
+      <span>Click the timeline to play from there; hover for details.</span>
+    </div>
+  </div>
+  <aside id="list"></aside>
+</div>
+<div id="tip"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+const nn = (m) => (m == null ? '–' : NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1));
+const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`;
+let run = null, F = null, view = { pxs: 260, t0: 0, t1: 1, sel: null }, ac = null, bufs = {}, playing = null;
+
+async function api(path) { const r = await fetch(path); if (!r.ok) throw new Error(`${r.status}`); return r; }
+
+async function loadList() {
+  const { checks } = await (await api('/api/game-checks')).json();
+  if (!checks.length) { document.querySelector('.wrap').innerHTML = '<div class="empty">No game checks yet. In the app, open Game settings, turn on “Record games for checking”, and play a game.</div>'; return; }
+  $('#runs').replaceChildren(...checks.map((c) => Object.assign(document.createElement('option'), {
+    value: c.id, textContent: `${c.id.slice(0, 16)} · ${c.title || ''} · ${c.hits ?? '?'}/${c.judged ?? '?'} · ${c.timing || ''}${c.finished ? '' : ' (stopped)'}` })));
+  const want = new URLSearchParams(location.search).get('id');
+  if (want && checks.some((c) => c.id === want)) $('#runs').value = want;
+  await loadRun($('#runs').value);
+}
+
+async function loadRun(id) {
+  stop();
+  run = await (await api(`/api/game-checks/${encodeURIComponent(id)}`)).json();
+  history.replaceState(null, '', `?id=${encodeURIComponent(id)}`);
+  const idx = Object.fromEntries(run.frame_fields.map((k, i) => [k, i]));
+  F = run.frames.map((f) => Object.fromEntries(Object.entries(idx).map(([k, i]) => [k, f[i]])));
+  const notes = run.notes, [early, late] = run.windows;
+  // What each pluck did: scored a note (used), or nothing. Readings in or out of the tab.
+  const plucks = run.events.filter((e) => e.e === 'pluck').map((e) => ({ ...e.p, why: e.why }));
+  const hits = run.events.filter((e) => e.e === 'hit'), misses = run.events.filter((e) => e.e === 'miss'), wrongs = run.events.filter((e) => e.e === 'wrong');
+  const pitchOf = (n) => (n.fret === 'x' ? null : run.open[n.string] + n.fret);
+  const same = (a, b) => (run.instrument === 'guitar' ? (a - b) % 12 === 0 : a === b);
+  const tabAt = (t) => notes.filter((n) => n.start - early <= t && t <= Math.max(n.end, n.start + 0.2) + late).map(pitchOf);
+  F.forEach((f) => { f.inTab = f.raw != null && tabAt(f.t + 0.05).some((p) => p != null && same(f.raw - (run.shift || 0), p)); });
+  // A pluck that scored nothing, and no note in the window could have used: a stray.
+  plucks.forEach((p) => { p.stray = p.used == null && !notes.some((n) => p.t >= n.start - early && p.t <= n.start + late); });
+  run._ = { plucks, hits, misses, wrongs, early, late, pitchOf };
+  const t0 = Math.min(...F.map((f) => f.t)), t1 = Math.max(...F.map((f) => f.t));
+  Object.assign(view, { t0: t0 - 0.5, t1: t1 + 0.5, sel: null });
+  const pitches = notes.map(pitchOf).filter((p) => p != null);
+  view.pLo = Math.min(...pitches) - 5; view.pHi = Math.max(...pitches) + 5;
+  summary(); list(); draw();
+  bufs = {};
+  loadAudio(id);
+}
+
+async function loadAudio(id) {
+  ac ??= new AudioContext();
+  try { bufs.bass = await ac.decodeAudioData(await (await api(`/api/game-checks/${encodeURIComponent(id)}/audio`)).arrayBuffer()); } catch (err) { console.warn('bass audio', err); }
+  if (run.version) try { bufs.song = await ac.decodeAudioData(await (await api(`/api/audio?version=${encodeURIComponent(run.version)}&part=without`)).arrayBuffer()); } catch (err) { console.warn('song audio', err); }
+}
+
+function summary() {
+  const { plucks, misses, wrongs, hits } = run._;
+  const by = {};
+  misses.forEach((m) => { by[m.reason] = (by[m.reason] || 0) + 1; });
+  const unused = plucks.filter((p) => p.used == null), strays = plucks.filter((p) => p.stray);
+  const messy = hits.filter((h) => h.grade === 'Messy').length;
+  const chip = (cls, b, text) => `<span class="chip ${cls}"><b>${b}</b> ${text}</span>`;
+  $('#summary').innerHTML = [
+    chip('', `${run.title || ''}`, `${run.artist || ''} · ${run.timing} timing · ${run.difficulty} · ${run.source} tab`),
+    chip('good', `${run.hits}/${run.judged}`, 'hit'), chip('bad', misses.length, 'missed'),
+    ...Object.entries(by).sort((a, b) => b[1] - a[1]).map(([r, n]) => chip('bad', n, r)),
+    chip('warn', messy, 'messy'), chip('bad', wrongs.length, 'wrong notes'),
+    chip('warn', unused.length, `plucks that scored nothing (${strays.length} away from any note)`),
+    chip('', `${Math.round((run.input_calibration || 0) * 1000)} ms`, 'timing calibration'),
+    chip('', `${Math.round((run.output_delay || 0) * 1000)} ms`, 'output delay'),
+  ].join('');
+}
+
+function list() {
+  const { misses, wrongs, plucks, hits } = run._, notes = run.notes;
+  const items = [
+    ...misses.map((m) => ({ t: notes[m.k].start, cls: 'miss', what: `Missed ${run.strings[notes[m.k].string]}${notes[m.k].fret}`,
+      why: `${m.reason}${m.heard?.length ? ` · heard ${m.heard.map(nn).join(', ')}` : ''}${m.plucks?.length ? ` · plucks at ${m.plucks.map((d) => `${d > 0 ? '+' : ''}${Math.round(d * 1000)} ms`).join(', ')}` : ''}` })),
+    ...wrongs.map((w) => ({ t: w.t, cls: 'wrong', what: `Wrong: ${nn(w.midi)}`, why: `the tab wanted ${w.tab.map(nn).join(' / ')}` })),
+    ...hits.filter((h) => h.grade === 'Messy').map((h) => ({ t: notes[h.k].start, cls: 'messy', what: `Messy ${run.strings[notes[h.k].string]}${notes[h.k].fret}`, why: 'a held wrong note before it' })),
+    ...plucks.filter((p) => p.stray).map((p) => ({ t: p.t, cls: 'extra', what: 'Pluck, no note near', why: `${p.why} · ${Math.round(p.db)} dB` })),
+  ].sort((a, b) => a.t - b.t);
+  $('#list').innerHTML = `<h2>${items.length} things to look at</h2>`;
+  items.forEach((it) => {
+    const d = document.createElement('div');
+    d.className = `item ${it.cls}`;
+    d.innerHTML = `<span class="when">${fmt(it.t)}</span><span class="what">${it.what}</span><span class="why">${it.why}</span>`;
+    d.addEventListener('click', () => { document.querySelectorAll('.item.sel').forEach((x) => x.classList.remove('sel')); d.classList.add('sel'); view.sel = it.t; scrollTo(it.t); draw(); });
+    $('#list').append(d);
+  });
+}
+
+// Layout: rows top to bottom.
+const ROWS = { lanes: [10, 150], pitch: [170, 330], plucks: [345, 395], level: [410, 500] };
+const H = 520, LEFT = 46;
+const X = (t) => LEFT + (t - view.t0) * view.pxs;
+const T = (x) => view.t0 + (x - LEFT) / view.pxs;
+
+function draw() {
+  if (!run) return;
+  const cv = $('#cv'), dpr = devicePixelRatio || 1, W = Math.ceil(LEFT + (view.t1 - view.t0) * view.pxs + 20);
+  const scroller = $('#scroller'), visH = Math.max(H, scroller.clientHeight - 4);
+  cv.width = W * dpr; cv.height = visH * dpr; cv.style.width = `${W}px`; cv.style.height = `${visH}px`;
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#0b0b10'; g.fillRect(0, 0, W, visH);
+  const a = T(scroller.scrollLeft - 50), b = T(scroller.scrollLeft + scroller.clientWidth + 50);
+  const { early, late, pitchOf } = run._;
+  // second grid
+  g.font = '11px -apple-system, sans-serif';
+  for (let s = Math.floor(a); s <= b; s++) {
+    g.strokeStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(X(s), 0); g.lineTo(X(s), H); g.stroke();
+    g.fillStyle = '#5d5d6c'; g.fillText(fmt(s).replace(/\.00$/, ''), X(s) + 3, H - 6);
+  }
+  if (view.sel != null) { g.fillStyle = 'rgba(139,92,246,.18)'; g.fillRect(X(view.sel) - 3, 0, 6, H); }
+  // lanes
+  const nS = run.strings.length, [l0, l1] = ROWS.lanes, laneH = (l1 - l0) / nS;
+  const laneY = (s) => l0 + (nS - 1 - s) * laneH + laneH / 2;
+  g.fillStyle = '#8d8d9c';
+  run.strings.forEach((name, s) => { g.fillText(name, 8, laneY(s) + 4); g.strokeStyle = 'rgba(255,255,255,.10)'; g.beginPath(); g.moveTo(LEFT, laneY(s)); g.lineTo(W, laneY(s)); g.stroke(); });
+  run.notes.forEach((n) => {
+    if (n.end < a - 1 || n.start > b) return;
+    const y = laneY(n.string), col = n.result === 'hit' ? (n.grade === 'Messy' ? '#fbbf24' : '#4ade80') : n.result === 'miss' ? '#f87171' : '#5d5d6c';
+    g.fillStyle = 'rgba(139,92,246,.10)';                       // the hit window
+    g.fillRect(X(n.start - early), y - laneH / 2 + 2, (early + late) * view.pxs, laneH - 4);
+    g.fillStyle = col; g.globalAlpha = 0.35;
+    g.fillRect(X(n.start), y - 6, Math.max(6, (n.end - n.start) * view.pxs), 12);
+    g.globalAlpha = 1;
+    g.fillRect(X(n.start) - 1, y - 9, 3, 18);
+    g.fillStyle = '#fff'; g.font = 'bold 12px -apple-system, sans-serif';
+    g.fillText(String(n.fret), X(n.start) + 4, y - 8);
+    g.font = '11px -apple-system, sans-serif';
+  });
+  // pitch row
+  const [p0, p1] = ROWS.pitch, py = (m) => p1 - ((m - view.pLo) / (view.pHi - view.pLo)) * (p1 - p0);
+  g.fillStyle = '#8d8d9c'; g.fillText('pitch', 6, p0 + 10);
+  for (let m = Math.ceil(view.pLo); m <= view.pHi; m++) {
+    if (m % 12 === 4 || m % 12 === 9 || m % 12 === 2 || m % 12 === 7) { g.fillStyle = '#5d5d6c'; g.fillText(nn(m), 8, py(m) + 4); g.strokeStyle = 'rgba(255,255,255,.04)'; g.beginPath(); g.moveTo(LEFT, py(m)); g.lineTo(W, py(m)); g.stroke(); }
+  }
+  run.notes.forEach((n) => {                                    // the tab's pitches as faint bars
+    const p = pitchOf(n); if (p == null || n.end < a || n.start > b) return;
+    g.fillStyle = 'rgba(255,255,255,.10)'; g.fillRect(X(n.start), py(p + (run.shift || 0)) - 3, Math.max(4, (n.end - n.start) * view.pxs), 6);
+  });
+  for (const f of F) {
+    if (f.t < a || f.t > b) continue;
+    if (f.hz) {
+      const m = 12 * Math.log2(f.hz / 440) + 69;
+      if (m >= view.pLo && m <= view.pHi) {
+        g.fillStyle = f.raw == null ? 'rgba(255,255,255,.25)' : f.inTab ? '#4ade80' : '#f43f5e';
+        g.beginPath(); g.arc(X(f.t), py(m), f.raw == null ? 1.5 : 2.6, 0, 7); g.fill();
+      }
+    }
+    if (f.shown != null && f.shown >= view.pLo && f.shown <= view.pHi) { g.fillStyle = 'rgba(139,92,246,.5)'; g.fillRect(X(f.t) - 2, py(f.shown) + 5, 4, 2); }
+  }
+  // plucks + wrongs
+  const [q0, q1] = ROWS.plucks;
+  g.fillStyle = '#8d8d9c'; g.fillText('plucks', 6, q0 + 10);
+  for (const p of run._.plucks) {
+    if (p.t < a || p.t > b) continue;
+    g.fillStyle = p.used != null ? '#4ade80' : p.stray ? '#fb923c' : p.soft ? '#a78bfa' : '#e5e7eb';
+    g.fillRect(X(p.t) - 1, p.soft ? q0 + 22 : q0 + 4, 2.5, p.soft ? 24 : 18);
+    if (p.used == null && !p.soft) { g.globalAlpha = 0.6; g.fillRect(X(p.t) - 1, q0 + 4, 2.5, 42); g.globalAlpha = 1; }
+  }
+  for (const w of run._.wrongs) {
+    if (w.t < a || w.t > b) continue;
+    g.fillStyle = '#fb7185'; g.font = 'bold 12px -apple-system, sans-serif';
+    g.fillText(`✕ ${nn(w.midi)}`, X(w.t) + 2, q1 + 2);
+    g.font = '11px -apple-system, sans-serif';
+  }
+  // level
+  const [v0, v1] = ROWS.level, vy = (db) => v1 - ((Math.max(-70, Math.min(0, db)) + 70) / 70) * (v1 - v0);
+  g.fillStyle = '#8d8d9c'; g.fillText('level', 6, v0 + 10);
+  const line = (key, col, w) => {
+    g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let first = true;
+    for (const f of F) { if (f.t < a || f.t > b) continue; if (first) { g.moveTo(X(f.t), vy(f[key])); first = false; } else g.lineTo(X(f.t), vy(f[key])); }
+    g.stroke(); g.lineWidth = 1;
+  };
+  line('db', 'rgba(139,92,246,.9)', 1.5); line('fresh_db', 'rgba(255,255,255,.35)', 1);
+  g.setLineDash([4, 4]); line('gate_db', 'rgba(251,191,36,.7)', 1); g.setLineDash([]);
+  // playhead
+  if (playing) { const x = X(playing.t0 + (ac.currentTime - playing.at)); g.fillStyle = '#c4b5fd'; g.fillRect(x - 1, 0, 2, H); }
+}
+
+function scrollTo(t) { const s = $('#scroller'); s.scrollLeft = Math.max(0, X(t) - s.clientWidth / 3); }
+
+// Hover: what happened at that moment.
+$('#cv').addEventListener('mousemove', (e) => {
+  if (!run) return;
+  const r = $('#cv').getBoundingClientRect(), t = T(e.clientX - r.left), y = e.clientY - r.top;
+  $('#at').textContent = fmt(Math.max(0, t));
+  const f = F.reduce((best, x) => (Math.abs(x.t - t) < Math.abs(best.t - t) ? x : best), F[0]);
+  const lines = [`${fmt(t)}`];
+  const n = run.notes.find((x) => Math.abs(x.start - t) < 0.08);
+  if (n) {
+    lines.push(`Tab: ${run.strings[n.string]}${n.fret} (${nn(run._.pitchOf(n))}) · ${n.result || 'not judged'}${n.grade ? ` · ${n.grade}` : ''}`);
+    const m = run._.misses.find((x) => run.notes[x.k] === n);
+    if (m) lines.push(`Why: ${m.reason}`);
+  }
+  lines.push(`Heard: ${f.raw != null ? nn(f.raw) : f.hz ? `${f.hz} Hz (not clearly a note)` : 'no pitch'} · shown ${nn(f.shown)}`);
+  lines.push(`Level ${f.db} dB · newest 20 ms ${f.fresh_db} dB · gate ${f.gate_db} dB`);
+  const p = run._.plucks.find((x) => Math.abs(x.t - t) < 0.03);
+  if (p) lines.push(`Pluck (${p.why}) ${Math.round(p.db)} dB${p.used != null ? ` → scored the note at ${fmt(p.used)}` : p.stray ? ' → no note near' : ' → scored nothing'}`);
+  const tip = $('#tip'); tip.textContent = lines.join('\n'); tip.style.display = 'block';
+  tip.style.left = `${Math.min(innerWidth - 330, e.clientX + 14)}px`; tip.style.top = `${e.clientY + 14}px`;
+});
+$('#cv').addEventListener('mouseleave', () => { $('#tip').style.display = 'none'; });
+$('#cv').addEventListener('click', (e) => { const r = $('#cv').getBoundingClientRect(); view.sel = T(e.clientX - r.left); draw(); play(view.sel - 1); });
+$('#play').addEventListener('click', () => (playing ? stop() : play(view.sel != null ? view.sel - 1 : T($('#scroller').scrollLeft + 40))));
+
+// Playback lined up as it was played: the input at ctx time c with the song where you
+// heard it then (its position minus the output delay).
+const interp = (xs, ys, x) => { let i = 1; while (i < xs.length - 1 && xs[i] < x) i++; const k = (x - xs[i - 1]) / ((xs[i] - xs[i - 1]) || 1); return ys[i - 1] + k * (ys[i] - ys[i - 1]); };
+function play(fromT) {
+  stop();
+  if (!bufs.bass) return;
+  ac.resume();
+  const ts = F.map((f) => f.t), cs = F.map((f) => f.ctx), ps = F.map((f) => f.pos);
+  const t0 = Math.max(F[0].t, fromT), c0 = interp(ts, cs, t0);
+  const bassAt = c0 - run.first_frame / run.sample_rate, songAt = interp(cs, ps, c0) - (run.output_delay || 0);
+  const at = ac.currentTime + 0.05, nodes = [];
+  const go = (buf, offset, vol) => {
+    if (!buf || offset < 0 || offset >= buf.duration) return;
+    const src = ac.createBufferSource(), gain = ac.createGain();
+    src.buffer = buf; gain.gain.value = vol; src.connect(gain).connect(ac.destination); src.start(at, offset); nodes.push(src);
+  };
+  go(bufs.bass, bassAt, +$('#vol-bass').value);
+  if ($('#with-song').checked) go(bufs.song, songAt, +$('#vol-song').value);
+  playing = { nodes, t0, at };
+  $('#play').textContent = 'Stop';
+  const tick = () => { if (!playing) return; draw(); const x = X(playing.t0 + (ac.currentTime - playing.at)), s = $('#scroller'); if (x > s.scrollLeft + s.clientWidth - 60) s.scrollLeft = x - 120; requestAnimationFrame(tick); };
+  tick();
+}
+function stop() { if (playing) playing.nodes.forEach((n) => { try { n.stop(); } catch { /* ended */ } }); playing = null; $('#play').textContent = 'Play from here'; draw(); }
+
+$('#zoom').addEventListener('input', (e) => { const s = $('#scroller'), mid = T(s.scrollLeft + s.clientWidth / 2); view.pxs = +e.target.value; draw(); s.scrollLeft = X(mid) - s.clientWidth / 2; });
+$('#scroller').addEventListener('scroll', () => draw());
+$('#runs').addEventListener('change', (e) => loadRun(e.target.value));
+addEventListener('resize', draw);
+loadList().catch((err) => { document.querySelector('.wrap').innerHTML = `<div class="empty">Couldn't load game checks (${err.message}). Is the app running?</div>`; });
+</script>
+</body>
+</html>

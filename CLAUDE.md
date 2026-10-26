@@ -123,6 +123,7 @@ Lives in `~/Music/Track Splitter/`, outside the project, so app updates never to
   .bass-tab.json               bass tab: notes, lines (bars), bpm, suggested tuning, fingering per tuning
   (library root) .learned-from-tabs.json   note settings + fingering costs learned from imported tabs
   (library root) .calibration.json         string + timing calibrations (copies of the page's; "previous" keeps replaced ones)
+  (library root) .game-checks/<date time> <song>/   recorded games for checking: run.json + input.flac
   (library root) .bass-recordings/         the user's labelled test recordings (FLAC) + recorder pages and analysis scripts; README.txt
   .song.json                   {"sha1", "source", "added", "versions"}: sha1 of the original spots
                                repeat uploads; versions = {" [HQ] (no bass)": {"level": 30, "fast": false}}, keyed by
@@ -683,6 +684,53 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   plucks off even before: replaying the touch take on Normal 50 ms late, pluck-then-stop
   notes counted 20/35 (old), 19/35 (pitch after the pluck), 35/35 with the wait; touches
   still 4/17. Electra simulated: Relaxed 30/31, Normal 30/31, Normal 60 ms late 29/31.
+- Game check (user: "inconsistencies with the game and picking up random notes, can we
+  make a test page to figure out what is going on"; "do Addictive as the test"): Game
+  settings → "Record games for checking" (`track-splitter-game-check`) records each game:
+  the input as the analyser hears it (`startCheck`, the recorder worklet), every 20 ms
+  reading from `listen` (ctx time, tab time, song position, level, newest-20-ms level,
+  gate, Hz, raw/steady/shown note, pluck signs), every pluck (with what set it off), hit,
+  miss (with why: no pluck in the window / only too-soft plucks / its pluck went to
+  another note / pitch never heard / pitch only before the pluck) and wrong note, and the
+  notes with results. `finishCheck` (from endGame) posts it to `POST /api/game-checks`
+  -> `<library>/.game-checks/<date time> <song>/` (run.json, input.flac);
+  `GET /api/game-checks[/{id}[/audio]]`. `static/check.html` (Game settings → Game checks
+  → Open…): pick a run; a summary (misses by reason, wrong notes, plucks that scored
+  nothing), a zoomable timeline (tab lanes coloured by result with their hit windows,
+  pitch readings green when the tab has that note then / red when not, plucks white /
+  violet (new pitch) / green (scored) / orange (nowhere near a note), wrong notes, level vs
+  gate), hover details, and a list of every miss / wrong / messy / stray pluck that jumps
+  there. Click plays your input from there with the song as you heard it (song position
+  minus the output delay). A test start (`track-splitter-game-start`) now skips the notes
+  before it. First finding (simulated, Addictive's own bass track, 0:23-0:25): repeated
+  E♭2 8ths read the right pitch throughout but the level barely moves, so no pluck is
+  detected and all miss; the user's real normal-8ths take also lost 5 of 24 re-plucks.
+  The user's own game check (Addictive, whole song, Relaxed, real bass; "my playing
+  sounded right", "on 8th and 16th notes it loses a bit of accuracy"): 602/726; 105 of
+  124 misses "no pluck in the window", 101 of them a note repeating the one before (8ths
+  ~0.22 s apart): re-plucks of a ringing note raised the newest 20 ms only 0.6-3.5 dB (hit
+  ones 4-10), under the attack rule. Both show the pitch readings blinking out for 1-4
+  readings at the attack, then the same note back. Re-pluck rule (`rePluck` in `listen`,
+  a soft pluck in gameListen / practiceListen timed at the blink, unless an attack or new
+  pitch already counted): replaying that game's frames through the judging in Python
+  (scratch `replay/sim.py`, reproduces 602/726 note for note) gives 680/726 (+78; blink
+  <= 2 readings: +18, <= 3: +54). Ringing notes blinked unplucked once in 91 s (slow
+  string-test take); after a hand touch the note came back 1 time in 25. The
+  separated-track simulation gains less (Addictive 0:20-0:34: 45 -> 48 of 56): its repeated
+  E♭2s neither jump nor blink. Also seen: the user hits a median 49 ms early with the tab
+  on the recording (imported notes vs heard notes: median 0 ms): Calibrate timing again.
+  Second game with the rule (user: "it's more the missed notes that I actually hit that I
+  care about"): 434/461 (94%), 147 re-plucks found by it. Of its 27 misses 11 were repeats
+  whose pitch blinked exactly 5 readings, so the rule takes 1-5 (replays: first game 696/726,
+  second 439/461; ringing notes still blinked unplucked once in 91 s, touches 2 of 25).
+  The pitch must also be read before the next pluck (`ownPitch`): within PITCH_WAIT it
+  could be the next note's, and a control (the game replayed with every tab note moved 2
+  semitones, notes not played) scored 97 such hits; now 34, real hits unchanged.
+  Still missed (~9 a song): a note on another string while the last one rings (G1 on E then
+  B♭1 on A; F1 then C2): YIN finds no clear pitch for ~300 ms. Tried and dropped: the chord
+  reader (`heardNotes` with a bass range) for the wanted note (+13 real, +62-133 false in
+  the moved-tab controls), and "the wanted note's own energy rises" (any pluck raises
+  every frequency: hundreds false). Repeats with no blink and no level rise (~4) remain.
 - Too-quiet plucks (user: a note "too quiet to actually hear" still counted): in a game a
   pluck counts only if it's no more than 15 dB below the median of the player's last 40
   pluck levels (once there are 8). Each pluck's level is the newest 20 ms (`freshDb`),
@@ -742,7 +790,16 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   their written length; the user saw tabs "speeding up", and the game's speed floor
   went up to match). Re-synced, MCR's notes inside a heard note 67 -> 89%, squeezed
   0.4-1.3% on all 8 imported tabs, its quickest same-string gap 0.056 -> 0.141 s; the
-  other songs' scores moved by a few points either way. `IMPORT_RULES` (app.py): bump
+  other songs' scores moved by a few points either way.
+  Steady rhythm (user: "straight eighth/16th notes but they are spaced weird so it makes
+  it hard to hit them"): even those nudges left 10-35% of steady 8th/16th pairs > 25%
+  uneven inside bars and 16-47% across bar lines. Now no note is nudged on its own: each
+  bar keeps the written rhythm and is shifted/stretched as a whole by a robust fit to its
+  matched notes (`_bar_fit`: medians, <= 80 ms (`STEADY_MAX`), <= 8% stretch), and
+  neighbouring bars meet at the bar line (one shift there, the mean of both). On the 5
+  file tabs in the test library: 0% uneven inside and across bars; notes within 50 ms of
+  a heard note 56.5-88.9% (written rhythm alone 55.8-86.4%, nudged 62.9-94.2%, partly
+  the nudge moving notes onto noisy heard times). IMPORT_RULES 4. `IMPORT_RULES` (app.py): bump
   when syncing changes; `get_tab` then re-syncs an old import from its saved file
   (`resync_import`, ~1-2 s) when the automatic tab is current. Text tabs:
   bar length from the song's tempo, bars placed by note content and then followed in
@@ -1058,7 +1115,8 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
 
 No test suite in the repo. Changes were verified by running the server on a spare port
 (`app.main(port=7866, open_browser=False)`, with `app.OUTPUT_DIR` set to a copy of the
-library), driving the API with small scripts
+library; when several sessions test at once each needs its own port: two shared 7866 and
+one's page tests ran against the other's server and library), driving the API with small scripts
 (upload, poll, move, delete, bad ids), and clicking through the page in a browser. A
 synthetic 15 s clip (sine bass line + chords + clicks) was used, measuring how much
 40-100 Hz energy remains to confirm bass removal.
