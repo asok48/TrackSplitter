@@ -54,11 +54,27 @@ class TabTrack:
     bars: list
     tempo: float = 120.0
     timed: bool = True  # False for text tabs: positions are only the order of the notes
+    capo: int = 0       # frets are written from the capo: a note sounds strings[s] + capo + fret
     tempo_known: bool = True   # False for text tabs with counts: rhythm but no tempo (sync guesses it)
+
+    def pitch(self, string, fret):
+        return self.strings[string] + self.capo + fret
 
 
 def is_bass(track):
     return bool(track.strings) and min(track.strings) <= 35 or "bass" in track.name.lower()
+
+
+def is_guitar(track):
+    """6 or more strings tuned like a guitar (Guitar Pro also gives vocal and keyboard
+    tracks a guitar's strings; their names usually say so)."""
+    name = track.name.lower()
+    return (len(track.strings) >= 6 and min(track.strings) >= 33 and not is_bass(track)
+            and not any(w in name for w in ("vocal", "voice", "sax", "piano", "keys", "synth", "organ", "string ens")))
+
+
+def note_count(track):
+    return sum(1 for b in track.bars for n in b.notes if not n.tie)
 
 
 # --- Guitar Pro 3-5 (PyGuitarPro) -------------------------------------------------
@@ -93,7 +109,7 @@ def read_gp5(path):
                                              legato_out="s" if slides & {"shiftSlideTo", "legatoSlideTo"} else "h" if note.effect.hammer
                                              else "d" if "outDownwards" in slides else "u" if "outUpwards" in slides else ""))
             bars.append(bar)
-        tracks.append(TabTrack(t.name, strings, bars, float(song.tempo)))
+        tracks.append(TabTrack(t.name, strings, bars, float(song.tempo), capo=max(0, t.offset or 0)))
     return tracks
 
 
@@ -135,11 +151,12 @@ def read_gp(path):
 
     tracks = []
     for ti_, track in enumerate(root.iter("Track")):
-        pitches = None
+        pitches, capo = None, 0
         for prop in track.iter("Property"):
-            if prop.get("name") == "Tuning" and prop.findtext("Pitches"):
+            if prop.get("name") == "Tuning" and prop.findtext("Pitches") and pitches is None:
                 pitches = [int(x) for x in prop.findtext("Pitches").split()]   # lowest string first
-                break
+            elif prop.get("name") == "CapoFret":
+                capo = int(prop.findtext("Fret") or 0)
         if not pitches:
             continue
         tbars, first_tempo = [], None
@@ -187,7 +204,7 @@ def read_gp(path):
                 pos += dur
             tbars.append(bar)
         name = track.findtext("Name") or ""
-        tracks.append(TabTrack(name, pitches, tbars, first_tempo or 120.0))
+        tracks.append(TabTrack(name, pitches, tbars, first_tempo or 120.0, capo=max(0, capo)))
     return tracks
 
 
@@ -262,18 +279,32 @@ def read_musicxml(path):
                         if p is not None:
                             pitched.append((len(bars), TabNote(start / divisions, dur / divisions, -1, p, tie=tie)))
             bars.append(bar)
-        if not strings:
-            strings = [28, 33, 38, 43]
+        name = names.get(part.get("id"), "")
+        if not strings:   # notation only: a guitar's strings if it's named or pitched like one
+            heard = sorted(n.fret for _, n in pitched)
+            guitar = "guitar" in name.lower() or (heard and heard[len(heard) // 2] >= 52 and "bass" not in name.lower())
+            strings = [40, 45, 50, 55, 59, 64] if guitar else [28, 33, 38, 43]
         n = len(strings)
         for bar in bars:   # MusicXML strings count from the highest (1)
             for note in bar.notes:
                 note.string = n - note.string
+        if len(strings) >= 6 and pitched:   # a guitar's chords: fingered as hand shapes
+            import tab
+            order = sorted(range(len(pitched)), key=lambda k: (pitched[k][0], pitched[k][1].pos))
+            fake = [(pitched[k][0] * 100 + pitched[k][1].pos, 0, pitched[k][1].fret, 1.0) for k in order]
+            key = next((k for k, v in tab.GUITAR_TUNINGS.items() if v[1] == strings), None)
+            if key:
+                for j, s, f in tab.guitar_fingering(fake, key):
+                    i, note = pitched[order[j]]
+                    note.string, note.fret = s, f
+                    bars[i].notes.append(note)
+                pitched = []
         for i, note in pitched:   # pitches only: place on the lowest string that has them
             s = max((k for k, o in enumerate(strings) if 0 <= note.fret - o <= 24), default=None)
             if s is not None:
                 note.string, note.fret = s, note.fret - strings[s]
                 bars[i].notes.append(note)
-        tracks.append(TabTrack(names.get(part.get("id"), ""), strings, bars, tempo or 120.0))
+        tracks.append(TabTrack(name, strings, bars, tempo or 120.0))
     return tracks
 
 
@@ -287,9 +318,11 @@ LINE = re.compile(r"^\s*([A-Ga-g][#b]?)\s*[|:\-]")
 def _open_strings(labels):
     """String names as written in a text tab (highest string first) -> open-string MIDI
     notes, lowest first: the lowest string sits between A0 and F#1 (E -> 28, D -> 26,
-    B -> 23), each string above is the next note up with its name (E A D G)."""
+    B -> 23) on a bass (4-5 lines), G1-F#2 on a guitar (6 lines: E -> 40, D -> 38), each
+    string above is the next note up with its name (E A D G, E A D G B E)."""
     classes = [NAMES[l.upper()] for l in reversed(labels)]
-    pitches = [24 + classes[0] if classes[0] <= 6 else 12 + classes[0]]
+    octave = 12 if len(labels) >= 6 else 0
+    pitches = [octave + (24 + classes[0] if classes[0] <= 6 else 12 + classes[0])]
     for c in classes[1:]:
         pitches.append(pitches[-1] + ((c - pitches[-1]) % 12 or 12))
     return pitches
@@ -319,8 +352,9 @@ def _row_notes(row, a, b):
 
 
 def read_text(text):
-    """Systems of 4-6 lines like 'G|--5--7--|' (highest string on top). Columns give the
-    order and rough spacing of notes; bar lines '|' give bars. With a count line under
+    """Systems of 4-6 lines like 'G|--5--7--|' (highest string on top; 6 lines: a guitar).
+    Columns give the order and rough spacing of notes, notes in one column are played
+    together; bar lines '|' give bars. With a count line under
     every system ("1 + 2 + 3 + 4 + ...", as Ultimate Guitar bass tabs have; user: "I also
     want to be able to use ultimate guitar tabs, even if it is just pasting") the counts
     give the bars and the rhythm, so the tab is synced like a file (its tempo is guessed
@@ -409,8 +443,8 @@ def read_text(text):
 
 # --- Any file ----------------------------------------------------------------------
 
-def read_file(path):
-    """Tracks of a tab file, bass-looking ones first."""
+def read_tracks(path):
+    """Every track of a tab file that has notes, in the file's order."""
     path = Path(path)
     ext = path.suffix.lower()
     if ext in (".gp3", ".gp4", ".gp5"):
@@ -425,7 +459,18 @@ def read_file(path):
         tracks = read_text(path.read_text(encoding="utf-8", errors="replace"))
     else:
         raise ValueError(f"Can't read {ext} files. Use Guitar Pro (.gp, .gp3, .gp4, .gp5), MusicXML (.musicxml, .mxl), or paste a text tab.")
-    tracks = [t for t in tracks if any(b.notes for b in t.bars)]
+    return [t for t in tracks if any(b.notes for b in t.bars)]
+
+
+def read_file(path, instrument="bass"):
+    """Tracks of a tab file, the ones for this instrument first (guitar: tracks named
+    guitar first, then the busiest)."""
+    return rank_tracks(read_tracks(path), instrument)
+
+
+def rank_tracks(tracks, instrument="bass"):
+    if instrument == "guitar":
+        return sorted(tracks, key=lambda t: (not is_guitar(t), "guitar" not in t.name.lower(), -note_count(t)))
     return sorted(tracks, key=lambda t: not is_bass(t))
 
 
@@ -737,7 +782,7 @@ def sync(track, heard, beat=None):
     notes, bar_starts = timeline(track)
     playable = [k for k, n in enumerate(notes) if not n[4]]
     tab_t = [notes[k][0] for k in playable]
-    tab_p = [track.strings[notes[k][2]] + notes[k][3] for k in playable]
+    tab_p = [track.pitch(notes[k][2], notes[k][3]) for k in playable]
     if not heard or not playable:
         return {"notes": [list(n[:5]) for n in notes], "bars": bar_starts, "quality": 0.0}
     if track.timed:
@@ -809,7 +854,7 @@ def _sync_text(track, notes, playable, tab_p, heard, beat):
         inside = [h for h in heard if a0 - 0.08 <= h[0] < a0 + length - 0.08]
         if not inside:
             return 0.0
-        seq = [track.strings[notes[k][2]] + notes[k][3] for k in ks]
+        seq = [track.pitch(notes[k][2], notes[k][3]) for k in ks]
         m = _sync_order(seq, inside, expect(ks, a0), length / 4)
         return sum(1.0 if inside[j][2] == p else 0.5 for j, p in zip(m, seq) if j >= 0)
 
@@ -877,7 +922,7 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
         expected = [a0 + (notes[k][0] - bar_starts_t[b]) * rate for k in ks]
         play = [i for i, k in enumerate(ks) if k in playable]
         inside = [h for h in heard if a0 - 0.08 <= h[0] < a1 - 0.08]
-        match = (_sync_order([track.strings[notes[ks[i]][2]] + notes[ks[i]][3] for i in play], inside,
+        match = (_sync_order([track.pitch(notes[ks[i]][2], notes[ks[i]][3]) for i in play], inside,
                              [expected[i] for i in play], (a1 - a0) / 4) if inside and play else [-1] * len(play))
         matched += sum(1 for j in match if j >= 0)   # heard (the match quality counts it either way)
         if keep_lengths:
@@ -887,17 +932,20 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
             continue
         if not ks:
             continue
+        # Notes written in one column (a chord) share a place, so they stay together.
+        columns = {x: r + 1 for r, x in enumerate(sorted({notes[k][0] for k in ks}))}
+        place = lambda i: columns[notes[ks[i]][0]]
         anchor_x, anchor_t = [0], [a0]
         for i, j in zip(play, match):
             if j >= 0:
-                anchor_x.append(i + 1)
+                anchor_x.append(place(i))
                 anchor_t.append(inside[j][0])
-        anchor_x.append(len(ks) + 1)
+        anchor_x.append(len(columns) + 1)
         anchor_t.append(a1)
         order = np.argsort(anchor_x, kind="stable")
         ax, at = np.array(anchor_x)[order], np.maximum.accumulate(np.array(anchor_t)[order])
         for i, k in enumerate(ks):
-            out[k][0] = float(np.interp(i + 1, ax, at))
+            out[k][0] = float(np.interp(place(i), ax, at))
     if keep_lengths and any(bars):
         def shift(b, x):
             fit = bars[b][5] if 0 <= b < len(bars) and bars[b] else None

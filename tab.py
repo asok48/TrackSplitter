@@ -645,6 +645,257 @@ def fingering(notes, tuning, learned=None):
     return [(i, s, f) for i, (s, f) in zip(playable, best)]
 
 
+
+# --- Guitar: tunings, chord fingering, heard notes ----------------------------------
+# A guitar part has chords and double stops, so it can't be fingered one note at a time:
+# notes that start together are one hand shape (each on its own string, the fretted ones
+# within the hand's 4 frets), and the hand-position Viterbi runs over those shapes.
+
+GUITAR_TUNINGS = {   # key: (label, open strings low to high as MIDI notes, string names)
+    "standard": ("Standard (E A D G B E)", [40, 45, 50, 55, 59, 64], ["E", "A", "D", "G", "B", "e"]),
+    "drop-d": ("Drop D (D A D G B E)", [38, 45, 50, 55, 59, 64], ["D", "A", "D", "G", "B", "e"]),
+    "half-down": ("Half step down (E♭ A♭ D♭ G♭ B♭ E♭)", [39, 44, 49, 54, 58, 63], ["E♭", "A♭", "D♭", "G♭", "B♭", "e♭"]),
+    "d-standard": ("Whole step down (D G C F A D)", [38, 43, 48, 53, 57, 62], ["D", "G", "C", "F", "A", "d"]),
+}
+GUITAR_MAX_FRET = 22
+CHORD_GAP = 0.03    # notes starting this close together are played as one shape
+
+# Hand-set, like STYLE: a guitarist leans less to the thick strings than a bassist and
+# plays open strings freely (open chords).
+GUITAR_STYLE = {
+    "open": 0.0,
+    "fretted": 0.08,    # a finger down (an open C beats the same chord barred at the 8th)
+    "stretch": 0.4,
+    "string": 0.02,
+    "low": 0.03,
+    "shift": 3.0,
+    "shift_fret": 0.3,
+    "cross": 0.1,       # per string the shape's middle moves between shapes
+    "skip": 0.4,        # per unplayed string inside a chord (hard to strum cleanly)
+    "fingers": 2.0,     # more than 4 fretted notes without a barre on the lowest fret
+}
+
+
+def tunings_for(instrument):
+    return GUITAR_TUNINGS if instrument == "guitar" else TUNINGS
+
+
+def chord_groups(times, pitches=None):
+    """Indexes of notes (sorted by start) grouped into shapes: each starts within
+    CHORD_GAP of the group's first note, and (with pitches) a pitch already in the group
+    starts the next one (two strums squeezed together)."""
+    groups = []
+    for i, t in enumerate(times):
+        if (groups and t - times[groups[-1][0]] <= CHORD_GAP
+                and (pitches is None or all(pitches[k] != pitches[i] for k in groups[-1]))):
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    return groups
+
+
+def _shapes(pitches, strings, max_fret):
+    """Every way to play these pitches together: each on its own string, fretted notes
+    within a 5-fret span. [(positions per note, lowest fretted fret or 0, highest)]."""
+    order = sorted(range(len(pitches)), key=lambda k: -pitches[k])
+    out = []
+
+    def walk(k, used, pos):
+        if k == len(order):
+            frets = [f for _, f in pos.values() if f]
+            lo, hi = (min(frets), max(frets)) if frets else (0, 0)
+            if hi - lo <= 4:
+                out.append(([pos[j] for j in range(len(pitches))], lo, hi))
+            return
+        j = order[k]
+        for s, o in enumerate(strings):
+            f = pitches[j] - o
+            if s not in used and 0 <= f <= max_fret:
+                pos[j] = (s, f)
+                walk(k + 1, used | {s}, pos)
+                del pos[j]
+
+    walk(0, frozenset(), {})
+    return out
+
+
+def _shape_cost(positions, style):
+    """What a shape costs in itself: per note open or fretted and its string, strings
+    skipped inside a chord, and too many fingers."""
+    c = sum((style["open"] if f == 0 else style["fretted"]) + style["string"] * s for s, f in positions)
+    used = sorted(s for s, _ in positions)
+    if len(used) > 1:
+        c += style["skip"] * (used[-1] - used[0] + 1 - len(used))
+    fretted = [f for _, f in positions if f]
+    if len(fretted) > 4 and fretted.count(min(fretted)) < 2:
+        c += style["fingers"]
+    return c
+
+
+def guitar_fingering(notes, tuning, style=None, rounds=2):
+    """[(note index, string, fret)] for a guitar part: Viterbi over (hand position, shape)
+    per group of notes played together, then rounds that pull each chord or note toward
+    its usual shape (so a riff is fingered the same each time)."""
+    style = {**GUITAR_STYLE, **(style or {})}
+    strings = GUITAR_TUNINGS[tuning][1]
+    playable = [i for i, n in enumerate(notes) if strings[0] <= n[2] <= strings[-1] + GUITAR_MAX_FRET]
+    if not playable:
+        return []
+    groups = chord_groups([notes[i][0] for i in playable], [notes[i][2] for i in playable])
+    keys, options = [], []
+    for g in groups:
+        idx = [playable[k] for k in g]
+        pitches = [notes[i][2] for i in idx]
+        shapes = []
+        while not shapes and idx:   # more notes than strings, or no shape: leave out the highest
+            shapes = _shapes(pitches, strings, GUITAR_MAX_FRET)
+            if not shapes:
+                top = int(np.argmax(pitches))
+                idx, pitches = idx[:top] + idx[top + 1:], pitches[:top] + pitches[top + 1:]
+        keys.append((idx, tuple(sorted(pitches))))
+        options.append(shapes)
+    anchors = np.arange(1, GUITAR_MAX_FRET - 2)
+
+    def states(shapes, usual, key, weight):
+        """Per (anchor, shape) that fits under the hand: its cost; arrays."""
+        a_, sh_, c_, mid_ = [], [], [], []
+        for k, (pos, lo, hi) in enumerate(shapes):
+            base = _shape_cost(pos, style)
+            if usual and usual.get(key, None) not in (None, tuple(pos)):
+                base += weight
+            mid = float(np.mean([s for s, _ in pos])) if pos else 0.0
+            for a in anchors:
+                if lo == 0:          # open strings only: the hand stays wherever it is
+                    c = base
+                elif a <= lo and hi <= a + 3:
+                    c = base
+                elif (a - 1 <= lo and hi <= a + 3) or (a <= lo and hi <= a + 4):
+                    c = base + style["stretch"]
+                else:
+                    continue
+                a_.append(a); sh_.append(k); c_.append(c + style["low"] * a); mid_.append(mid)
+        return np.array(a_), np.array(sh_), np.array(c_), np.array(mid_)
+
+    def run(usual=None, weight=0.0):
+        hist = []
+        prev = None
+        for (idx, key), shapes in zip(keys, options):
+            if not shapes:
+                hist.append(None)
+                continue
+            a, sh, c, mid = states(shapes, usual, key, weight)
+            if prev is None:
+                total, back = c, None
+            else:
+                pa, _, pc, pmid = prev
+                move = np.where(pa[:, None] == a[None, :], 0.0,
+                                style["shift"] + style["shift_fret"] * np.abs(pa[:, None] - a[None, :]))
+                m = pc[:, None] + move + style["cross"] * np.abs(pmid[:, None] - mid[None, :])
+                back = np.argmin(m, axis=0)
+                total = m[back, np.arange(len(a))] + c
+            prev = (a, sh, total, mid)
+            hist.append((a, sh, total, back))
+        # Back through the groups that had a shape.
+        chosen = [None] * len(keys)
+        j = None
+        for g in range(len(keys) - 1, -1, -1):
+            h = hist[g]
+            if h is None:
+                continue
+            a, sh, total, back = h
+            if j is None:
+                j = int(np.argmin(total))
+            chosen[g] = options[g][sh[j]][0]
+            j = None if back is None else int(back[j])
+        return chosen
+
+    chosen = run()
+    for _ in range(rounds):
+        counts = defaultdict(Counter)
+        for (idx, key), pos in zip(keys, chosen):
+            if pos is not None:
+                counts[key][tuple(pos)] += 1
+        usual = {k: c.most_common(1)[0][0] for k, c in counts.items()}
+        chosen = run(usual, 1.0)
+    out = []
+    for (idx, key), pos in zip(keys, chosen):
+        if pos is not None:
+            out += [(i, s, f) for i, (s, f) in zip(idx, pos)]
+    return sorted(out)
+
+
+def guitar_difficulty(times, positions):
+    """Like _difficulty, with notes played together counted as one shape: hand shifts
+    (any fretted note outside the hand's 4 frets), the shape's middle string moving,
+    fretted notes; per note."""
+    total, lo, last_t, last_mid = 0.0, None, None, None
+    groups = chord_groups(list(times))
+    for g in groups:
+        t = times[g[0]]
+        pos = [positions[k] for k in g]
+        hurry = 1 + 0.15 / (1.0 if last_t is None else max(0.05, t - last_t))
+        frets = [f for _, f in pos if f]
+        total += 0.1 * len(frets)
+        if frets:
+            a, b = min(frets), max(frets)
+            if lo is None:
+                lo = a
+            elif not (lo <= a and b <= lo + 3):
+                move = (lo - a) if a < lo else (b - lo - 3)
+                total += (2 + 0.5 * max(0, move)) * hurry
+                lo = a if a < lo else max(a, b - 3)
+        mid = float(np.mean([s for s, _ in pos]))
+        if last_mid is not None and abs(mid - last_mid) >= 1:
+            total += (0.2 + (0.3 if abs(mid - last_mid) > 1.5 else 0)) * hurry
+        last_t, last_mid = t, mid
+    return total / max(1, len(positions))
+
+
+def strum_times(guitar, hop=128, n_fft=512):
+    """When a guitar track's strums and picked notes start (s): peaks of log spectral flux on
+    ~23 ms frames (5.8 ms apart) at least 1.8x the median of the 0.6 s around them. On
+    synthetic plucks at known times they land within ~3 ms (after the centering fix)."""
+    x = np.pad(np.asarray(guitar, np.float32), n_fft // 2)
+    frames = np.lib.stride_tricks.sliding_window_view(x, n_fft)[::hop]
+    mag = np.abs(np.fft.rfft(frames * np.hanning(n_fft).astype(np.float32), axis=1))
+    flux = np.concatenate([[0.0], np.clip(np.diff(np.log1p(100 * mag), axis=0), 0, None).mean(axis=1)])
+    w = int(0.3 * SAMPLERATE / hop)
+    med = np.array([np.median(flux[max(0, i - w):i + w]) for i in range(0, len(flux), 8)]).repeat(8)[:len(flux)]
+    peak = (flux[1:-1] >= flux[:-2]) & (flux[1:-1] > flux[2:]) & (flux[1:-1] > 1.8 * med[1:-1]) & (flux[1:-1] > 0.02)
+    return (np.nonzero(peak)[0] + 1) * hop / SAMPLERATE - STRUM_BIAS
+
+
+STRUM_BIAS = -0.005   # measured on synthetic plucks: peaks 5 ms early
+
+
+def snap_to_strums(notes, strums, before=0.08, after=0.03):
+    """Basic Pitch's note starts on distorted guitar come ~35 ms after the attack (American
+    Idiot's real guitar track: heard starts a median 33 ms after the nearest strum): each
+    start moves to the strum just before it (within 80 ms) or just after (30 ms)."""
+    strums = np.asarray(strums)
+    out = []
+    for a, b, p, v in notes:
+        i = np.searchsorted(strums, a)
+        near = [strums[j] for j in (i - 1, i) if 0 <= j < len(strums) and -before <= strums[j] - a <= after]
+        if near:
+            a2 = min(near, key=lambda x: abs(x - a))
+            out.append((float(a2), max(float(b), float(a2) + 0.03), p, v))
+        else:
+            out.append((a, b, p, v))
+    return sorted(out)
+
+
+def transcribe_guitar(guitar, mix=None, on_progress=lambda fraction: None):
+    """Notes heard in a mono 22.05 kHz guitar track, chords and all (start s, end s, MIDI
+    pitch, amplitude): Basic Pitch over the guitar's range, nothing where the track is
+    near silent. No octave fixes or one-note-at-a-time: used to line imported tabs up
+    with the recording, which matches octaves loosely anyway."""
+    frames, onsets = _model_output(guitar, on_progress)
+    times = _frames_to_time(frames.shape[0])
+    events = _note_events(frames, onsets, min_freq=70.0, max_freq=1400.0, onset_thresh=0.5)
+    notes = sorted((float(times[s]), float(times[e]), int(p), a) for s, e, p, a, _ in events if 36 <= p <= 90)
+    return snap_to_strums(_audible(notes, guitar, mix), strum_times(guitar))
+
 # Learning the user's fingering from imported tabs. The user found the automatic
 # fingering unlike tabs they trust (Cry Baby Cry's riff written A7 D5 D7 came out D2 G2
 # D5: 77% of notes on the same string and fret). Each imported tab is the right answer
