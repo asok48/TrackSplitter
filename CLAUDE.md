@@ -60,6 +60,8 @@ in use. Ground rules agreed so far (kept here so every computer's session has th
   docstring has the method and the measurements behind each choice.
 - `tabimport.py`: imported tabs (Guitar Pro / MusicXML / pasted text): reading, repeats,
   syncing to the recording. See "Imported tabs".
+- `tone.py`: "Match the song's tone" (an EQ for Hear myself). Module docstring has the
+  method and measurements; see "Match the song's tone" under My tab.
 - `basicpitch/`: Spotify's Basic Pitch model (`nmp.onnx`, 230 KB) + its LICENSE/NOTICE
   (Apache 2.0). The pip package needs TensorFlow (no Python 3.13 build on Mac), so
   `tab.py` runs the ONNX model with onnxruntime and reimplements its note decoding in
@@ -124,6 +126,8 @@ Lives in `~/Music/Track Splitter/`, outside the project, so app updates never to
   (library root) .learned-from-tabs.json   note settings + fingering costs learned from imported tabs
   (library root) .calibration.json         string + timing calibrations (copies of the page's; "previous" keeps replaced ones)
   (library root) .game-checks/<date time> <song>/   recorded games for checking: run.json + input.flac
+  (library root) .instrument-tones.json    the user's instruments for tone matching: name, bass/guitar, captured spectrum; the one picked per type; pooled bass recordings; "removed"
+  .tone.json                   the song's bass / guitar spectra (from its "bass only" / "guitar only" tracks) for tone matching
   (library root) .bass-recordings/         the user's labelled test recordings (FLAC) + recorder pages and analysis scripts; README.txt
   .song.json                   {"sha1", "source", "added", "versions"}: sha1 of the original spots
                                repeat uploads; versions = {" [HQ] (no bass)": {"level": 30, "fast": false}}, keyed by
@@ -945,12 +949,60 @@ with the band.
     opened with `latency: 0` (user: "lag from when I play and hear my bass"); the
     player's 'playback' context is ~90 ms. The drawer shows the delay ("~13 ms · Direct
     Monitor: none" in the test browser); the interface's Direct Monitor has none.
-    Volume slider 0 to +24 dB (default +6, kept per computer): the user found it too
-    quiet unless they turned the interface gain up, which they don't want to do.
+    Volume slider 0 to +40 dB (default +6, kept per computer): the user found it too
+    quiet unless they turned the interface gain up, which they don't want to do (+24 was
+    still "hard to hear"; their DI peaks around -25 dBFS). After the volume, a soft
+    clipper (WaveShaper, no oversampling, so no delay; 1/4 in front so it takes peaks to
+    4x full scale): linear to 0.7, rounding off to 1, so loud notes at a big boost don't
+    crackle. Tested: 0.1 in -> 0.1 out on the same sample, overs capped at 1.
+  - Match the song's tone (user: "automatically pick up the sound of the bass in a song
+    and make that as an effect so you have the same tone"): a switch under Hear myself
+    in the drawer and in Game settings (Sound), on per song (`track-splitter-tone`, a
+    map of song ids; switching it on turns Hear myself on). `GET /api/tone?song&rate&kind`
+    compares the song's "bass only" track (HQ preferred; for guitar "guitar only", else
+    lead, else rhythm: `part_track`) with the user's instrument and returns
+    filters fitted to BiquadFilterNode's own formulas at the monitor's sample rate;
+    `applyTone`/`wireTone` put them (and a loudness trim) between the monitor's input
+    and its volume. Method (tone.py docstring): long-term 1/3-octave spectrum of the
+    playing frames, curve = song - DI, +-12 dB, flat outside 40 Hz-8 kHz, a low shelf, 15
+    half-octave peaking filters and a high shelf (17 biquads), same loudness as heard
+    (A-weighted: balancing raw energy, mostly lows, left it ~3 dB quieter by ear, up to
+    5.7, since the EQ cuts mids; now 0.0 dB on every song). On the 14 library songs vs
+    the user's 8 DI recordings: shape off from the song 6.2 dB rms (median; 4.8-9.5)
+    before, 1.1 with it (the worst where the ±12 dB limit bites); fit within 0.2-1.0 dB of the curve; 0.3-0.5 s to measure a song the first time,
+    then cached. In the page the built chain matched the fitted response within 0.1 dB,
+    an impulse came out at sample 0 (no added delay; IIR filters have only the usual
+    minimum-phase lag at low frequencies) and the drawer's latency readout was the same
+    on and off (~13 ms in the test browser). The DI side: a capture is 45 s of playing
+    (recorder worklet, `POST /api/tone/capture`, needs 15 s of playing; 20 s varied up
+    to ~7 dB, 45 s ~4), since the user's DI changes (two takes were ~20 dB brighter at
+    8 kHz: pick or tone knob).
+    Instruments (user: "I have 3 different basses that all sound different, would be nice
+    to pick which I am playing", "a settings menu where you can manage this", "it should
+    work for any instrument"): each capture is saved with a name and a type (bass /
+    guitar) in `<library>/.instrument-tones.json`, one picked per type; the Bass / Guitar
+    switch decides which type applies (and which part of the song it's matched with).
+    Picker + "Instruments…" in the drawer, "Instrument" + "Manage…" in Game settings; the
+    Your instruments dialog (`#inst-dlg`, `renderInstDialog`) lists them (Use, Capture
+    again, Rename inline, Remove: kept in the file under "removed") and adds new ones
+    (name, Bass/Guitar, Capture 45 s; the countdown and Stop on that button). For bass,
+    "My recordings" (every DI recording in the library pooled: `.bass-recordings`, every
+    `.my-bass` take) is listed too and used until a bass is captured. The first version's
+    single capture (`.bass-di-tone.json`) is brought in as "My bass". Tested: a guitar
+    capture fed from The Eternal's lead guitar track matched that track within ±1 dB. A capture in
+    the page of a song's bass stretch matched that stretch analysed offline within
+    ~0.3 dB. Not matched: compression (a no-look-ahead compressor didn't bring the DI's
+    level spread toward the songs' at any setting; the gap is playing, not processing)
+    and distortion (can't be told from leakage in a stem). Before/after spectra were
+    plotted for The Eternal, American Idiot, You Only Live Once and Electra. Tested with a
+    simulated Scarlett only; not yet heard on the real bass. `TONE_RULES` in app.py: bump
+    when `tone.profile` changes.
   - Quiet input: the meter is in dB (-60 to 0 dBFS; tooltip gives the level) and pitch
     detection listens from -50 dBFS (YIN doesn't depend on loudness). Simulated input
     at -34 dB (~-44 dB peaks while playing): 44 of 50 readings found, all matched.
-  - Record: the song jumps back 2 s and plays; the button reads "Stop 0:12". The input
+  - Record: the song jumps back 2 s and plays; the drawer tucks away so the tab stays in
+    view (user: "when you hit record, the modal blocks the tab") and the Bass input button
+    reads "Rec 0:12" (pause, Space or reopening the drawer's Stop ends it). The input
     runs on the player's own AudioContext; an AudioWorklet (inline, Blob URL) posts
     each block with its frame number, so every sample has a time on the song's clock.
     The take ends on Stop, pause, a jump elsewhere, or the song's end; it's sent as a
@@ -1079,6 +1131,20 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
   (checked: lag 0, r 0.999 in Chromium) and scales it to the versions' anti-clip
   turn-down; otherwise (no original, other browser offsets) Original = without + only.
   `headroom()` turns each song down just enough that no mode clips.
+- Volumes (user: "change that to have 3, a master volume, a song volume, and an instrument
+  volume"): the player's slider is the master; its speaker opens a popover (`#mixer`) with
+  Master, Song and Instrument. Master scales the song (`state.volume * state.songVolume *
+  headroom`) and the Hear myself monitor (`monitorGain()`, its own AudioContext); Instrument
+  is the Hear myself boost (`#input-volume`, 0 to +40 dB). Master and song are kept per
+  computer (`track-splitter-master-volume`, `-song-volume`); Game settings has all three.
+  Under 1100 px only the speaker shows.
+- Instrument picker in the player (user: "select what instrument you are playing and then
+  a dropdown updates with your saved instruments"): Bass | Guitar (`#player-kind`, the same
+  `setInstrument` as the drawer's switch) and that type's saved instruments (`#player-inst`,
+  "Default" when there are none, "Manage instruments…" opens Your instruments).
+  Guitar is disabled there and in Your instruments' type choice for now (user: "my
+  brother is handling guitar, so leave the option disabled"); the server side and the
+  drawer's Bass / Guitar input switch (the guitar input mode he uses) are unchanged.
 - Add songs dialog: drop files or paste a link, edit title/artist per item, pick
   instruments (guitar is All guitar / Lead guitar / Rhythm guitar), level, HQ, and
   "Faster guitar/piano" (shown only with HQ + guitar/piano). Upload is disabled until the required fields are filled. On

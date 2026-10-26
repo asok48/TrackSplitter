@@ -135,6 +135,27 @@
   .ib-device select { flex: 1; min-width: 0; }
   .ib-device #input-channel { flex: 0 0 auto; }
   .ib-note { font-size: 11.5px; color: var(--faint); }
+  .tone-inst { display: flex; gap: 6px; align-items: center; width: 100%; }
+  .tone-inst select { flex: 1; min-width: 0; }
+  /* Your instruments (#inst-dlg) */
+  .inst-intro { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .7); line-height: 1.45; }
+  #inst-list { display: flex; flex-direction: column; gap: 8px; }
+  #inst-dlg { width: min(520px, 92vw); }
+  .inst-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+    border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); }
+  .inst-row.current { border-color: rgba(139, 92, 246, .6); background: rgba(139, 92, 246, .12); }
+  .inst-name { font-weight: 700; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inst-meta { font-size: 12px; color: rgba(255, 255, 255, .55); }
+  .inst-kind { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .75); vertical-align: 1px; }
+  .inst-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+  .inst-acts:empty { display: none; }
+  .inst-kind.playing { background: rgba(139, 92, 246, .55); color: #fff; }
+  .inst-row input, .inst-add input { height: 30px; border-radius: 10px; background: rgba(0, 0, 0, .25); border: 1px solid rgba(255, 255, 255, .15);
+    padding: 0 10px; color: #fff; min-width: 0; }
+  .inst-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .inst-add input { flex: 1 1 140px; }
+  .inst-empty { font-size: 13px; color: rgba(255, 255, 255, .55); }
   .ib-instrument { margin-left: auto; }
   .ib-instrument button { height: 24px; padding: 0 10px; font-size: 12px; }
   .ib-section { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
@@ -481,8 +502,20 @@
   .segmented button:hover:not(:disabled) { color: var(--text); }
   .segmented button.active { background: var(--accent); color: white; }
   .segmented button:disabled { cursor: default; opacity: .5; }
-  .volume { display: flex; align-items: center; gap: 6px; width: 110px; color: var(--muted); }
-  @media (max-width: 1100px) { .volume { width: 34px; } .volume input { display: none; } }
+  .player-inst { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .player-inst select { height: 30px; max-width: 150px; min-width: 0; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); padding: 0 8px; color: var(--text); font-size: 13px; }
+  @media (max-width: 1250px) { .player-inst select { max-width: 110px; } }
+  .volume { position: relative; display: flex; align-items: center; gap: 6px; width: 130px; color: var(--muted); }
+  .volume > input { flex: 1; min-width: 0; }
+  #mixer-btn[aria-expanded="true"] { color: var(--text); background: var(--panel-2); }
+  @media (max-width: 1100px) { .volume { width: 34px; } .volume > input { display: none; } }
+  /* Volumes popover (#mixer): master, song, instrument */
+  .mixer { position: absolute; right: 0; bottom: calc(100% + 14px); z-index: 30; width: 300px; padding: 14px 16px 12px;
+    display: flex; flex-direction: column; gap: 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--border);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, .5); color: var(--text); }
+  .mixer-title { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .mixer-row { display: grid; grid-template-columns: 76px 1fr 52px; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+  .mixer-row b { font-weight: 600; font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 
   /* ---------- Dialogs ---------- */
   dialog {
@@ -911,8 +944,16 @@
               </label>
               <span class="ib-note" id="input-monitor-late"></span>
               <label class="input-volume" title="How loud you hear yourself: a boost in the app, so the interface's gain can stay low">
-                <input type="range" id="input-volume" min="0" max="24" step="1" value="6" aria-label="Hear myself volume"><span id="input-volume-db">+6 dB</span>
+                <input type="range" id="input-volume" min="0" max="40" step="1" value="6" aria-label="Hear myself volume"><span id="input-volume-db">+6 dB</span>
               </label>
+              <label class="switch" id="input-tone-row" title="EQs what you hear of yourself so your instrument sounds like it does in this song (from the song's &quot;bass only&quot; or &quot;guitar only&quot; track, compared with a capture of your instrument). Kept per song.">
+                <input type="checkbox" id="input-tone"><span class="track"></span><span>Match the song's tone</span>
+              </label>
+              <div class="ib-row tone-inst">
+                <select id="input-inst" aria-label="Which instrument you're playing" title="Which instrument you're playing: songs are matched against how it sounds"></select>
+                <button type="button" class="btn sm" id="input-inst-manage" title="Add, capture, rename or remove your instruments">Instruments…</button>
+              </div>
+              <span class="ib-note" id="input-tone-note"></span>
             </div>
             <div class="ib-col">
               <div class="ib-section">Tools</div>
@@ -1014,9 +1055,24 @@
         <button data-mode="only" disabled>Only</button>
         <button data-mode="mine" class="hidden" disabled title="The song without the bass, plus your recorded bass">My bass</button>
       </div>
+      <div class="player-inst" title="What you're playing: Bass or Guitar (what the input listens for, and what Match the song's tone matches), and which of your saved instruments">
+        <div class="segmented" id="player-kind" role="group" aria-label="Instrument type">
+          <button type="button" data-instrument="bass">Bass</button>
+          <button type="button" data-instrument="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
+        </div>
+        <select id="player-inst" aria-label="Which of your instruments"></select>
+      </div>
       <div class="volume">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-        <input type="range" id="volume" min="0" max="100" value="100" aria-label="Volume">
+        <button type="button" class="icon-btn" id="mixer-btn" aria-label="Volumes" aria-expanded="false" title="Volumes: master, the song, your instrument">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+        <input type="range" id="volume" min="0" max="100" value="100" aria-label="Master volume" title="Master volume: the song and your instrument together">
+        <div class="mixer hidden" id="mixer" role="dialog" aria-label="Volumes">
+          <div class="mixer-title">Volumes</div>
+          <label class="mixer-row" title="The song and your instrument together"><span>Master</span><input type="range" id="mix-master" min="0" max="100"><b id="mix-master-v"></b></label>
+          <label class="mixer-row" title="The song (whichever version is playing)"><span>Song</span><input type="range" id="mix-song" min="0" max="100"><b id="mix-song-v"></b></label>
+          <label class="mixer-row" title="What you hear of yourself through the app (Hear myself): a boost, so the interface's gain can stay low"><span>Instrument</span><input type="range" id="mix-inst" min="0" max="40" step="1"><b id="mix-inst-v"></b></label>
+          <div class="ib-note" id="mix-inst-note"></div>
+        </div>
       </div>
     </div>
   </footer>
@@ -1156,6 +1212,29 @@
   </form>
 </dialog>
 
+<dialog id="inst-dlg" class="game-screen" aria-labelledby="inst-title">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="inst-title">Your instruments</h2></div>
+    <div class="dlg-body settings-body">
+      <p class="inst-intro">Match the song's tone makes what you hear of yourself sound like the song. It needs to know how
+        each of your instruments sounds: capture one by playing it for 45 s, the way you play songs, low and high on every
+        string. Each is kept, so you just pick the one you're playing.</p>
+      <div id="inst-list"></div>
+      <div class="set-group">Add an instrument</div>
+      <div class="inst-add">
+        <input type="text" id="inst-name" maxlength="40" placeholder="Name, e.g. Fender P" aria-label="Instrument name">
+        <div class="segmented" id="inst-kind" role="group" aria-label="Type" title="Bass is matched with the song's bass, Guitar with its guitar">
+          <button type="button" data-kind="bass">Bass</button>
+          <button type="button" data-kind="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
+        </div>
+        <button type="button" class="btn sm primary" id="inst-add-go">Capture 45 s</button>
+      </div>
+      <div class="ib-note" id="inst-status"></div>
+    </div>
+    <div class="dlg-foot"><button type="button" class="btn primary" id="inst-done">Done</button></div>
+  </form>
+</dialog>
+
 <dialog id="settings-dlg" class="game-screen" aria-labelledby="settings-title">
   <form method="dialog">
     <div class="dlg-head"><h2 id="settings-title">Settings</h2></div>
@@ -1191,8 +1270,15 @@
         <label class="switch"><input type="checkbox" id="mistake-sound"><span class="track"></span></label></div>
       <div class="set-row"><span>Hear myself</span>
         <label class="switch"><input type="checkbox" id="gs-monitor"><span class="track"></span></label></div>
-      <div class="set-row"><span>My bass volume</span>
-        <label class="set-range"><input type="range" id="gs-monvol" min="0" max="24" step="1" aria-label="My bass volume"><span id="gs-monvol-db"></span></label></div>
+      <div class="set-row"><span>Match the song's tone</span>
+        <label class="switch"><input type="checkbox" id="gs-tone"><span class="track"></span></label></div>
+      <div class="set-row"><span>Instrument</span>
+        <span class="tone-inst" style="width:auto"><select id="gs-inst" aria-label="Which instrument you're playing"></select>
+        <button type="button" class="btn sm" id="gs-inst-manage">Manage…</button></span></div>
+      <div class="set-row"><span>Instrument volume</span>
+        <label class="set-range"><input type="range" id="gs-monvol" min="0" max="40" step="1" aria-label="Instrument volume"><span id="gs-monvol-db"></span></label></div>
+      <div class="set-row"><span>Master volume</span>
+        <label class="set-range"><input type="range" id="gs-master" min="0" max="100" aria-label="Master volume"><span id="gs-master-pct"></span></label></div>
       <div class="set-row"><span>Song volume</span>
         <label class="set-range"><input type="range" id="gs-volume" min="0" max="100" aria-label="Song volume"><span id="gs-volume-pct"></span></label></div>
       <div class="set-group">Setup</div>
@@ -1381,7 +1467,8 @@
     search: '',
     current: null,          // { song, version } loaded in the player
     mode: 'without',        // 'without' | 'both' | 'only'
-    volume: 1,
+    volume: 1,              // master: the song and the instrument monitor
+    songVolume: 1,
     upload: { mode: 'new', items: [], song: null },
     job: null,
     dragSong: null,
@@ -1629,6 +1716,7 @@
     stopSources();
     state.current = { song, version };
     if (tabView.open && tabView.song !== song.id) loadTab();   // the tab follows the song
+    applyTone();                                          // per song
     const token = ++player.token;
     player.buffers = null;
     player.original = null;
@@ -1785,7 +1873,7 @@
   function applyMode() {
     // A short fade instead of a hard jump, so switching never clicks.
     const now = ctx.currentTime;
-    master.gain.setTargetAtTime(state.volume * player.headroom, now, 0.01);
+    master.gain.setTargetAtTime(state.volume * state.songVolume * player.headroom, now, 0.01);
     const real = state.mode === 'both' && !!player.original;   // Original from the original file
     const mine = state.mode === 'mine' && !!player.mine;        // without + the user's recorded bass
     gain.a.gain.setTargetAtTime(state.mode === 'only' || real ? 0 : 1, now, 0.01);
@@ -1833,9 +1921,44 @@
   });
   seek.addEventListener('change', () => { seekTo((seek.value / 1000) * duration()); seeking = false; });
   document.querySelectorAll('#hear-mode button').forEach((b) => b.addEventListener('click', () => { state.mode = b.dataset.mode; applyMode(); }));
-  const volume = $('#volume');
-  setFill(volume);
-  volume.addEventListener('input', () => { state.volume = volume.value / 100; setFill(volume); applyMode(); });
+  // Volumes (user: "change that to have 3, a master volume, a song volume, and an instrument
+  // volume"): the slider in the player is the master; its speaker opens all three. Master
+  // scales the song and the Hear myself monitor (a separate AudioContext) alike; the
+  // instrument level is the Hear myself boost (#input-volume). Master and song are kept
+  // per computer.
+  const MASTER_KEY = 'track-splitter-master-volume', SONG_VOLUME_KEY = 'track-splitter-song-volume';
+  const keptVolume = (key) => { try { const v = Number(localStorage.getItem(key)); return localStorage.getItem(key) !== null && v >= 0 && v <= 100 ? v : 100; } catch { return 100; } };
+  function setVolumes({ master, song }) {
+    if (master != null) { state.volume = master / 100; try { localStorage.setItem(MASTER_KEY, String(master)); } catch {} }
+    if (song != null) { state.songVolume = song / 100; try { localStorage.setItem(SONG_VOLUME_KEY, String(song)); } catch {} }
+    showVolumes();
+    applyMode();
+    input.monOut?.gain.setTargetAtTime(monitorGain(), input.mon.currentTime, 0.02);   // master covers your instrument too
+  }
+  function showVolumes() {
+    const m = Math.round(state.volume * 100), sv = Math.round(state.songVolume * 100), iv = Number($('#input-volume').value);
+    for (const [id, v] of [['#volume', m], ['#mix-master', m], ['#mix-song', sv], ['#mix-inst', iv]]) { $(id).value = String(v); setFill($(id)); }
+    $('#mix-master-v').textContent = `${m}%`;
+    $('#mix-song-v').textContent = `${sv}%`;
+    $('#mix-inst-v').textContent = `+${iv} dB`;
+    $('#mix-inst-note').textContent = !input.stream ? `${inputName()} is off: open it in a song's tab view to hear yourself.`
+      : !$('#input-monitor').checked ? 'Hear myself is off (Bass input drawer).' : '';
+  }
+  state.volume = keptVolume(MASTER_KEY) / 100;
+  state.songVolume = keptVolume(SONG_VOLUME_KEY) / 100;
+  $('#volume').value = String(Math.round(state.volume * 100)); setFill($('#volume'));   // the rest fill in when the mixer opens
+  $('#volume').addEventListener('input', (e) => setVolumes({ master: Number(e.target.value) }));
+  $('#mix-master').addEventListener('input', (e) => setVolumes({ master: Number(e.target.value) }));
+  $('#mix-song').addEventListener('input', (e) => setVolumes({ song: Number(e.target.value) }));
+  $('#mix-inst').addEventListener('input', (e) => { $('#input-volume').value = e.target.value; $('#input-volume').dispatchEvent(new Event('input')); showVolumes(); });
+  $('#mixer-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = $('#mixer').classList.toggle('hidden') === false;
+    $('#mixer-btn').setAttribute('aria-expanded', String(open));
+    if (open) showVolumes();
+  });
+  $('#mixer').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { $('#mixer').classList.add('hidden'); $('#mixer-btn').setAttribute('aria-expanded', 'false'); });
   document.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' || (e.target instanceof Element && e.target.closest('input, button, dialog, .vchip'))) return;
     e.preventDefault();
@@ -4024,7 +4147,7 @@
   }
   registerProcessor('track-splitter-recorder', Rec);`;
   let recorderLoaded = null;
-  const input = { stream: null, source: null, analyser: null, mon: null, monOut: null, timer: 0, recent: [], note: null, lane: null, match: false };
+  const input = { stream: null, source: null, analyser: null, mon: null, monIn: null, monTone: [], monOut: null, timer: 0, recent: [], note: null, lane: null, match: false };
   const rec = { node: null, sink: null, chunks: [], startedAt: null, songStart: 0, active: false, timer: 0 };
   // Game check (user: "inconsistencies with the game and picking up random notes, can we
   // make a test page to figure out what is going on"): with "Record games for checking" on,
@@ -4093,7 +4216,7 @@
   const GUITAR = { open: [40, 45, 50, 55, 59, 64], strings: ['E', 'A', 'D', 'G', 'B', 'e'] };
   const samePitch = (heard, written) => heard === written || (instrument === 'guitar' && (heard - written) % 12 === 0);
   const VOLUME_KEY = 'track-splitter-monitor-volume';   // Hear myself boost, dB
-  const monitorGain = () => 10 ** (Number($('#input-volume').value) / 20);
+  const monitorGain = () => 10 ** (Number($('#input-volume').value) / 20) * state.volume;   // the boost, under the master
   const pref = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const setPref = (key, value) => { try { localStorage.setItem(key, value); } catch { /* not kept */ } };
   // Calibrations are also kept in the library folder (the browser's storage goes with
@@ -4119,7 +4242,7 @@
     input.stream?.getTracks().forEach((t) => t.stop());
     input.source?.disconnect();
     input.mon?.close();
-    Object.assign(input, { stream: null, source: null, analyser: null, chordAn: null, mon: null, monOut: null, recent: [], note: null, lane: null });
+    Object.assign(input, { stream: null, source: null, analyser: null, chordAn: null, mon: null, monIn: null, monTone: [], monOut: null, recent: [], note: null, lane: null });
   }
   async function openInput(deviceId) {
     closeInput();
@@ -4163,7 +4286,8 @@
   // (the player's uses 'playback', bigger buffers, ~90 ms on this Mac).
   async function setMonitor(on) {
     input.mon?.close();
-    input.mon = input.monOut = null;
+    input.mon = input.monIn = input.monOut = null;
+    input.monTone = [];
     if (!on || !input.stream) return;
     // The smallest buffer the browser allows (latencyHint 0 s; 'interactive' is a little
     // larger), at the input's own sample rate so nothing is resampled on the way (user:
@@ -4173,17 +4297,244 @@
     let m;
     try { m = new AudioContext({ latencyHint: 0, ...(rate ? { sampleRate: rate } : {}) }); }
     catch { m = new AudioContext({ latencyHint: 'interactive' }); }
-    const split = m.createChannelSplitter(2), out = m.createGain();
+    const split = m.createChannelSplitter(2), inGain = m.createGain(), out = m.createGain();
     out.gain.value = monitorGain();
+    input.monIn = inGain;
     input.monOut = out;
     m.createMediaStreamSource(input.stream).connect(split);
-    connectChannel(split, out);
-    out.connect(m.destination);
+    connectChannel(split, inGain);
+    inGain.connect(out);                              // the tone match goes in between (`applyTone`)
+    // Up to +40 dB (user: "my bass is quiet, can we make it go louder"; +24 wasn't enough
+    // with the interface gain low), so loud notes could go over full scale: a soft clipper
+    // rounds them off instead of crackling (WaveShaper without oversampling: no delay).
+    // It's linear up to 0.7 and reaches 1 smoothly; the 1/4 in front lets it take peaks up
+    // to 4x full scale.
+    const pre = m.createGain(), clip = m.createWaveShaper();
+    pre.gain.value = 0.25;
+    clip.curve = softClipCurve();
+    out.connect(pre).connect(clip).connect(m.destination);
     input.mon = m;
+    applyTone();
     await m.resume();
     const late = Math.round(((m.baseLatency || 0) + (m.outputLatency || 0) + (input.stream.getAudioTracks()[0].getSettings().latency || 0)) * 1000);
     $('#input-monitor-row').title = `Plays your bass through the app, about ${late} ms late. The interface's Direct Monitor has no delay at all.`;
     $('#input-monitor-late').textContent = `~${late} ms · Direct Monitor: none`;
+  }
+
+  // Match the song's tone (user: "automatically pick up the sound of the bass in a song
+  // and make that as an effect so you have the same tone"): the server compares the
+  // song's "bass only" track with a recording of the user's bass (tone.py) and sends EQ
+  // filters fitted to the browser's own BiquadFilterNode, built here between the monitor's
+  // input and its volume. IIR filters run sample by sample: no added delay. On per song.
+  const TONE_KEY = 'track-splitter-tone';
+  const toneSongs = () => { try { return JSON.parse(pref(TONE_KEY) || '{}'); } catch { return {}; } };
+  const toneOn = () => !!(state.current && toneSongs()[state.current.song.id]);
+  const toneCache = new Map();                          // song|rate|bass -> /api/tone answer (or error)
+  let insts = { current: {}, instruments: [] };          // GET /api/tone/instruments
+  const toneKind = () => (isGuitar() ? 'guitar' : 'bass');
+  let toneToken = 0;
+  function showToneSwitch() {
+    $('#input-tone').checked = toneOn();
+    $('#gs-tone').checked = toneOn();
+  }
+  async function applyTone() {
+    showToneSwitch();
+    const m = input.mon, token = ++toneToken;
+    const note = $('#input-tone-note');
+    if (!toneOn()) { note.textContent = ''; wireTone(m, null); return; }
+    if (!m) { note.textContent = 'Turn on Hear myself to hear it.'; return; }
+    const kind = toneKind(), key = `${state.current.song.id}|${m.sampleRate}|${kind}|${insts.current[kind]}`;
+    if (!toneCache.has(key)) {
+      note.textContent = `Measuring the song’s ${kind}…`;
+      toneCache.set(key, await api(`/api/tone?song=${encodeURIComponent(state.current.song.id)}&rate=${m.sampleRate}&kind=${kind}`).catch((err) => ({ error: err.message })));
+    }
+    if (token !== toneToken || m !== input.mon) return;   // changed meanwhile
+    const t = toneCache.get(key);
+    if (t.error) { toneCache.delete(key); note.textContent = t.error; wireTone(m, null); return; }
+    wireTone(m, t);
+    // Low / mid / high: what the EQ does on average there (dB).
+    const avg = (lo, hi) => {
+      const v = t.bands.map((b, i) => [b, t.fit[i]]).filter(([b]) => b >= lo && b <= hi).map(([, g]) => g + t.trim_db);
+      return Math.round(v.reduce((a, b) => a + b, 0) / v.length);
+    };
+    const sign = (v) => (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0');
+    const vs = yourName(t.instrument.name);
+    note.textContent = `Low ${sign(avg(40, 160))} · Mid ${sign(avg(200, 1000))} · High ${sign(avg(1250, 6400))} dB`;
+    note.title = `The song's ${kind} (${t.track}) compared with ${vs}. ${t.filters.length} filters, within ${t.fit_error_db} dB of the measured difference.`;
+  }
+  function wireTone(m, t) {
+    if (!m || !input.monIn) return;
+    input.monIn.disconnect();
+    input.monTone.forEach((n) => n.disconnect());
+    input.monTone = [];
+    if (t) {
+      for (const f of t.filters) {
+        const b = m.createBiquadFilter();
+        b.type = f.type; b.frequency.value = f.freq; b.gain.value = f.gain;
+        if (f.q) b.Q.value = f.q;
+        input.monTone.push(b);
+      }
+      const trim = m.createGain();
+      trim.gain.value = 10 ** (t.trim_db / 20);         // same loudness as without
+      input.monTone.push(trim);
+    }
+    let node = input.monIn;
+    for (const n of input.monTone) { node.connect(n); node = n; }
+    node.connect(input.monOut);
+  }
+  function setToneOn(on) {
+    if (!state.current) return;
+    const songs = toneSongs();
+    if (on) songs[state.current.song.id] = 1; else delete songs[state.current.song.id];
+    setPref(TONE_KEY, JSON.stringify(songs));
+    if (on && !$('#input-monitor').checked) {           // you'd want to hear it
+      $('#input-monitor').checked = true;
+      $('#input-monitor').dispatchEvent(new Event('change'));
+    } else applyTone();
+  }
+  // Instruments (user: "I have 3 different basses that all sound different, would be nice
+  // to pick which I am playing", "a settings menu where you can manage this", "it should
+  // work for any instrument"): each capture is saved with a name and a type (bass or
+  // guitar, matched with that part of the song), kept in the library folder. One is picked
+  // per type; the Bass / Guitar switch decides which applies. For bass, "My recordings"
+  // (every DI recording pooled) is there until one is captured. Picked in the drawer and
+  // Game settings; managed in Your instruments (#inst-dlg).
+  const yourName = (name) => (/^my\b/i.test(name) ? name.replace(/^my/i, 'your') : `your ${name}`);   // "your Fender P", "your bass"
+  const MANAGE = '__manage';
+  const fmtDay = (t) => new Date(t * 1000).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  function showInstruments() {
+    const kind = toneKind(), mine = insts.instruments.filter((i) => i.kind === kind);
+    // With none saved of this type: "Default" (no tone to match against; a bass uses all
+    // the bass recordings in the library, listed as "My recordings", when there are any).
+    const options = () => mine.length ? mine.map((i) => el('option', { value: i.id, textContent: i.name }))
+      : [el('option', { value: '', textContent: 'Default' })];
+    for (const sel of [$('#input-inst'), $('#gs-inst'), $('#player-inst')]) {
+      sel.replaceChildren(...options(), ...(sel.id === 'player-inst' ? [el('option', { value: MANAGE, textContent: 'Manage instruments…' })] : []));
+      sel.value = insts.current[kind] || '';
+      sel.disabled = !mine.length && sel.id !== 'player-inst';
+    }
+    if ($('#inst-dlg').open) renderInstDialog();
+  }
+  async function refreshInstruments(next) {
+    insts = next || await api('/api/tone/instruments').catch(() => insts);
+    showInstruments();
+  }
+  async function instAction(path, body) {
+    try { await refreshInstruments(await postJSON(path, body)); toneCache.clear(); applyTone(); return true; }
+    catch (err) { toast(err.message, 'error'); return false; }
+  }
+  let instRenaming = null;                              // id whose name is being edited
+  function renderInstDialog() {
+    const list = $('#inst-list');
+    if (!insts.instruments.length) { list.replaceChildren(el('div', { className: 'inst-empty', textContent: 'Nothing captured yet: add your first instrument below.' })); return; }
+    list.replaceChildren(...insts.instruments.map((i) => {
+      const current = insts.current[i.kind] === i.id, busy = capture.active;
+      const btn = (text, title, onclick, primary) => el('button', { type: 'button', className: `btn sm${primary ? ' primary' : ''}`, textContent: text, title, disabled: busy && !(capture.target?.id === i.id), onclick });
+      let name;
+      if (instRenaming === i.id) {
+        name = el('input', { type: 'text', value: i.name, maxLength: 40, ariaLabel: 'New name' });
+        const save = async () => { const v = name.value.trim(); instRenaming = null; if (v && v !== i.name) await instAction('/api/tone/instruments/rename', { id: i.id, name: v }); else renderInstDialog(); };
+        name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); instRenaming = null; renderInstDialog(); } });
+        name.addEventListener('blur', save);
+        setTimeout(() => { name.focus(); name.select(); });
+      } else name = el('div', { className: 'inst-name' }, i.name, el('span', { className: 'inst-kind', textContent: i.kind === 'guitar' ? 'Guitar' : 'Bass' }),
+        current ? el('span', { className: 'inst-kind playing', textContent: 'Playing' }) : null);
+      const acts = [];
+      if (capture.active && capture.target?.id === i.id) acts.push(btn(capture.label, 'Stop without saving', () => stopCapture(false), true));
+      else {
+        if (!current) acts.push(btn('Use', `Play ${yourName(i.name)}: songs are matched against it`, () => instAction('/api/tone/instruments/select', { id: i.id })));
+        if (!i.pooled) {
+          acts.push(btn('Capture again', 'Play it for 45 s again (after new strings, another pickup setting…): replaces its saved tone', () => startCapture({ id: i.id, name: i.name, kind: i.kind })));
+          acts.push(btn('Rename', '', () => { instRenaming = i.id; renderInstDialog(); }));
+          acts.push(btn('Remove', 'Take it off the list', () => instAction('/api/tone/instruments/remove', { id: i.id })));
+        }
+      }
+      const meta = i.pooled ? 'Every bass recording in your library, averaged' : `Captured ${fmtDay(i.made)}`;
+      return el('div', { className: `inst-row${current ? ' current' : ''}` }, name,
+        el('div', { className: 'inst-meta', textContent: meta }),
+        el('div', { className: 'inst-acts' }, ...acts));
+    }));
+    $('#inst-add-go').disabled = capture.active && !!capture.target?.id;
+    $('#inst-add-go').textContent = capture.active && !capture.target?.id ? capture.label : 'Capture 45 s';
+  }
+  let newKind = 'bass';
+  function showNewKind() { document.querySelectorAll('#inst-kind button').forEach((b) => b.classList.toggle('active', b.dataset.kind === newKind)); }
+  function openInstruments() {
+    newKind = 'bass'; showNewKind();                    // guitar is off for now (#inst-kind)
+    $('#inst-name').value = '';
+    $('#inst-status').textContent = input.stream ? '' : `The ${inputName().toLowerCase()} is off: captures turn it on.`;
+    renderInstDialog();
+    $('#inst-dlg').showModal();
+  }
+
+  // Capturing: 45 s of playing (20 s of the user's recordings varied 6.9 dB rms at the
+  // 90th percentile, 45 s 4.3) on the player's context (the recorder worklet), sent to the
+  // server as that instrument's tone.
+  const capture = { node: null, sink: null, chunks: [], timer: 0, active: false, target: null, label: '' };
+  function showCapture() {
+    $('#inst-status').textContent = capture.active ? `Play ${yourName(capture.target.name)} now: keep going until it stops.` : '';
+    if ($('#inst-dlg').open) renderInstDialog();
+  }
+  async function startCapture(target) {
+    if (capture.active) return;
+    if (!input.stream) await openInputBar();
+    if (!input.source) { toast(`Couldn't turn on the ${inputName().toLowerCase()}.`, 'error'); return; }
+    recorderLoaded ??= ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([RECORDER], { type: 'application/javascript' })));
+    try { await recorderLoaded; } catch (err) { toast(`Recording isn't available in this browser: ${err.message}`, 'error'); return; }
+    capture.node = new AudioWorkletNode(ctx, 'track-splitter-recorder');
+    capture.node.port.postMessage({ channel: inputChannel() });
+    capture.sink = ctx.createGain();
+    capture.sink.gain.value = 0;
+    input.source.connect(capture.node).connect(capture.sink).connect(ctx.destination);
+    capture.chunks = []; capture.active = true; capture.target = target;
+    capture.node.port.onmessage = ({ data }) => { if (capture.active) capture.chunks.push(data.data); };
+    const began = Date.now(), seconds = 45;
+    capture.label = `Play… ${seconds} s · Stop`;
+    showCapture();
+    capture.timer = setInterval(() => {
+      const left = Math.ceil(seconds - (Date.now() - began) / 1000);
+      if (left <= 0) { stopCapture(true); return; }
+      capture.label = `Play… ${left} s · Stop`;
+      if ($('#inst-dlg').open) renderInstDialog();
+    }, 250);
+  }
+  async function stopCapture(send) {
+    if (!capture.active) return;
+    capture.active = false;
+    clearInterval(capture.timer);
+    capture.node?.disconnect(); capture.sink?.disconnect();
+    const length = capture.chunks.reduce((n, c) => n + c.length, 0);
+    const samples = new Float32Array(length);
+    let at = 0;
+    for (const c of capture.chunks) { samples.set(c, at); at += c.length; }
+    capture.chunks = [];
+    if (!send) { showCapture(); return; }
+    $('#inst-status').textContent = 'Measuring…';
+    const form = new FormData();
+    form.append('file', wavFile(samples, ctx.sampleRate), 'tone.wav');
+    form.append('name', capture.target.name);
+    form.append('kind', capture.target.kind);
+    form.append('id', capture.target.id || '');
+    try {
+      await refreshInstruments(await api('/api/tone/capture', { method: 'POST', body: form }));
+      toneCache.clear();
+      if (capture.target.kind !== toneKind()) setInstrument(capture.target.kind);   // you're playing it now
+      toast(`Saved how ${yourName(capture.target.name)} sounds: it's picked now.`);
+      applyTone();
+      $('#inst-name').value = '';
+    } catch (err) { toast(err.message, 'error'); }
+    showCapture();
+  }
+
+  let clipCurve = null;
+  function softClipCurve() {
+    if (clipCurve) return clipCurve;
+    clipCurve = new Float32Array(4097);
+    for (let i = 0; i < clipCurve.length; i++) {
+      const x = 4 * (i / 2048 - 1), a = Math.abs(x);   // the input as it was before the 1/4
+      clipCurve[i] = Math.sign(x) * (a < 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3));
+    }
+    return clipCurve;
   }
 
   // Pitch of a note (YIN), on the signal brought down to ~11 kHz, within the instrument's
@@ -4727,7 +5078,7 @@
   function setInstrument(inst) {
     instrument = inst;
     setPref(INSTRUMENT_KEY, inst);
-    document.querySelectorAll('#input-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === inst));
+    document.querySelectorAll('#input-instrument button, #player-kind button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === inst));
     if (isGuitar() && rec.active) stopRecording();
     $('#input-record-col').classList.toggle('hidden', isGuitar());
     $('#input-strings').classList.toggle('hidden', isGuitar());
@@ -4740,6 +5091,8 @@
     if (isGuitar()) showChord(null, []); else showNote(null);
     $('#tab-input-text').textContent = input.stream ? 'Listening' : inputName();
     if (tunerOn) showTuner(0);
+    showInstruments();                                  // bass and guitar tones are picked apart
+    applyTone();
   }
   document.querySelectorAll('#input-instrument button').forEach((b) => b.addEventListener('click', () => setInstrument(b.dataset.instrument)));
   setInstrument(instrument);
@@ -4788,6 +5141,7 @@
   function closeInputBar() {                          // turns the input off
     if (game.on) endGame(false);                        // the game can't hear you any more
     if (rec.active) stopRecording();
+    stopCapture(false);
     closeInput();
     $('#input-bar').classList.add('hidden');
     $('#tab-input').setAttribute('aria-pressed', 'false');
@@ -4813,6 +5167,27 @@
     openInput($('#input-device').value).catch(() => {});
   });
   $('#input-monitor').addEventListener('change', (e) => { setPref(MONITOR_KEY, e.target.checked ? '1' : '0'); setMonitor(e.target.checked); });
+  $('#input-tone').addEventListener('change', (e) => setToneOn(e.target.checked));
+  $('#input-inst').addEventListener('change', (e) => instAction('/api/tone/instruments/select', { id: e.target.value }));
+  $('#gs-inst').addEventListener('change', (e) => instAction('/api/tone/instruments/select', { id: e.target.value }));
+  $('#player-inst').addEventListener('change', (e) => {
+    if (e.target.value === MANAGE) { showInstruments(); openInstruments(); }
+    else if (e.target.value) instAction('/api/tone/instruments/select', { id: e.target.value });
+  });
+  document.querySelectorAll('#player-kind button').forEach((b) => b.addEventListener('click', () => setInstrument(b.dataset.instrument)));
+  $('#input-inst-manage').addEventListener('click', openInstruments);
+  $('#gs-inst-manage').addEventListener('click', openInstruments);
+  document.querySelectorAll('#inst-kind button').forEach((b) => b.addEventListener('click', () => { newKind = b.dataset.kind; showNewKind(); }));
+  const addInstrument = () => {
+    const name = $('#inst-name').value.trim();
+    if (!name) { $('#inst-name').focus(); return; }
+    startCapture({ id: '', name, kind: newKind });
+  };
+  $('#inst-add-go').addEventListener('click', () => (capture.active && !capture.target?.id ? stopCapture(false) : addInstrument()));
+  $('#inst-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addInstrument(); } });
+  $('#inst-done').addEventListener('click', () => $('#inst-dlg').close());
+  $('#inst-dlg').addEventListener('close', () => { instRenaming = null; });
+  refreshInstruments();
   function showVolume() {
     $('#input-volume-db').textContent = `+${$('#input-volume').value} dB`;
     setFill($('#input-volume'));
@@ -4875,6 +5250,7 @@
       rec.chunks.push(data.data);
     };
     $('#input-bar').classList.add('recording');
+    $('#input-bar').classList.add('hidden');            // the tab stays in view (user: "the modal blocks the tab"); the button shows Rec and the time
     $('#tab-input').classList.add('recording');
     seekTo(Math.max(0, currentTime() - 2));
     if (!player.playing) play();
@@ -5387,8 +5763,10 @@
     if (fromPause && $('#pause-dlg').open) $('#pause-dlg').close();
     $('#gs-speed').value = String(hwSpeed); setFill($('#gs-speed'));
     $('#gs-monitor').checked = $('#input-monitor').checked;
+    $('#gs-tone').checked = toneOn();
     $('#gs-monvol').value = $('#input-volume').value; setFill($('#gs-monvol')); $('#gs-monvol-db').textContent = `+${$('#gs-monvol').value} dB`;
-    $('#gs-volume').value = $('#volume').value; setFill($('#gs-volume')); $('#gs-volume-pct').textContent = `${$('#gs-volume').value}%`;
+    $('#gs-volume').value = $('#mix-song').value; setFill($('#gs-volume')); $('#gs-volume-pct').textContent = `${$('#gs-volume').value}%`;
+    $('#gs-master').value = $('#volume').value; setFill($('#gs-master')); $('#gs-master-pct').textContent = `${$('#gs-master').value}%`;
     $('#settings-dlg').showModal();
   }
   function closeSettings() {
@@ -5402,8 +5780,10 @@
   const relay = (el, target, event) => { $(target).value = el.value; $(target).dispatchEvent(new Event(event)); setFill(el); };
   $('#gs-speed').addEventListener('input', (e) => relay(e.target, '#hw-speed', 'input'));
   $('#gs-monitor').addEventListener('change', (e) => { $('#input-monitor').checked = e.target.checked; $('#input-monitor').dispatchEvent(new Event('change')); });
+  $('#gs-tone').addEventListener('change', (e) => { setToneOn(e.target.checked); $('#gs-monitor').checked = $('#input-monitor').checked; });
   $('#gs-monvol').addEventListener('input', (e) => { relay(e.target, '#input-volume', 'input'); $('#gs-monvol-db').textContent = `+${e.target.value} dB`; });
-  $('#gs-volume').addEventListener('input', (e) => { relay(e.target, '#volume', 'input'); $('#gs-volume-pct').textContent = `${e.target.value}%`; });
+  $('#gs-volume').addEventListener('input', (e) => { relay(e.target, '#mix-song', 'input'); $('#gs-volume-pct').textContent = `${e.target.value}%`; });
+  $('#gs-master').addEventListener('input', (e) => { relay(e.target, '#volume', 'input'); $('#gs-master-pct').textContent = `${e.target.value}%`; });
 
   $('#mistake-sound').checked = mistakeSound;
   $('#gs-check').checked = pref(CHECK_KEY) === '1';

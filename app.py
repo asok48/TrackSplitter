@@ -56,6 +56,7 @@ from send2trash import send2trash
 
 import tab
 import tabimport
+import tone
 
 HOST, PORT = "127.0.0.1", 7860
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -1075,7 +1076,7 @@ api = FastAPI(title="Track Splitter")
 
 # The app's own code as it was when it started: when an update changes it, the running
 # app is still the old code (a page reload isn't enough), and the page says to restart.
-CODE_FILES = [Path(__file__).resolve().parent / f for f in ("app.py", "tab.py", "tabimport.py")]
+CODE_FILES = [Path(__file__).resolve().parent / f for f in ("app.py", "tab.py", "tabimport.py", "tone.py")]
 CODE_AT_START = {f: f.stat().st_mtime for f in CODE_FILES if f.exists()}
 
 
@@ -1812,6 +1813,240 @@ def game_check_audio(check_id: str):
     if not audio:
         raise HTTPException(404, "No recording in that game check.")
     return FileResponse(audio, media_type="audio/flac" if audio.suffix == ".flac" else "audio/wav")
+
+
+# Match the song's tone (tone.py): an EQ for the "Hear myself" monitor that makes the
+# user's instrument (a DI) sound like that instrument in the song. The song's spectra
+# (from its "bass only" / "guitar only" tracks) are kept in the song folder. The user's
+# instruments are in the library folder: each captured in the page, named and typed
+# (user: "I have 3 different basses that all sound different, would be nice to pick which
+# I am playing", "it should work for any instrument"), one picked per type; for bass,
+# every DI recording in the library pooled ("recordings") is there until one is captured.
+TONE_FILE = ".tone.json"
+TONE_RULES = 1          # bump when tone.profile changes: songs' spectra are measured again
+KINDS = ("bass", "guitar")
+POOLED = "recordings"   # the id of the pooled bass recordings in the list
+tone_lock = threading.Lock()
+
+
+def di_tone_file():
+    return OUTPUT_DIR / ".instrument-tones.json"
+
+
+def read_json(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def write_json(path, data):
+    temp = path.with_suffix(".tmp")   # written whole, then swapped in
+    temp.write_text(json.dumps(data), encoding="utf-8")
+    temp.replace(path)
+
+
+def di_recordings():
+    """The user's own bass DI audio in the library: the labelled test recordings and
+    every take recorded into a tab."""
+    return sorted(list((OUTPUT_DIR / ".bass-recordings").glob("*.flac")) +
+                  list(OUTPUT_DIR.glob(f"*/*/{MY_BASS_DIR}/*.flac")))
+
+
+def read_instruments():
+    """{"current": {kind: id}, "instruments": {id: {name, kind, made, profile}},
+    "recordings": pooled bass DI, "removed": [...]}."""
+    data = read_json(di_tone_file())
+    if data is None:
+        data = {}
+        # The first version kept one bass tone in .bass-di-tone.json: a capture comes in as "My bass".
+        old = read_json(OUTPUT_DIR / ".bass-di-tone.json") or {}
+        if old.get("source") == "capture" and old.get("profile"):
+            data = {"instruments": {"inst-mybass": {"name": "My bass", "kind": "bass", "made": old["made"], "profile": old["profile"]}},
+                    "current": {"bass": "inst-mybass"}}
+            save_instruments(data)
+    data.setdefault("instruments", {})
+    data.setdefault("current", {})
+    return data
+
+
+def save_instruments(data):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    write_json(di_tone_file(), data)
+
+
+def pooled_tone(data):
+    """All bass DI recordings pooled, kept in `data` until they change. None without any."""
+    files = di_recordings()
+    key = [[rel(p), round(p.stat().st_mtime)] for p in files]
+    saved = data.get("recordings") or {}
+    if saved.get("files") == key and saved.get("rules") == TONE_RULES:
+        return saved
+    profiles = [p for p in (tone.profile(decode(f, tone.SR).mean(0)) for f in files) if p and p["seconds"] > 2]
+    if not profiles:
+        return None
+    data["recordings"] = {"rules": TONE_RULES, "made": time.time(), "files": key, "takes": len(profiles),
+                          "profile": tone.pool(profiles)}
+    save_instruments(data)
+    return data["recordings"]
+
+
+def instrument_list(data):
+    out = [{"id": k, "name": v["name"], "kind": v["kind"], "made": v["made"], "seconds": v["profile"]["seconds"]}
+           for k, v in sorted(data["instruments"].items(), key=lambda kv: kv[1]["name"].lower())]
+    if data.get("recordings") or di_recordings():
+        n = (data.get("recordings") or {}).get("takes") or len(di_recordings())
+        out.append({"id": POOLED, "name": f"My recordings ({n} take{'s' if n != 1 else ''})", "kind": "bass", "pooled": True})
+    current = {}
+    for kind in KINDS:
+        mine = [i["id"] for i in out if i["kind"] == kind]
+        want = data["current"].get(kind)
+        current[kind] = want if want in mine else (mine[0] if mine else None)
+    return {"current": current, "instruments": out}
+
+
+def di_tone(kind, id_=None):
+    """(id, name, profile) of the instrument asked for, else the one picked for `kind`;
+    None if there's nothing to go on."""
+    data = read_instruments()
+    want = id_ or instrument_list(data)["current"][kind]
+    if want in data["instruments"]:
+        i = data["instruments"][want]
+        return want, i["name"], i["profile"]
+    if want == POOLED and kind == "bass":
+        pool = pooled_tone(data)
+        return (POOLED, f"recordings ({pool['takes']} takes)", pool["profile"]) if pool else None
+    return None
+
+
+def part_track(song_dir, kind):
+    """The song's own track of that instrument alone (HQ preferred): bass, or guitar
+    (all guitar, else lead, else rhythm)."""
+    if kind == "bass":
+        return bass_track(song_dir)
+    for label in ("guitar", "lead guitar", "rhythm guitar"):
+        tracks = list(song_dir.glob(f"* ({label} only).mp3"))
+        if tracks:
+            return min(tracks, key=lambda p: HQ_TAG not in p.name)
+    return None
+
+
+def song_tone(song_dir, kind):
+    """The song's spectrum of that instrument, measured once from its track."""
+    track = part_track(song_dir, kind)
+    if not track:
+        return None
+    saved = read_json(song_dir / TONE_FILE) or {}
+    stamp = [track.name, round(track.stat().st_mtime)]
+    if saved.get(kind, {}).get("track") == stamp and saved[kind].get("rules") == TONE_RULES:
+        return saved[kind]
+    saved[kind] = {"rules": TONE_RULES, "track": stamp, "profile": tone.profile(decode(track, tone.SR).mean(0))}
+    write_json(song_dir / TONE_FILE, saved)
+    return saved[kind]
+
+
+@api.get("/api/tone")
+def get_tone(song: str, rate: int = 48000, kind: str = "bass", id: Optional[str] = None):
+    """EQ filters that make the user's instrument (the one picked for `kind`, or `id`)
+    sound like that instrument in this song (for the monitor at sample rate `rate`), with
+    the curves behind them."""
+    if kind not in KINDS:
+        raise HTTPException(400, "Bass or guitar.")
+    song_dir = library_path(song, 2)
+    if not song_dir.is_dir():
+        raise HTTPException(404, "That song doesn't exist.")
+    with tone_lock:
+        st = song_tone(song_dir, kind)
+        if not st:
+            raise HTTPException(404, f"This song has no \"{kind} only\" track yet: make a version without {kind} first.")
+        di = di_tone(kind, id)
+    if not di:
+        raise HTTPException(404, f"No {kind} of yours to compare with yet: add one under Instruments.")
+    m = tone.match(st["profile"], di[2], min(max(rate, 22050), 192000))
+    return {"bands": st["profile"]["bands"], "song_db": st["profile"]["db"], "di_db": di[2]["db"],
+            "track": st["track"][0], "instrument": {"id": di[0], "name": di[1], "kind": kind}, **m}
+
+
+@api.get("/api/tone/instruments")
+def get_instruments():
+    with tone_lock:
+        return instrument_list(read_instruments())
+
+
+@api.post("/api/tone/capture")
+async def capture_tone(file: UploadFile = File(...), name: str = Form(""), kind: str = Form("bass"), id: str = Form("")):
+    """45 s of the user playing (WAV from the page): that instrument's tone as it is now.
+    With the `id` of one already saved it replaces that one's tone, else it's a new one.
+    Either way it becomes the one picked for its type."""
+    name = " ".join(name.split())[:40]
+    STAGE_DIR.mkdir(parents=True, exist_ok=True)
+    path = STAGE_DIR / f"{uuid.uuid4().hex}-tone.wav"
+    path.write_bytes(await file.read())
+    try:
+        p = tone.profile(decode(path, tone.SR).mean(0))
+    finally:
+        path.unlink(missing_ok=True)
+    if not p or p["seconds"] < 15:
+        raise HTTPException(400, "Not enough playing in that capture: keep playing for the whole 45 seconds.")
+    with tone_lock:
+        data = read_instruments()
+        old = data["instruments"].get(id)
+        if not old:
+            id = f"inst-{uuid.uuid4().hex[:8]}"
+        kind = old["kind"] if old else (kind if kind in KINDS else "bass")
+        n = sum(i["kind"] == kind for i in data["instruments"].values()) + 1
+        data["instruments"][id] = {"name": name or (old or {}).get("name") or f"{kind.title()} {n}", "kind": kind,
+                                   "made": time.time(), "profile": p}
+        data["current"][kind] = id
+        save_instruments(data)
+        return instrument_list(data)
+
+
+class InstrumentEdit(BaseModel):
+    id: str
+    name: str = ""
+    kind: str = "bass"
+
+
+@api.post("/api/tone/instruments/select")
+def select_instrument(req: InstrumentEdit):
+    with tone_lock:
+        data = read_instruments()
+        if req.id in data["instruments"]:
+            data["current"][data["instruments"][req.id]["kind"]] = req.id
+        elif req.id == POOLED:
+            data["current"]["bass"] = POOLED
+        else:
+            raise HTTPException(404, "That instrument isn't saved.")
+        save_instruments(data)
+        return instrument_list(data)
+
+
+@api.post("/api/tone/instruments/rename")
+def rename_instrument(req: InstrumentEdit):
+    name = " ".join(req.name.split())[:40]
+    with tone_lock:
+        data = read_instruments()
+        if req.id not in data["instruments"] or not name:
+            raise HTTPException(400, "Pick a saved instrument and give it a name.")
+        data["instruments"][req.id]["name"] = name
+        save_instruments(data)
+        return instrument_list(data)
+
+
+@api.post("/api/tone/instruments/remove")
+def remove_instrument(req: InstrumentEdit):
+    """Off the list; kept in the file under "removed" (nothing is deleted for good)."""
+    with tone_lock:
+        data = read_instruments()
+        if req.id not in data["instruments"]:
+            raise HTTPException(404, "That instrument isn't saved.")
+        gone = data["instruments"].pop(req.id)
+        data.setdefault("removed", []).append({"id": req.id, "removed": time.time(), **gone})
+        if data["current"].get(gone["kind"]) == req.id:
+            data["current"].pop(gone["kind"])
+        save_instruments(data)
+        return instrument_list(data)
 
 
 @api.get("/api/learning")
