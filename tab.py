@@ -851,6 +851,40 @@ def guitar_difficulty(times, positions):
     return total / max(1, len(positions))
 
 
+def strum_times(guitar, hop=128, n_fft=512):
+    """When a guitar track's strums and picked notes start (s): peaks of log spectral flux on
+    ~23 ms frames (5.8 ms apart) at least 1.8x the median of the 0.6 s around them. On
+    synthetic plucks at known times they land within ~3 ms (after the centering fix)."""
+    x = np.pad(np.asarray(guitar, np.float32), n_fft // 2)
+    frames = np.lib.stride_tricks.sliding_window_view(x, n_fft)[::hop]
+    mag = np.abs(np.fft.rfft(frames * np.hanning(n_fft).astype(np.float32), axis=1))
+    flux = np.concatenate([[0.0], np.clip(np.diff(np.log1p(100 * mag), axis=0), 0, None).mean(axis=1)])
+    w = int(0.3 * SAMPLERATE / hop)
+    med = np.array([np.median(flux[max(0, i - w):i + w]) for i in range(0, len(flux), 8)]).repeat(8)[:len(flux)]
+    peak = (flux[1:-1] >= flux[:-2]) & (flux[1:-1] > flux[2:]) & (flux[1:-1] > 1.8 * med[1:-1]) & (flux[1:-1] > 0.02)
+    return (np.nonzero(peak)[0] + 1) * hop / SAMPLERATE - STRUM_BIAS
+
+
+STRUM_BIAS = -0.005   # measured on synthetic plucks: peaks 5 ms early
+
+
+def snap_to_strums(notes, strums, before=0.08, after=0.03):
+    """Basic Pitch's note starts on distorted guitar come ~35 ms after the attack (American
+    Idiot's real guitar track: heard starts a median 33 ms after the nearest strum): each
+    start moves to the strum just before it (within 80 ms) or just after (30 ms)."""
+    strums = np.asarray(strums)
+    out = []
+    for a, b, p, v in notes:
+        i = np.searchsorted(strums, a)
+        near = [strums[j] for j in (i - 1, i) if 0 <= j < len(strums) and -before <= strums[j] - a <= after]
+        if near:
+            a2 = min(near, key=lambda x: abs(x - a))
+            out.append((float(a2), max(float(b), float(a2) + 0.03), p, v))
+        else:
+            out.append((a, b, p, v))
+    return sorted(out)
+
+
 def transcribe_guitar(guitar, mix=None, on_progress=lambda fraction: None):
     """Notes heard in a mono 22.05 kHz guitar track, chords and all (start s, end s, MIDI
     pitch, amplitude): Basic Pitch over the guitar's range, nothing where the track is
@@ -860,7 +894,7 @@ def transcribe_guitar(guitar, mix=None, on_progress=lambda fraction: None):
     times = _frames_to_time(frames.shape[0])
     events = _note_events(frames, onsets, min_freq=70.0, max_freq=1400.0, onset_thresh=0.5)
     notes = sorted((float(times[s]), float(times[e]), int(p), a) for s, e, p, a, _ in events if 36 <= p <= 90)
-    return _audible(notes, guitar, mix)
+    return snap_to_strums(_audible(notes, guitar, mix), strum_times(guitar))
 
 # Learning the user's fingering from imported tabs. The user found the automatic
 # fingering unlike tabs they trust (Cry Baby Cry's riff written A7 D5 D7 came out D2 G2

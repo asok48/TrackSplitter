@@ -679,7 +679,9 @@ def difficulty(instrument):
 # are transcribed from the guitar track and kept in .guitar-heard.json.
 
 GUITAR_HEARD_FILE = ".guitar-heard.json"
-GUITAR_HEARD_RULES = 1   # bump when the heard guitar notes would come out differently
+GUITAR_HEARD_RULES = 2   # bump when the heard guitar notes would come out differently
+# 2: note starts moved onto the strums (tab.snap_to_strums); Basic Pitch heard distorted
+# guitar ~35 ms late, and tabs synced to it ran that much behind the recording.
 
 
 def guitar_track(song_dir):
@@ -696,6 +698,13 @@ def guitar_heard(song_dir, report, make=True):
     try:
         saved = json.loads((song_dir / GUITAR_HEARD_FILE).read_text(encoding="utf-8"))
         if saved.get("rules") == GUITAR_HEARD_RULES:
+            return saved
+        track = guitar_track(song_dir)
+        if saved.get("rules") == 1 and track:   # the same notes, moved onto the strums (~2 s)
+            strums = tab.strum_times(decode(track, tab.SAMPLERATE).mean(0))
+            saved.update(rules=GUITAR_HEARD_RULES, notes=[[round(a, 3), round(b, 3), p, v] for a, b, p, v in
+                                                         tab.snap_to_strums([tuple(n) for n in saved["notes"]], strums)])
+            (song_dir / GUITAR_HEARD_FILE).write_text(json.dumps(saved), encoding="utf-8")
             return saved
     except (OSError, ValueError):
         pass
@@ -775,7 +784,7 @@ def import_tab(song_dir, source, report, instrument="bass", track_index=None):
            "track": track.name, "track_index": track_index, "instrument": instrument, "capo": track.capo,
            "made": time.time(), "quality": synced["quality"], "tuning": key or "custom",
            "label": label, "strings": names, "open": opens, "notes": synced["notes"], "lines": lines, "bpm": bpm,
-           "rules": IMPORT_RULES}
+           "rules": IMPORT_RULES, **({"heard_rules": GUITAR_HEARD_RULES} if instrument == "guitar" else {})}
     write_import(song_dir, out)
 
 
@@ -1737,8 +1746,8 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
 
 def get_guitar_tab(song_dir, tuning):
     imported = read_import(song_dir, "guitar")
-    if imported and imported.get("rules") != IMPORT_RULES:
-        imported = resync_import(song_dir, imported)
+    if imported and (imported.get("rules") != IMPORT_RULES or imported.get("heard_rules") != GUITAR_HEARD_RULES):
+        imported = resync_import(song_dir, imported)   # synced to older heard notes: again (~2-10 s)
     about = {"instrument": "guitar", "has_import": imported is not None, "import_name": imported and imported["name"],
              "has_mine": False, "can_make": False, "can_import": bool(original_file(song_dir) or guitar_track(song_dir))}
     if not imported:
@@ -1893,7 +1902,8 @@ async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(
 # too (user: "save our string detection data so we don't ever need to do it again"): the
 # browser's own storage goes with cleared site data or another browser. The page mirrors
 # them here and restores from here. A replaced or removed value is kept as "previous".
-CALIBRATION_KEYS = {"track-splitter-string-calibration", "track-splitter-input-calibration"}
+CALIBRATION_KEYS = {"track-splitter-string-calibration", "track-splitter-input-calibration",
+                    "track-splitter-string-calibration-guitar", "track-splitter-input-calibration-guitar"}   # bass, guitar
 calibration_lock = threading.Lock()   # the page saves both at once at start
 
 
