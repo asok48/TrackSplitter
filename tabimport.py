@@ -448,61 +448,145 @@ def _sounding(times, pitches, heard_t, heard_e, heard_p):
     return count
 
 
-def _sync_timed(tab_t, tab_p, bar_starts, bar_of, heard):
-    """Tab with rhythm: one overall start + tempo ratio (searched), then a correction
-    per bar along one smooth path (up to +-2.5 s), so tempo drift is followed but a
-    single odd bar can't drag the rest."""
-    heard_t = np.array([h[0] for h in heard])
-    heard_p = np.array([h[2] for h in heard])
-    tab_t, tab_p = np.asarray(tab_t), np.asarray(tab_p)
-    # Overall: for each tempo ratio, the start that lines up most notes (onset histogram).
-    best = (-1, 1.0, 0.0)
-    for scale in np.arange(0.85, 1.15001, 0.0025):
+SYNC_GRID = 0.05                                 # s: where a bar may start
+SYNC_DRIFT, SYNC_JUMP, SYNC_SKIP = 0.6, 8.0, 3.0  # costs, in matched notes (see _sync_timed)
+
+
+def _tempo_fit(tab_t, tab_p, heard_t, heard_p):
+    """The tab's overall tempo ratio and start: for each ratio the start that lines up most
+    notes (onset histogram), 0.6-1.7 in 1% steps, then 0.25% around the best. It searched
+    only 0.85-1.15, which missed tabs written at another tempo."""
+    def at(scale):
         diffs = (heard_t[None, :] - tab_t[::max(1, len(tab_t) // 400), None] * scale).ravel()
-        diffs = diffs[(diffs > -30) & (diffs < 600)]
+        diffs = diffs[(diffs > -60) & (diffs < 600)]
         if not len(diffs):
-            continue
+            return (-1, scale, 0.0)
         hist, edges = np.histogram(diffs, bins=np.arange(diffs.min(), diffs.max() + 0.05, 0.02))
         k = int(np.argmax(np.convolve(hist, np.ones(3), mode="same")))
         offset = edges[k] + 0.01
-        score = _hits(tab_t * scale + offset, tab_p, heard_t, heard_p)
-        if score > best[0]:
-            best = (score, scale, offset)
-    _, scale, offset = best
-    # Per bar: a shift from that overall fit, chosen as one smooth path through the song
-    # (Viterbi): each bar scores how well its notes and its neighbours' land on heard
-    # notes (starts, plus being inside a heard note of that pitch: separated bass often
-    # comes out as long merged notes), and the shift may change only gradually from bar to
-    # bar. Up to +-2.5 s: on Save Yourself, I'll Hold Them Back the recording drifted
-    # 1.3-1.7 s from the tab over the first two minutes, and the old per-bar correction
-    # (+-0.4 s, median-smoothed) left the tab that far early there.
-    heard_e = np.array([h[1] for h in heard])
-    n_bars = len(bar_starts)
-    cands = np.arange(-2.5, 2.5001, 0.05)
-    score = np.zeros((n_bars, len(cands)))
-    for b in range(n_bars):
-        near = (bar_of >= b - 1) & (bar_of <= b + 1)
-        if not near.any():
-            continue
-        for c, d in enumerate(cands):
-            t = tab_t[near] * scale + offset + d
-            score[b, c] = _hits(t, tab_p[near], heard_t, heard_p) + 0.5 * _sounding(t, tab_p[near], heard_t, heard_e, heard_p)
-    move = 12 * np.abs(cands[:, None] - cands[None, :])   # [to, from]: 0.6 (notes) per 50 ms of change
-    prior = 0.4 * np.abs(cands)                            # and a little for being far from the overall fit
-    best_so_far = score[0] - prior
-    back = np.zeros((n_bars, len(cands)), dtype=int)
-    for b in range(1, n_bars):
-        total = best_so_far[None, :] - move
-        back[b] = np.argmax(total, axis=1)
-        best_so_far = total[np.arange(len(cands)), back[b]] + score[b] - prior
-    path = np.zeros(n_bars, dtype=int)
-    path[-1] = int(np.argmax(best_so_far))
-    for b in range(n_bars - 1, 0, -1):
-        path[b - 1] = back[b][path[b]]
-    smooth = cands[path]
-    bar_audio = np.asarray(bar_starts) * scale + offset + smooth
-    bar_audio = np.maximum.accumulate(bar_audio)   # never runs backwards
-    return bar_audio, best[0] / max(1, len(tab_t)), scale
+        return (_hits(tab_t * scale + offset, tab_p, heard_t, heard_p), scale, offset)
+    coarse = max(at(x) for x in np.arange(0.6, 1.7001, 0.01))
+    return max(at(x) for x in np.arange(coarse[1] - 0.012, coarse[1] + 0.0121, 0.0025))
+
+
+def _bar_scores(offs, pitches, grid, by_pitch, by_pc):
+    """For one bar's notes (offsets from its start): on every grid start, notes landing on a
+    heard note of the same pitch (an octave off: half), plus half for each lying inside a
+    heard note of that pitch class (separated bass often comes out as long merged notes)."""
+    def near(times, t):        # within 50 ms of one of `times` (sorted)
+        k = np.searchsorted(times, t)
+        a, b = times[np.clip(k - 1, 0, len(times) - 1)], times[np.clip(k, 0, len(times) - 1)]
+        return np.minimum(np.abs(a - t), np.abs(b - t)) <= 0.05
+    total = np.zeros(len(grid))
+    for o, p in zip(offs, pitches):
+        t = grid + o
+        same = by_pitch.get(p)
+        hit = near(same, t) if same is not None else np.zeros(len(t), bool)
+        octave, inside = np.zeros(len(t), bool), np.zeros(len(t), bool)
+        if p % 12 in by_pc:
+            starts, ends = by_pc[p % 12]
+            octave = near(starts, t)
+            j = np.searchsorted(starts, t + 0.05, side="right") - 1
+            inside = (j >= 0) & (t <= ends[np.clip(j, 0, len(ends) - 1)])
+        total += np.where(hit, 1.0, np.where(octave, 0.5, 0.0)) + 0.5 * inside
+    return total
+
+
+def _sync_timed(tab_t, tab_p, bar_starts, bar_ends, bar_of, heard):
+    """Tab with rhythm: the overall tempo (`_tempo_fit`), then every bar placed on the
+    recording in one pass (Viterbi over start times on a 50 ms grid): a bar starts where
+    the one before ended (give or take 100 ms, SYNC_DRIFT a step), or after a jump forward
+    (SYNC_JUMP: the recording has something the tab doesn't), or is left out (SYNC_SKIP a
+    bar: the tab has something the recording doesn't, e.g. a part repeated more often).
+    Scored by `_bar_scores`. Returns per bar its start and end on the recording (None when
+    left out), the overall match and the tempo ratio.
+
+    It was one overall start + tempo, then up to +-2.5 s per bar along a smooth path, which
+    couldn't follow tabs and recordings of different shapes (user: "Baby's tab starts way
+    too early and Look What Happened starts way too late"): Baby's tab is ~22 s longer
+    than the recording's bass part, so its opening sat in the bassless intro (now 10 of 89
+    bars left out, first note at the bass's entry, notes on a heard note 57 -> 76%); Look
+    What Happened's recording drifts in tempo at the start and its tab's ghost-note E3s are
+    never heard, so the old fit put the first note at 0:29 (now 0:00.6). The 11 other
+    imported tabs came out the same within a point or two."""
+    heard = sorted(heard)
+    heard_t = np.array([h[0] for h in heard])
+    heard_p = np.array([h[2] for h in heard])
+    tab_t, tab_p = np.asarray(tab_t), np.asarray(tab_p)
+    best, scale, _ = _tempo_fit(tab_t, tab_p, heard_t, heard_p)
+    by_pitch = {}
+    for t, p in zip(heard_t, heard_p):
+        by_pitch.setdefault(int(p), []).append(t)
+    by_pitch = {p: np.array(v) for p, v in by_pitch.items()}
+    by_pc = {}
+    for h in heard:
+        by_pc.setdefault(int(h[2]) % 12, []).append((h[0], h[1]))
+    by_pc = {c: (np.array([a for a, _ in v]), np.maximum.accumulate(np.array([b for _, b in v]))) for c, v in by_pc.items()}
+    grid = np.arange(min(-5.0, heard_t[0] - 5), heard[-1][1] + 5, SYNC_GRID)
+    N, B = len(grid), len(bar_starts)
+    length = [int(round((bar_ends[b] - bar_starts[b]) * scale / SYNC_GRID)) for b in range(B)]
+    score = np.zeros((B, N))
+    for b in range(B):
+        mine = bar_of == b
+        if mine.any():
+            score[b] = _bar_scores((tab_t[mine] - bar_starts[b]) * scale, tab_p[mine], grid, by_pitch, by_pc)
+    NEG = -1e18
+    placed, waiting = np.full((B, N), NEG), np.full((B, N), NEG)   # bar b starts at j / bar b left out, the next due at j
+    p_from, p_kind = np.zeros((B, N), np.int32), np.zeros((B, N), np.int8)   # kind: 0 follows, 1 jumps (from placed), 2/3 (from waiting), 4 first
+    w_from, w_kind = np.zeros((B, N), np.int32), np.zeros((B, N), np.int8)   # kind: 0 after a placed bar, 1 still waiting, 4 first
+    placed[0], waiting[0] = score[0], -SYNC_SKIP
+    p_kind[0] = w_kind[0] = 4
+    cols = np.arange(N)
+
+    def follow(prev, shift):   # prev[j - shift + d] - SYNC_DRIFT * |d|, d in -2..2
+        best, src = np.full(N, NEG), np.zeros(N, np.int32)
+        for d in range(-2, 3):
+            idx = cols - shift + d
+            ok = (idx >= 0) & (idx < N)
+            cand = np.full(N, NEG)
+            cand[ok] = prev[idx[ok]] - SYNC_DRIFT * abs(d)
+            better = cand > best
+            best[better], src[better] = cand[better], idx[better]
+        return best, src
+
+    def jump(prev, shift):     # the best prev[i] with i + shift < j - 2, minus SYNC_JUMP
+        top = np.maximum.accumulate(prev)
+        arg = np.zeros(N, np.int32)
+        cur = 0
+        for i in range(N):
+            if prev[i] >= prev[cur]:
+                cur = i
+            arg[i] = cur
+        best, src = np.full(N, NEG), np.zeros(N, np.int32)
+        idx = cols - shift - 3
+        ok = idx >= 0
+        best[ok], src[ok] = top[idx[ok]] - SYNC_JUMP, arg[idx[ok]]
+        return best, src
+
+    for b in range(B - 1):
+        k = length[b]
+        options = [follow(placed[b], k), jump(placed[b], k), follow(waiting[b], 0), jump(waiting[b], 0)]
+        vals, srcs = np.stack([o[0] for o in options]), np.stack([o[1] for o in options])
+        which = np.argmax(vals, axis=0)
+        placed[b + 1] = vals[which, cols] + score[b + 1]
+        p_kind[b + 1], p_from[b + 1] = which, srcs[which, cols]
+        after = np.full(N, NEG)
+        after[k:] = placed[b][:N - k] if k < N else after[k:]
+        use = after >= waiting[b]
+        waiting[b + 1] = np.where(use, after, waiting[b]) - SYNC_SKIP
+        w_kind[b + 1], w_from[b + 1] = np.where(use, 0, 1), np.where(use, cols - k, cols)
+    starts = [None] * B
+    on = placed[B - 1].max() >= waiting[B - 1].max()
+    j = int(np.argmax(placed[B - 1] if on else waiting[B - 1]))
+    for b in range(B - 1, -1, -1):
+        kind = p_kind[b, j] if on else w_kind[b, j]
+        if on:
+            starts[b] = float(grid[j])
+        if kind == 4:
+            break
+        j, on = (int(p_from[b, j]), kind in (0, 1)) if on else (int(w_from[b, j]), kind == 0)
+    ends = [None if a is None else a + (bar_ends[b] - bar_starts[b]) * scale for b, a in enumerate(starts)]
+    return starts, ends, best / max(1, len(tab_t)), scale
 
 
 def _sync_order(tab_p, heard, expected=None, unit=None):
@@ -569,16 +653,19 @@ def sync(track, heard, beat=None):
         return {"notes": [list(n[:5]) for n in notes], "bars": bar_starts, "quality": 0.0}
     if track.timed:
         bar_of = np.array([notes[k][5] for k in playable])
-        bar_audio, quality, scale = _sync_timed(tab_t, tab_p, bar_starts, bar_of, heard)
         ends = list(bar_starts[1:]) + [bar_starts[-1] + (bar_starts[-1] - bar_starts[-2] if len(bar_starts) > 1 else 2.0)]
+        bar_audio, bar_audio_end, quality, scale = _sync_timed(tab_t, tab_p, bar_starts, ends, bar_of, heard)
 
         # Bars from the overall fit are a little rough on a noisy separated track (77% of
         # notes within 50 ms end to end on a test song); placing notes inside each bar like
         # text tabs do (matched in order, guided by the exact rhythm) fixes that.
         out, matched = _place_in_bars(track, notes, playable, heard, list(bar_audio), bar_starts, ends,
-                                      lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=True)
-        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], bool(notes[k][6])] for k, n in enumerate(out)],
-                "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2)}
+                                      lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=True, bar_audio_end=bar_audio_end)
+        # Bars left out (not in this recording) drop their notes; the tab file keeps them.
+        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], bool(notes[k][6])] for k, n in enumerate(out)
+                          if bar_audio[notes[k][5]] is not None],
+                "bars": [round(float(x), 3) for x in bar_audio if x is not None],
+                "quality": round(matched / max(1, sum(1 for k in playable if bar_audio[notes[k][5]] is not None)), 2)}
     # Order only (text tab): spacing inside a bar isn't reliable, and matching the whole
     # pitch sequence slips by a riff repetition (60% right on a test line). So bars are
     # placed by their notes' content (which pitches, not where), at the song's own bar
@@ -670,7 +757,7 @@ def _bar_fit(pairs):
             float(np.clip(np.median(slopes), -0.08, 0.08)) if slopes else 0.0, float(np.median(xs)))
 
 
-def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends_t, audio_len, keep_lengths):
+def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends_t, audio_len, keep_lengths, bar_audio_end=None):
     """Each bar's notes on the recording: matched in order to the heard notes in that bar
     (guided by where the tab puts them).
 
@@ -690,7 +777,11 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
     matched, bars = 0, []
     for b in range(len(bar_audio)):
         a0 = bar_audio[b]
-        a1 = bar_audio[b + 1] if b + 1 < len(bar_audio) else a0 + audio_len(b)
+        if a0 is None:   # left out (bar_audio_end given): not in this recording
+            bars.append(None)
+            continue
+        a1 = (bar_audio_end[b] if bar_audio_end is not None
+              else bar_audio[b + 1] if b + 1 < len(bar_audio) else a0 + audio_len(b))
         span = max(1e-6, bar_ends_t[b] - bar_starts_t[b])
         rate = (a1 - a0) / span
         ks = [k for k in range(len(notes)) if notes[k][5] == b]
@@ -718,21 +809,32 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
         ax, at = np.array(anchor_x)[order], np.maximum.accumulate(np.array(anchor_t)[order])
         for i, k in enumerate(ks):
             out[k][0] = float(np.interp(i + 1, ax, at))
-    if keep_lengths and bars:
+    if keep_lengths and any(bars):
         def shift(b, x):
-            fit = bars[b][5]
+            fit = bars[b][5] if 0 <= b < len(bars) and bars[b] else None
             return None if fit is None else float(np.clip(fit[0] + fit[1] * (x - fit[2]), -STEADY_MAX, STEADY_MAX))
-        edges = []
-        for e in range(len(bars) + 1):
-            x = bars[e][0] if e < len(bars) else bars[-1][1]
-            want = [v for v in (shift(e - 1, x) if e > 0 else None, shift(e, x) if e < len(bars) else None) if v is not None]
-            edges.append(float(np.mean(want)) if want else None)
-        known = [e for e, v in enumerate(edges) if v is not None]
-        edges = [v if v is not None else (float(np.interp(e, known, [edges[k] for k in known])) if known else 0.0)
-                 for e, v in enumerate(edges)]
-        for b, (a0, a1, rate, ks, expected, _) in enumerate(bars):
+        # A bar's shift at its start and at its end; where two placed bars meet (one starts
+        # where the other ends) both use the mean of what they want, so the line is unbroken.
+        meets = lambda b: b + 1 < len(bars) and bars[b] and bars[b + 1] and abs(bars[b][1] - bars[b + 1][0]) < 0.15
+        start, end = [None] * len(bars), [None] * len(bars)
+        for b, bar in enumerate(bars):
+            if not bar:
+                continue
+            want = [shift(b, bar[0])] + ([shift(b - 1, bar[0])] if b and meets(b - 1) else [])
+            want = [v for v in want if v is not None]
+            start[b] = float(np.mean(want)) if want else None
+            want = [shift(b, bar[1])] + ([shift(b + 1, bar[1])] if meets(b) else [])
+            want = [v for v in want if v is not None]
+            end[b] = float(np.mean(want)) if want else None
+        seq = [v for b in range(len(bars)) for v in (start[b], end[b])]
+        known = [i for i, v in enumerate(seq) if v is not None]
+        seq = [v if v is not None else (float(np.interp(i, known, [seq[k] for k in known])) if known else 0.0) for i, v in enumerate(seq)]
+        for b, bar in enumerate(bars):
+            if not bar:
+                continue
+            a0, a1, rate, ks, expected, _ = bar
             for i, k in enumerate(ks):
-                t = expected[i] + float(np.interp(expected[i], [a0, a1], [edges[b], edges[b + 1]]))
+                t = expected[i] + float(np.interp(expected[i], [a0, a1], [seq[2 * b], seq[2 * b + 1]]))
                 out[k][0], out[k][1] = t, t + (notes[k][1] - notes[k][0]) * rate
     if not keep_lengths:
         for k in range(len(out)):   # each note lasts until the next one starts

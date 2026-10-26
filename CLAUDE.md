@@ -592,6 +592,10 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   16. Jumping elsewhere resets it. Simulated player 60 ms late: average read ~39 ms
   late (detection timing assumptions; Timing under More shifts it). With the switch on
   but no bass input, the Highway says so.
+- Switching songs with the tab open (user: "I got the wrong tab when switching songs"):
+  the title changed at once but the last song's tab stayed until the new one arrived
+  (seconds while an import re-syncs). `loadTab` now clears it and shows "Loading the tab
+  for …" as soon as the song changes.
 - Whole tab (user: "would be nice to see the whole tab"): a third view next to Lines /
   Highway (`tabMode` 'whole', `wholeFrame`): every line at the small size in a scrolling
   column, the playing one on the card with a playhead and note highlights, kept centred
@@ -735,6 +739,19 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   reader (`heardNotes` with a bass range) for the wanted note (+13 real, +62-133 false in
   the moved-tab controls), and "the wanted note's own energy rises" (any pluck raises
   every frequency: hundreds false). Repeats with no blink and no level rise (~4) remain.
+  Pick vs fingers (user: detection "way better using my fingers than a pick"): a labelled
+  recording (recorder page `pick.html`, kept in `.bass-recordings` with `tools/live.py`, a
+  Python copy of the live detection) showed no difference at one note per click (pick
+  timing tighter). Two Fireman & Dancer game checks did: fingers 221/233, pick 202/224
+  with 13 "no pluck" misses (fingers 2), mostly repeated notes: re-picking a ringing note
+  kept the pitch reading unbroken (no blink) and raised the level only 1.4-3.8 dB. A pick's
+  click is bright, so a pluck is also the newest 20 ms's high frequencies (the input's 2nd
+  difference) jumping >= 9 dB over the two readings before (`clicked`, passed to
+  gameListen / practiceListen with `plucked`; the readout and string detection keep
+  `plucked`). Replays of every recorded game (scratch `gamesim.py` on run.json frames + the
+  saved input, reproducing the game's counts): pick 202 -> 210, fingers 221 (same),
+  Addictive 696 -> 708 and 438 -> 445, the rest +0-5; the 2-semitone wrong-notes control
+  within +-2 everywhere. Game checks now also record `hf_db` and `clicked` per frame.
 - Too-quiet plucks (user: a note "too quiet to actually hear" still counted): in a game a
   pluck counts only if it's no more than 15 dB below the median of the player's last 40
   pluck levels (once there are 8). Each pluck's level is the newest 20 ms (`freshDb`),
@@ -803,7 +820,24 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   neighbouring bars meet at the bar line (one shift there, the mean of both). On the 5
   file tabs in the test library: 0% uneven inside and across bars; notes within 50 ms of
   a heard note 56.5-88.9% (written rhythm alone 55.8-86.4%, nudged 62.9-94.2%, partly
-  the nudge moving notes onto noisy heard times). IMPORT_RULES 4. `IMPORT_RULES` (app.py): bump
+  the nudge moving notes onto noisy heard times). IMPORT_RULES 4.
+  Shape (user: "Baby's tab starts way too early and Look What Happened starts way too
+  late"): the tempo search was 0.85-1.15 and bars could only move +-2.5 s from one overall
+  fit, so a tab and recording of different shapes went wrong at one end. Baby's tab is
+  ~22 s longer than the recording's bass part (a part repeated more often) and its opening
+  sat in the bassless intro; Look What Happened's recording drifts in tempo at the start
+  and a third of its tab (E3 ghost notes) is never heard, and the fit put its first note at
+  0:29. Now `_tempo_fit` searches 0.6-1.7 (1%, then 0.25%) and `_sync_timed` places every
+  bar in one Viterbi pass over start times (50 ms grid): it follows the bar before (+-100
+  ms, SYNC_DRIFT 0.6 a step), jumps forward (SYNC_JUMP 8: the recording has something the
+  tab doesn't) or is left out (SYNC_SKIP 3 a bar: its notes are dropped from the synced
+  tab, the file keeps them), scored by `_bar_scores` (hits + octave halves + half for
+  inside a heard note). `_place_in_bars` takes each bar's own end (`bar_audio_end`) and
+  joins shifts only where placed bars meet. On the user's 13 imported file tabs: Baby first
+  note 20.6 s (bass enters 20.5), 10 of 89 bars left out, notes on a heard note 57 -> 77%;
+  Look What Happened 0:29 -> 0:00.6 (bass from 0.6), 30 -> 34%; the other 11 the same
+  within a point (Amsterdam drops one 2-note bar); notes always in order; ~1-1.6 s a tab.
+  IMPORT_RULES 5 (opening an import re-syncs it once, ~5 s). `IMPORT_RULES` (app.py): bump
   when syncing changes; `get_tab` then re-syncs an old import from its saved file
   (`resync_import`, ~1-2 s) when the automatic tab is current. Text tabs:
   bar length from the song's tempo, bars placed by note content and then followed in
@@ -1032,11 +1066,54 @@ with the band.
   snap to their bar's 16th grid (within 60 ms; `bar_starts` from the draft's lines).
   It used to add anything not within 70 ms of a same-pitch note; a take slightly off the
   tab put notes between the tab's (Amsterdam 61 -> 103 notes in 18 s; user: "it speeds
-  it way up, keep the same speed and structure"); MINE_RULES 3 rebuilt drafts. Removed
+  it way up, keep the same speed and structure"); MINE_RULES 3 rebuilt drafts.
+  That then blocked real additions (user: "trying to add more 6s in Amsterdam at 45
+  seconds": their extra E♭2 8ths, A6 in standard, between the tab's notes were all
+  dropped; 3 takes added 5 notes). Now (`apply_take`, MINE_RULES 4): a played note goes
+  into its bar's 16th slot when the slot is empty, unless the same pitch is in the next
+  slot (a copy played a little off), and only if the transcription is sure of it
+  (amplitude >= `ADD_MIN_AMP` 0.55: a near-silent take's notes, even the tab's, were
+  0.33-0.53; the added E♭2s 0.67-0.80). Those takes now add 39, the E♭2s at 0:47-0:50 in;
+  take notes carry their amplitude for this. The user's two newest takes were ~14 dB
+  quieter than the first (peaks -36/-32 dBFS, mostly ~-51): the recording is the raw
+  input, so check the interface gain and the chosen input.
+  Recording in Add notes with no draft starts one from the imported tab (else the
+  automatic one), as "Start a draft from this tab" would (`new_draft`, shared with
+  `start_draft`): the user's draft had been deleted (More → Delete draft, no question
+  asked) and their next Add take became the whole draft (225 notes, no tab: "it added them
+  but got rid of a bunch of stuff too"). Delete draft now asks first, with the number of
+  takes. Their old draft (base + 3 takes) was put back from a test copy with the new take
+  added: 720 notes, all 645 of the tab's kept. Removed
   notes played again come back,
   "replace" takes over the stretch. `redo_mine` rebuilds from `base` then each take in
   its mode. Test (simulated Scarlett, Electra): draft 1010 notes, 3 deleted -> 1007,
   an Add take over that stretch -> 1012 (the 3 back, nothing doubled, 2 extra).
+- Review before saving (user: "a way to redo a section and then save my changes instead
+  of auto saving, and maybe display what was added and an option to redo sections that
+  were added"): a finished take waits in the draft as `pending` (`record_tab`; another take
+  meanwhile replaces it, its audio to the Trash) until `POST /api/tab/mine/take` {keep:
+  true/false} (`keep_take`). `GET /api/tab?source=mine` shows the draft as it would be:
+  each note's 6th value says where it came from ("tab", "take:<n>", "new" = the pending
+  take adds it), the notes it would replace come apart in `gone`; `pending` has the
+  stretch, mode, +added / -replaced, and a check: how much of what was heard matches the
+  draft there (same note within 0.1 s or an octave) and the peak level. Page: a review bar
+  over the tab (`#take-review`: New take / Redo of take n, 0:32-1:12, Add notes, +15
+  notes; Play it, Redo, Discard, Keep), new notes green, replaced ones red and struck above
+  their string; a warning when < 20% matches ("is your bass on the input chosen ... gain
+  up?"; quiet alone isn't flagged: a good take peaked at -36 dB and matched 88%).
+  Where notes came from is kept as a 4th value in the draft's notes (the take's "made";
+  0 = the tab), written by `apply_take(tag=...)` and `redo_mine` (MINE_RULES 5 rebuilt
+  drafts to get it). View → "Show what I added" (`track-splitter-show-added`, on) colours
+  kept takes' notes blue. More → "Your takes…" (`#takes-dlg`, `take_list`: n, stretch,
+  mode, notes in the draft from it): Go there, Redo (`redoSection`: Bass input opened if
+  needed, the take's mode, records from 2 s before and stops itself 0.3 s after its end;
+  sent with `replaces`, so on Keep the old take and its audio go and the draft is made
+  again), Remove (asks; `remove_take`: audio to the Trash, draft made again). Tested on a
+  copy of the user's Amsterdam draft: preview, Discard, Keep, Replace (+132 / -189), Redo
+  of take 2 (replaced, old audio trashed), Remove; audio files always matched the takes.
+  The user's two newest takes (22:28 and before) came in at ~-33 dBFS and matched the tab
+  3-5% (mostly a steady E4): not their bass on the chosen input; ADD_MIN_AMP 0.55 left
+  them out, a cut-off relative to each take let their noise in, so it stays fixed.
 - Ghost notes (user: recorded tabs are more accurate than automatic ones, but have
   ghost notes). The user's Cry Baby Cry take vs their imported tab: 289 of 335 notes in
   the tab; of the 46 others, 20 were same-note restarts with real attacks (stronger
@@ -1131,6 +1208,35 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
   (checked: lag 0, r 0.999 in Chromium) and scales it to the versions' anti-clip
   turn-down; otherwise (no original, other browser offsets) Original = without + only.
   `headroom()` turns each song down just enough that no mode clips.
+- Skip silence (user: "detect if there's dead space or silence at the beginning or end of
+  a song and shorten it", "look at Baby"): measured on the library, ends had 1-4 s, Baby
+  ~18, American Confidence 9, American Idiot 7; starts 0-1 s (You Only Live Once 2.4). The
+  file isn't cut (tabs, imports, drafts and game checks are timed from its start): the
+  player finds the sound (`soundBounds`: 50 ms RMS of without + only above -60 dBFS and
+  within 50 dB of the song's 90th percentile, 0.5 s kept either side) when a song loads;
+  `play()` starts at the first sound when it would start before it and stops the sources
+  after the last, which runs the song-end path (back to 0:00, a game ends with results).
+  The volume popover has "Skip silence at the start and end" (`track-splitter-skip-silence`,
+  on) and says what this song skips ("17.5 s at the end skipped"). Tested on Baby: playing
+  from 3:00 stopped at ~3:03 instead of 3:20; switched off, it played on.
+  Baby's first 11 s aren't silent, they're quiet (30-40 dB under the song, a faint tone
+  ~1.4 kHz), so 50 dB keeps them; 30 dB would find Baby's 0:11.8 but also cut real quiet
+  intros (Fireman & Dancer 0:08, Save Yourself 0:05.5, Amsterdam 0:12 and 28 s of its end).
+  So the automatic skip stays at 50 dB and the user can trim by hand (user: "a way for me to
+  trim the songs myself"; asked whether as a cut version or kept with the song, they chose
+  the song): `POST /api/song/trim` {song, start, end} (none = whole song) -> `.song.json`
+  "trim", sent in the library as `song.trim`; `playRange()` uses it before the automatic
+  skip, so every version and the game play between those points and tabs stay aligned.
+  Trim dialog (`#trim-dlg`, `openTrim`; the song's ⋯ menu "Trim start and end…", marked
+  "(trimmed)", "Trim this song…" in the volume popover, and "Trim song…" in the Bass input
+  drawer's recording column with the trim shown under it; user: "make it also available in
+  the recording section"): the whole song's waveform
+  (without + only, min/max per pixel) with two draggable handles, close-ups 6 s around each
+  (drag there for fine moves), times typed as m:ss.s or nudged 0.1 s, "Play from start" /
+  "Play up to end" (4 s through the player's gains), "Use the whole song", Save. It opens on
+  the saved trim, else the automatic points. Tested on Baby: start 0:11.5 saved, play from
+  the top began there, the popover said "Trimmed: plays 0:11.5 to 3:03.4"; whole song
+  cleared it.
 - Volumes (user: "change that to have 3, a master volume, a song volume, and an instrument
   volume"): the player's slider is the master; its speaker opens a popover (`#mixer`) with
   Master, Song and Instrument. Master scales the song (`state.volume * state.songVolume *

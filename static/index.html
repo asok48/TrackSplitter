@@ -135,6 +135,8 @@
   .ib-device select { flex: 1; min-width: 0; }
   .ib-device #input-channel { flex: 0 0 auto; }
   .ib-note { font-size: 11.5px; color: var(--faint); }
+  .ib-note.ib-warn { color: #fbbf24; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ib-note.ib-warn.hidden { display: none; }
   .tone-inst { display: flex; gap: 6px; align-items: center; width: 100%; }
   .tone-inst select { flex: 1; min-width: 0; }
   /* Your instruments (#inst-dlg) */
@@ -333,6 +335,26 @@
   .tab-line .note.editable { cursor: pointer; }
   .tab-line .note.editable:hover rect { fill: var(--hover); }
   .tab-line .note.selected rect { fill: #ef4444; }
+  /* Draft: what a take waiting for review adds (green) or replaces (red, struck), and
+     with "Show what I added" the notes your takes put in (blue). */
+  .tab-line .note.n-new rect { fill: rgba(74, 222, 128, .28); stroke: #4ade80; stroke-width: 1.2; }
+  .tab-line .note.n-new text { fill: #dcfce7; }
+  .tab-line .note.n-added rect { fill: rgba(56, 189, 248, .22); }
+  .tab-line .note.n-added text { fill: #7dd3fc; }
+  .tab-line .gone text { fill: #f87171; opacity: .75; }
+  .tab-line .gone line { stroke: #f87171; stroke-width: 1.6; opacity: .8; }
+  .take-review { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px 8px 14px; border-radius: 14px; background: rgba(16, 16, 24, .94); border: 1px solid rgba(74, 222, 128, .4);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .45); max-width: calc(100% - 24px); flex-wrap: wrap; }
+  .take-review .tr-text { display: flex; flex-direction: column; margin-right: 6px; line-height: 1.25; }
+  .take-review .tr-text span { font-size: 12px; color: var(--muted); }
+  .take-review .tr-text .tr-warn { color: #fbbf24; max-width: 46ch; }
+  body.game-on .take-review { display: none; }
+  .takes-list { display: flex; flex-direction: column; gap: 8px; max-height: min(56vh, 480px); overflow-y: auto; }
+  .take-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .025); }
+  .take-row .tk-text { flex: 1; min-width: 0; }
+  .take-row .tk-text strong { display: block; }
+  .take-row .tk-text span { font-size: 12.5px; color: var(--muted); }
   .tab-line .note.selected text { fill: white; }
   .timing-avg { font-size: 12.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .tab-line .timing-mark { font-size: 11px; font-weight: 800; paint-order: stroke; stroke: rgba(0, 0, 0, .6); stroke-width: 3px; }
@@ -515,6 +537,19 @@
     box-shadow: 0 18px 44px rgba(0, 0, 0, .5); color: var(--text); }
   .mixer-title { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
   .mixer-row { display: grid; grid-template-columns: 76px 1fr 52px; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+  .mixer-switch { margin-top: 4px; font-size: 13px; font-weight: 600; }
+  #trim-open { justify-self: start; }
+  dialog.trim-dlg { width: min(860px, calc(100vw - 32px)); }
+  .trim-wave { position: relative; height: 130px; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .07); touch-action: none; cursor: ew-resize; }
+  .trim-wave canvas, .trim-zoom canvas { display: block; width: 100%; height: 100%; }
+  .trim-zoom { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .trim-zoom-box { height: 74px; border-radius: 10px; overflow: hidden; background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .07); position: relative; }
+  .trim-zoom-box span { position: absolute; left: 8px; top: 4px; font-size: 11px; color: var(--faint); pointer-events: none; }
+  .trim-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .trim-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .trim-label { width: 44px; font-weight: 700; font-size: 13px; }
+  .trim-dlg .trim-row .text-input.trim-time { width: 96px; flex: 0 0 96px; text-align: center; font-variant-numeric: tabular-nums; }
+  .trim-info { margin-top: 10px; font-size: 12.5px; color: var(--muted); min-height: 1.4em; }
   .mixer-row b { font-weight: 600; font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 
   /* ---------- Dialogs ---------- */
@@ -896,6 +931,9 @@
             <label class="switch hidden only-tab" id="hw-flat-row" title="Flat: the Highway straight on, no lean into the distance">
             <input type="checkbox" id="hw-flat"><span class="track"></span><span>Flat</span>
             </label>
+            <label class="switch hidden only-tab" id="tab-added-row" title="Your draft: notes your takes put in, in blue (the tab's own in white)">
+            <input type="checkbox" id="tab-added"><span class="track"></span><span>Show what I added</span>
+            </label>
             <label class="switch hidden only-tab" id="tab-split-row" title="Driving parts: show repeated plucks of a note as separate notes (split on the beat). Off: notes as heard, best for held notes.">
             <input type="checkbox" id="tab-split"><span class="track"></span><span>Split repeated notes</span>
             </label>
@@ -933,6 +971,7 @@
                 <select id="input-device" aria-label="Input"></select>
                 <select id="input-channel" aria-label="Channel" title="Which of the interface's inputs to listen to; Both mixes them, so the instrument is heard whichever input it's in"><option value="both">Both inputs</option><option value="0">Input 1</option><option value="1">Input 2</option></select>
               </div>
+              <div class="ib-note ib-warn hidden" id="input-wrongdev"><span id="input-wrongdev-text"></span> <button type="button" class="btn sm" id="input-wrongdev-use"></button></div>
               <div class="ib-note hidden" id="input-mono">This browser gives the app one channel: only Input 1 can be heard. Use Chrome, or plug into Input 1.</div>
               <div class="progress input-level" id="input-level-box" title="Input level"><div id="input-level"></div></div>
               <div class="input-note"><b id="input-note">–</b><span id="input-where">Play a note</span></div>
@@ -967,6 +1006,8 @@
                 <button type="button" data-rmode="replace">Replace</button>
               </div>
               <button type="button" class="btn sm" id="input-record" title="The song jumps back 2 s and plays; your playing goes into your draft"><span class="rec-dot"></span><span id="input-record-text">Record</span></button>
+              <button type="button" class="btn sm" id="input-trim" title="Choose where this song starts and ends (the same trim as in the song's menu)">Trim song…</button>
+              <div class="ib-note" id="input-trim-note"></div>
             </div>
             <div class="tuner hidden" id="tuner">
               <div class="tuner-note"><b id="tuner-note">–</b><span id="tuner-hz">Play an open string</span></div>
@@ -989,6 +1030,7 @@
             <button type="button" class="btn sm hidden" id="strcal-reset" title="Forget the string calibration">Reset string calibration</button>
             <button type="button" class="btn sm" id="timing-calibrate-more" title="Play a short made-up line to clicks: measures how late your notes reach the app">Calibrate timing…</button>
             <button type="button" class="btn sm hidden" id="timing-reset" title="Forget the timing calibration">Reset timing calibration</button>
+            <button type="button" class="btn sm hidden only-tab" id="tab-takes" title="The sections you've recorded into your draft: go there, redo one, or take it out">Your takes…</button>
             <button type="button" class="btn sm hidden only-tab" id="tab-draft" title="Copy this tab into your draft, then play over it to add notes (Bass input → Record → Add notes)">Start a draft from this tab</button>
             <button type="button" class="btn sm" id="tab-import" title="Bring in a tab you trust (Guitar Pro, MusicXML, or pasted text)">Import tab…</button>
             <button type="button" class="btn sm only-tab" id="tab-remake" title="Make this song's tab again">Redo tab</button>
@@ -1007,6 +1049,13 @@
         <div class="tab-float tab-float-left">
           <button type="button" class="btn sm danger hidden only-tab" id="tab-delete-note" title="Remove the selected note (Delete key)">Delete note</button>
           <button type="button" class="btn sm hidden only-tab" id="tab-undo-note" title="Put the last removed note back">Undo</button>
+        </div>
+        <div class="take-review hidden only-tab" id="take-review" role="region" aria-label="New take">
+          <div class="tr-text"><strong id="tr-title">New take</strong><span id="tr-sub"></span><span class="tr-warn hidden" id="tr-warn"></span></div>
+          <button type="button" class="btn sm" id="tr-play" title="Play this section with the change shown">Play it</button>
+          <button type="button" class="btn sm" id="tr-redo" title="Record this section again (this take is replaced)">Redo</button>
+          <button type="button" class="btn sm danger" id="tr-discard" title="Throw this take away; your draft stays as it was">Discard</button>
+          <button type="button" class="btn sm primary" id="tr-keep" title="Save this take into your draft">Keep</button>
         </div>
         <div class="tab-float tab-float-right">
           <span class="timing-avg hidden only-tab" id="timing-avg"></span>
@@ -1072,6 +1121,9 @@
           <label class="mixer-row" title="The song (whichever version is playing)"><span>Song</span><input type="range" id="mix-song" min="0" max="100"><b id="mix-song-v"></b></label>
           <label class="mixer-row" title="What you hear of yourself through the app (Hear myself): a boost, so the interface's gain can stay low"><span>Instrument</span><input type="range" id="mix-inst" min="0" max="40" step="1"><b id="mix-inst-v"></b></label>
           <div class="ib-note" id="mix-inst-note"></div>
+          <label class="switch mixer-switch" title="Start at the first sound and stop after the last, skipping silence at the start and end of the file (the file isn't changed)"><input type="checkbox" id="skip-silence"><span class="track"></span><span>Skip silence at the start and end</span></label>
+          <div class="ib-note" id="skip-silence-note"></div>
+          <button type="button" class="btn sm" id="trim-open" title="Choose where this song starts and ends">Trim this song…</button>
         </div>
       </div>
     </div>
@@ -1195,6 +1247,62 @@
     <div class="dlg-foot">
       <button type="button" class="btn hidden" id="repeats-clear" title="Every bar back to how the tab writes it">Put all back as written</button>
       <button type="button" class="btn primary" data-close>Done</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="takes-dlg" class="fancy-dlg" aria-labelledby="takes-title">
+  <form method="dialog">
+    <div class="dlg-head">
+      <div class="up-title">
+        <span class="up-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>
+        <div><h2 id="takes-title">Your takes</h2><div class="up-sub" id="takes-sub"></div></div>
+      </div>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dlg-body"><div class="takes-list" id="takes-list"></div></div>
+    <div class="dlg-foot"><button type="button" class="btn primary" data-close>Done</button></div>
+  </form>
+</dialog>
+
+<dialog id="trim-dlg" class="fancy-dlg trim-dlg" aria-labelledby="trim-title">
+  <form method="dialog">
+    <div class="dlg-head">
+      <div class="up-title">
+        <span class="up-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg></span>
+        <div><h2 id="trim-title">Trim</h2><div class="up-sub" id="trim-sub"></div></div>
+      </div>
+      <button type="button" class="icon-btn" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dlg-body">
+      <p class="import-intro">Drag the handles to where the song should start and end. Every version and the game play between them; the files aren't changed, so your tabs stay lined up.</p>
+      <div class="trim-wave" id="trim-wave"><canvas id="trim-canvas"></canvas></div>
+      <div class="trim-zoom" id="trim-zoom">
+        <div class="trim-zoom-box"><span>Start, close up</span><canvas id="trim-zoom-start"></canvas></div>
+        <div class="trim-zoom-box"><span>End, close up</span><canvas id="trim-zoom-end"></canvas></div>
+      </div>
+      <div class="trim-rows">
+        <div class="trim-row"><span class="trim-label">Start</span>
+          <button type="button" class="btn sm" data-nudge="start" data-by="-0.1">−0.1 s</button>
+          <input class="text-input trim-time" id="trim-start" aria-label="Start time" spellcheck="false">
+          <button type="button" class="btn sm" data-nudge="start" data-by="0.1">+0.1 s</button>
+          <button type="button" class="btn sm" id="trim-play-start" title="Play the first few seconds from the start">▶ Play from start</button></div>
+        <div class="trim-row"><span class="trim-label">End</span>
+          <button type="button" class="btn sm" data-nudge="end" data-by="-0.1">−0.1 s</button>
+          <input class="text-input trim-time" id="trim-end" aria-label="End time" spellcheck="false">
+          <button type="button" class="btn sm" data-nudge="end" data-by="0.1">+0.1 s</button>
+          <button type="button" class="btn sm" id="trim-play-end" title="Play the last few seconds up to the end">▶ Play up to end</button></div>
+      </div>
+      <div class="trim-info" id="trim-info"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" id="trim-whole" title="No trim: play the whole file">Use the whole song</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="button" class="btn primary" id="trim-save">Save</button>
     </div>
   </form>
 </dialog>
@@ -1430,6 +1538,8 @@
 <script>
 (() => {
   const $ = (sel) => document.querySelector(sel);
+  // The draft's "Show what I added" (see Takes are reviewed...): read here, before anything draws a tab line.
+  let showAdded = (() => { try { return localStorage.getItem('track-splitter-show-added') !== '0'; } catch { return true; } })();
   const el = (tag, props = {}, ...children) => {
     const node = Object.assign(document.createElement(tag), props);
     for (const c of children) if (c != null) node.append(c);
@@ -1444,6 +1554,7 @@
     x: svg('<path d="M6 6l12 12M18 6 6 18"/>', 14, 'stroke-width="2.4"'),
     plus: svg('<path d="M12 5v14M5 12h14"/>', 14, 'stroke-width="2.4"'),
     edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+    scissors: svg('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>'),
     layers: svg('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>'),
     trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'),
     trashSm: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>', 13),
@@ -1480,7 +1591,9 @@
 
   // ---------- API ----------
   async function api(path, options = {}) {
-    const res = await fetch(path, options);
+    // A fetch that can't connect at all means the app's server isn't running (quit, or its
+    // window closed) while this page stayed open; the browser only says "Failed to fetch".
+    const res = await fetch(path, options).catch(() => { throw new Error("Can't reach Track Splitter: the app isn't running. Open it again, then try once more."); });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Something went wrong (${res.status}).`);
     return data;
@@ -1719,6 +1832,7 @@
     applyTone();                                          // per song
     const token = ++player.token;
     player.buffers = null;
+    player.bounds = null;                                 // found again once this song's audio is in
     player.original = null;
     player.mine = null;
     player.offset = at;
@@ -1746,6 +1860,8 @@
       player.mine = recorded;
       Object.assign(player, matchOriginal(buffers, orig, player.shift !== 0));
       player.headroom = headroom(buffers, player.original, player.originalScale);
+      player.bounds = soundBounds(buffers);
+      showSkipNote();
       applyMode();
       player.offset = Math.min(at, duration());
       updateTime();
@@ -1831,6 +1947,199 @@
     player.playing = false;
   }
 
+  // Silence at the start and end of a song (user: "detect if there's dead space or silence at
+  // the beginning or end of a song and shorten it"; Baby ends with ~18 s of silence, American
+  // Confidence 9, American Idiot 7; starts were 0-2.4 s). Not cut from the file: tabs,
+  // imports, drafts and game checks are timed from its start. Instead play starts at the
+  // first sound when it would start before it, and stops after the last as if the song had
+  // ended (which also ends a game). Sound = 50 ms RMS of without + only above -60 dBFS and
+  // within 50 dB of the song's loud parts (its 90th percentile); 0.5 s kept either side.
+  const SKIP_KEY = 'track-splitter-skip-silence';
+  let skipSilence = (() => { try { return localStorage.getItem(SKIP_KEY) !== '0'; } catch { return true; } })();
+  function soundBounds([a, b]) {
+    const x = a.getChannelData(0), y = b.getChannelData(0), n = Math.min(x.length, y.length), hop = Math.round(a.sampleRate * 0.05);
+    const db = [];
+    for (let i = 0; i + hop <= n; i += hop) {
+      let e = 0;
+      for (let j = i; j < i + hop; j++) { const v = x[j] + y[j]; e += v * v; }
+      db.push(10 * Math.log10(e / hop + 1e-20));
+    }
+    if (!db.length) return null;
+    const loud = [...db].sort((p, q) => p - q)[Math.floor(db.length * 0.9)], floor = Math.max(-60, loud - 50);
+    const first = db.findIndex((v) => v > floor), last = db.length - 1 - [...db].reverse().findIndex((v) => v > floor);
+    if (first < 0) return null;
+    const dur = n / a.sampleRate;
+    return { start: Math.max(0, first * 0.05 - 0.5), end: Math.min(dur, (last + 1) * 0.05 + 0.5), dur };
+  }
+  // A trim the user set for the song (Trim start and end…) wins over the automatic skip.
+  const playRange = () => {
+    const tr = state.current?.song.trim;
+    if (tr) return { start: Math.max(0, tr.start || 0), end: Math.min(duration(), tr.end ?? duration()) };
+    return skipSilence && player.bounds ? player.bounds : { start: 0, end: duration() };
+  };
+  function showSkipNote() {
+    const tr = state.current?.song.trim;
+    $('#input-trim-note').textContent = tr ? `Plays ${fmtTenths(tr.start || 0)} to ${tr.end != null ? fmtTenths(tr.end) : 'the end'}` : '';
+    if (tr) {
+      $('#skip-silence-note').textContent = `Trimmed: plays ${fmtTenths(tr.start || 0)} to ${tr.end != null ? fmtTenths(tr.end) : 'the end'}.`;
+      return;
+    }
+    const b = player.bounds;
+    const lead = b ? b.start : 0, tail = b ? b.dur - b.end : 0;
+    $('#skip-silence-note').textContent = !b ? '' : lead < 0.3 && tail < 0.3 ? 'This song has no silence to skip.'
+      : `This song: ${[lead >= 0.3 ? `${lead.toFixed(1)} s at the start` : '', tail >= 0.3 ? `${tail.toFixed(1)} s at the end` : ''].filter(Boolean).join(', ')}${skipSilence ? ' skipped' : ''}.`;
+  }
+  $('#skip-silence').checked = skipSilence;
+  $('#skip-silence').addEventListener('change', (e) => {
+    skipSilence = e.target.checked;
+    try { localStorage.setItem(SKIP_KEY, skipSilence ? '1' : '0'); } catch { /* not kept */ }
+    showSkipNote();
+    if (player.playing) { const t = currentTime(); stopSources(); player.offset = t; play(); }   // the new end applies now
+  });
+
+  const fmtTenths = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+  const parseTime = (text) => {
+    const m = String(text).trim().match(/^(?:(\d+):)?(\d+(?:\.\d*)?)$/);
+    return m ? (Number(m[1] || 0) * 60 + Number(m[2])) : NaN;
+  };
+
+  // Trim start and end (user: "a way for me to trim the songs myself", chose to keep it with
+  // the song): the whole song's waveform with two handles, close-ups around each, typed or
+  // nudged times, a preview of each end, Save -> POST /api/song/trim (.song.json "trim").
+  // Opens on the saved trim, else the automatic skip's points, else the whole file.
+  const trim = { song: null, start: 0, end: 0, dur: 0, x: null, sr: 44100, cols: null, colsW: 0, drag: null, preview: [], playFrom: 0, playAt: 0, playUntil: 0 };
+  async function openTrim(song) {
+    closeMenu?.();
+    if (state.current?.song.id !== song.id || !player.buffers) {
+      const v = state.current?.song.id === song.id ? state.current.version : song.versions[0];
+      if (!v) return;
+      await loadVersion(song, v);
+    }
+    if (!player.buffers || state.current?.song.id !== song.id) { toast("Couldn't load this song's audio.", 'error'); return; }
+    if (player.playing) pause();
+    const [a, b] = player.buffers, n = Math.min(a.length, b.length), x = new Float32Array(n), xa = a.getChannelData(0), xb = b.getChannelData(0);
+    for (let i = 0; i < n; i++) x[i] = xa[i] + xb[i];
+    const dur = n / a.sampleRate, tr = song.trim, auto = player.bounds;
+    Object.assign(trim, { song, x, sr: a.sampleRate, dur, cols: null,
+      start: tr ? tr.start || 0 : auto ? auto.start : 0, end: tr ? tr.end ?? dur : auto ? auto.end : dur });
+    $('#trim-title').textContent = `Trim “${song.title}”`;
+    $('#trim-sub').textContent = tr ? 'Your saved trim' : auto && (auto.start > 0.3 || dur - auto.end > 0.3) ? 'Starting from the silence the app found' : 'The whole song';
+    $('#trim-dlg').showModal();
+    showTrimTimes(); drawTrim();
+  }
+  function showTrimTimes() {
+    $('#trim-start').value = fmtTenths(trim.start);
+    $('#trim-end').value = fmtTenths(trim.end);
+    const cut = [trim.start >= 0.05 ? `${trim.start.toFixed(1)} s cut from the start` : '', trim.dur - trim.end >= 0.05 ? `${(trim.dur - trim.end).toFixed(1)} s from the end` : ''].filter(Boolean);
+    $('#trim-info').textContent = `Plays ${fmtTenths(trim.start)} to ${fmtTenths(trim.end)} (${fmtTenths(trim.end - trim.start)} of ${fmtTenths(trim.dur)})${cut.length ? ` · ${cut.join(', ')}` : ''}`;
+  }
+  function setTrim(which, t) {
+    t = Math.max(0, Math.min(trim.dur, t));
+    if (which === 'start') trim.start = Math.min(t, trim.end - 1);
+    else trim.end = Math.max(t, trim.start + 1);
+    showTrimTimes(); drawTrim();
+  }
+  // One waveform on a canvas: min/max of the samples in each pixel column, the trimmed-off
+  // parts dimmed, the handles, and the preview's playhead.
+  function drawWave(cv, t0, t1, handles) {
+    const dpr = devicePixelRatio || 1, W = Math.max(10, Math.round(cv.clientWidth * dpr)), H = Math.max(10, Math.round(cv.clientHeight * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const g = cv.getContext('2d'), X = (t) => ((t - t0) / (t1 - t0)) * W, x = trim.x, sr = trim.sr;
+    g.clearRect(0, 0, W, H);
+    let peak = 1e-6;
+    const cols = [];
+    for (let c = 0; c < W; c++) {
+      const i0 = Math.max(0, Math.floor((t0 + (c / W) * (t1 - t0)) * sr)), i1 = Math.min(x.length, Math.floor((t0 + ((c + 1) / W) * (t1 - t0)) * sr));
+      let lo = 0, hi = 0;
+      const step = Math.max(1, Math.floor((i1 - i0) / 400));     // a wide column: every sample isn't needed
+      for (let i = i0; i < i1; i += step) { const v = x[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+      cols.push([lo, hi]); peak = Math.max(peak, -lo, hi);
+    }
+    const scale = (H / 2 - 4) / Math.max(peak, 0.02);
+    for (let c = 0; c < W; c++) {
+      const t = t0 + ((c + 0.5) / W) * (t1 - t0), inside = t >= trim.start && t <= trim.end;
+      g.fillStyle = inside ? '#a78bfa' : 'rgba(167, 139, 250, .28)';
+      const [lo, hi] = cols[c];
+      g.fillRect(c, H / 2 - hi * scale, 1, Math.max(1, (hi - lo) * scale));
+    }
+    g.fillStyle = 'rgba(0, 0, 0, .45)';
+    if (trim.start > t0) g.fillRect(0, 0, X(trim.start), H);
+    if (trim.end < t1) g.fillRect(X(trim.end), 0, W - X(trim.end), H);
+    for (const [t, on] of handles) {
+      g.fillStyle = '#facc15';
+      g.fillRect(X(t) - dpr, 0, 2 * dpr, H);
+      if (on) { g.beginPath(); g.roundRect(X(t) - 6 * dpr, H / 2 - 14 * dpr, 12 * dpr, 28 * dpr, 4 * dpr); g.fill(); }
+    }
+    if (trim.preview.length) {
+      const at = trim.playFrom + (ctx.currentTime - trim.playAt);
+      if (at >= t0 && at <= t1) { g.fillStyle = '#4ade80'; g.fillRect(X(at) - dpr, 0, 2 * dpr, H); }
+    }
+  }
+  function drawTrim() {
+    if (!$('#trim-dlg').open || !trim.x) return;
+    drawWave($('#trim-canvas'), 0, trim.dur, [[trim.start, true], [trim.end, true]]);
+    drawWave($('#trim-zoom-start'), Math.max(0, trim.start - 3), Math.max(0, trim.start - 3) + 6, [[trim.start, true]]);
+    drawWave($('#trim-zoom-end'), Math.min(trim.dur, trim.end + 3) - 6, Math.min(trim.dur, trim.end + 3), [[trim.end, true]]);
+  }
+  // Dragging: on the whole waveform the nearer handle moves; on a close-up, its own handle.
+  function trimPointer(cv, range, which) {
+    const at = (e) => { const r = cv.getBoundingClientRect(), [t0, t1] = range(); return t0 + ((e.clientX - r.left) / r.width) * (t1 - t0); };
+    cv.addEventListener('pointerdown', (e) => {
+      const t = at(e);
+      trim.drag = which || (Math.abs(t - trim.start) <= Math.abs(t - trim.end) ? 'start' : 'end');
+      cv.setPointerCapture(e.pointerId);
+      setTrim(trim.drag, t);
+    });
+    cv.addEventListener('pointermove', (e) => { if (trim.drag) setTrim(trim.drag, at(e)); });
+    cv.addEventListener('pointerup', () => { trim.drag = null; });
+  }
+  trimPointer($('#trim-canvas'), () => [0, trim.dur], null);
+  trimPointer($('#trim-zoom-start'), () => [Math.max(0, trim.start - 3), Math.max(0, trim.start - 3) + 6], 'start');
+  trimPointer($('#trim-zoom-end'), () => [Math.min(trim.dur, trim.end + 3) - 6, Math.min(trim.dur, trim.end + 3)], 'end');
+  document.querySelectorAll('#trim-dlg [data-nudge]').forEach((b) => b.addEventListener('click', () => setTrim(b.dataset.nudge, trim[b.dataset.nudge] + Number(b.dataset.by))));
+  for (const which of ['start', 'end']) {
+    $(`#trim-${which}`).addEventListener('change', (e) => {
+      const t = parseTime(e.target.value);
+      if (Number.isFinite(t)) setTrim(which, t); else showTrimTimes();
+    });
+  }
+  // Preview: the loaded version through the player's own gains (so the mode you hear stays).
+  function stopTrimPreview() { trim.preview.forEach((s) => { try { s.stop(); } catch { /* ended */ } }); trim.preview = []; drawTrim(); }
+  function previewTrim(from, until) {
+    stopTrimPreview();
+    if (player.playing) pause();
+    ctx.resume();
+    const when = ctx.currentTime + 0.03;
+    trim.preview = [[player.buffers[0], gain.a], [player.buffers[1], gain.b]].map(([buf, gn]) => {
+      const s = ctx.createBufferSource(); s.buffer = buf; s.connect(gn); s.start(when, from); s.stop(when + (until - from)); return s;
+    });
+    Object.assign(trim, { playFrom: from, playAt: when, playUntil: until });
+    trim.preview[0].onended = () => { trim.preview = []; drawTrim(); };
+    const tick = () => { if (!trim.preview.length) return; drawTrim(); requestAnimationFrame(tick); };
+    tick();
+  }
+  $('#trim-play-start').addEventListener('click', () => previewTrim(trim.start, Math.min(trim.end, trim.start + 4)));
+  $('#trim-play-end').addEventListener('click', () => previewTrim(Math.max(trim.start, trim.end - 4), trim.end));
+  $('#trim-dlg').addEventListener('close', stopTrimPreview);
+  addEventListener('resize', drawTrim);
+  async function saveTrim(whole) {
+    const song = trim.song, all = whole || (trim.start < 0.05 && trim.end > trim.dur - 0.05);
+    try {
+      const r = await postJSON('/api/song/trim', all ? { song: song.id } : { song: song.id, start: trim.start, end: trim.end >= trim.dur - 0.05 ? null : trim.end });
+      for (const s of [song, state.current?.song, ...(state.library?.songs || []).filter((x) => x.id === song.id)]) if (s) s.trim = r.trim || null;
+      $('#trim-dlg').close();
+      toast(r.trim ? `Trimmed: “${song.title}” plays ${fmtTenths(r.trim.start)} to ${r.trim.end != null ? fmtTenths(r.trim.end) : 'the end'}.` : `“${song.title}” plays whole again.`);
+      showSkipNote();
+      if (player.playing) { const t = currentTime(); stopSources(); player.offset = t; play(); }
+    } catch (err) { toast(err.message, 'error'); }
+  }
+  $('#trim-save').addEventListener('click', () => saveTrim(false));
+  $('#trim-whole').addEventListener('click', () => saveTrim(true));
+  $('#trim-open').addEventListener('click', () => { $('#mixer').classList.add('hidden'); if (state.current) openTrim(state.current.song); });
+  // Also in the Bass input drawer's recording column (user: "make it also available in the
+  // recording section"), with the song's trim shown under it.
+  $('#input-trim').addEventListener('click', () => { if (rec.active) return; if (state.current) openTrim(state.current.song); });
+
   async function play() {
     if (!state.current) return;
     if (!player.buffers) { player.wantPlay = true; renderPlayer(); return; }   // starts once loaded
@@ -1838,7 +2147,9 @@
     try { await ctx.resume(); }
     catch (e) { toast(`Couldn't play this song: ${e.message}`, 'error'); return; }
     if (player.playing || !player.buffers) return;
-    if (player.offset >= duration()) player.offset = 0;
+    const range = playRange();
+    if (player.offset >= range.end - 0.05) player.offset = 0;
+    if (player.offset < range.start) player.offset = range.start;      // silence before the first sound
     const when = ctx.currentTime + 0.03;
     const tracks = [[player.buffers[0], gain.a], [player.buffers[1], gain.b]];
     if (player.original) tracks.push([player.original, gain.o]);
@@ -1850,6 +2161,7 @@
       s.start(when, Math.min(player.offset, buffer.duration));
       return s;
     });
+    if (range.end < duration() - 0.05) player.sources.forEach((s) => s.stop(when + Math.max(0, range.end - player.offset)));   // ... and after the last
     player.sources[0].onended = () => { stopSources(); player.offset = 0; updateTime(); renderPlayer(); renderSongs(); };
     player.startedAt = when;
     player.playing = true;
@@ -1989,6 +2301,7 @@
   const songMenu = (song) => [
     { label: song.has_original ? 'New version…' : 'New version… (no saved original)', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song) },
     { label: 'Edit song & versions…', icon: icons.edit, action: () => openEdit(song) },
+    { label: song.trim ? 'Trim start and end… (trimmed)' : 'Trim start and end…', icon: icons.scissors, disabled: !song.versions.length, action: () => openTrim(song) },
     { label: 'Import bass tab…', icon: icons.music, disabled: !song.has_original && !song.versions.some((v) => v.removed === 'bass'),
       action: () => importFromMenu(song) },
     '-',
@@ -2464,7 +2777,7 @@
     if (failed.length) toast(`Couldn't process: ${failed.join(', ')}`, 'error');
     if (kind === 'record') {
       if (done.length) {
-        toast('Your take is in your tab, and you can hear it with "My bass".');
+        toast('Your take is ready: check it in the tab, then Keep or Discard it.');
         setSource(tabView.song, 'mine');
         await refreshLibrary();
         reloadAudio();   // picks up the recorded bass
@@ -2591,6 +2904,14 @@
   async function loadTab(tuning) {
     const song = state.current?.song;
     if (!song) return openTab(false);
+    if (tabView.song !== song.id) {
+      // Another song: its tab replaces the last one only when it arrives (an imported tab
+      // re-syncing takes ~1-2 s), so until then say so instead of showing the last song's
+      // tab under the new title (user: "I got the wrong tab when switching songs").
+      tabView.data = null;
+      tabView.selected = null;
+      $('#tab-body').replaceChildren(el('div', { className: 'tab-empty tab-loading' }, el('p', { textContent: `Loading the tab for “${song.title}”…` })));
+    }
     tabView.song = song.id;
     $('#tab-title').textContent = `${song.title} · bass tab`;
     const pick = tuning || tabPrefs()[tuningPrefKey(song.id, sourcePrefs()[song.id] || 'imported')];
@@ -2621,6 +2942,10 @@
     $('#tab-source button[data-source="mine"]').classList.toggle('hidden', !tabView.hasMine);
     document.querySelectorAll('#tab-source button').forEach((b) => b.classList.toggle('active', b.dataset.source === (d?.source || 'auto')));
     $('#tab-remove-mine').classList.toggle('hidden', !mine);
+    $('#tab-added-row').classList.toggle('hidden', !mine);
+    $('#tab-added').checked = showAdded;
+    $('#tab-takes').classList.toggle('hidden', !mine || !d?.take_list?.length);
+    showReview(mine ? d.pending : null);
     $('#tab-draft').classList.toggle('hidden', !d || mine);
     const picked = mine && tabView.selected !== null ? d.notes[tabView.selected] : null;
     $('#tab-delete-note').classList.toggle('hidden', !picked);
@@ -2845,13 +3170,23 @@
     for (let k = from; k < to; k++) {
       const [t, te, s, f] = d.notes[k];
       const size = Math.max(font * 0.55, Math.min(font, (room(k) - 2) / (String(f).length * 0.62 + 0.25)));
-      const g = svgEl('g', { class: `note${d.source === 'mine' ? ' editable' : ''}${k === tabView.selected ? ' selected' : ''}` });
+      const origin = d.notes[k][5];                     // the draft: where the note came from
+      const mark = origin === 'new' ? ' n-new' : showAdded && String(origin).startsWith('take:') ? ' n-added' : '';
+      const g = svgEl('g', { class: `note${d.source === 'mine' ? ' editable' : ''}${k === tabView.selected ? ' selected' : ''}${mark}` });
       if (d.source === 'mine') g.addEventListener('click', (e) => { e.stopPropagation(); selectNote(k); });   // your own tab: pick a note to remove
       const w = String(f).length * size * 0.62 + 4;
       g.append(svgEl('rect', { x: x(t) - w / 2, y: y(s) - size * 0.62, width: w, height: size * 1.24, rx: 3 }));
       g.append(svgEl('text', { x: x(t), y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size }, f));
       svg.append(g);
       notes.push([t, te, g, tail(k, t), k]);
+    }
+    for (const [t, , s, f] of d.gone || []) {             // what the take waiting for review would replace
+      if (t < start || t >= end) continue;
+      const size = font * 0.8, w = String(f).length * size * 0.62;
+      const gg = svgEl('g', { class: 'gone' });
+      gg.append(svgEl('text', { x: x(t), y: y(s) - font * 0.62, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size }, f));
+      gg.append(svgEl('line', { x1: x(t) - w / 2 - 2, x2: x(t) + w / 2 + 2, y1: y(s) - font * 0.62, y2: y(s) - font * 0.62 }));
+      svg.append(gg);
     }
     const playhead = big ? svgEl('line', { class: 'playhead', x1: 0, x2: 0, y1: pad * 0.3, y2: height - pad * 0.3 }) : null;
     if (playhead) svg.append(playhead);
@@ -4112,15 +4447,21 @@
     if (e.key === 'Escape') selectNote(tabView.selected);   // deselect
   });
 
-  $('#tab-remove-mine').addEventListener('click', async () => {
-    try {
-      await postJSON('/api/tab/mine/remove', { id: tabView.song });
-      setSource(tabView.song, 'imported');
-      toast('Moved your draft and its takes to the Trash.');
-      await refreshLibrary();
-      reloadAudio();
-      loadTab();
-    } catch (err) { toast(err.message, 'error'); }
+  // Asks first: it sits in More next to the other actions and once took a draft and its
+  // takes away by mistake (the user's next take then looked like Add had removed notes).
+  $('#tab-remove-mine').addEventListener('click', () => {
+    closeMore();
+    const takes = tabView.data?.takes;
+    ask({ title: 'Delete your draft?', danger: true, ok: 'Delete draft',
+      text: `Your draft${takes ? ` and its ${takes} recorded ${takes === 1 ? 'take' : 'takes'}` : ''} go to the Trash. Recording in Add notes afterwards starts again from the song's tab.`,
+      submit: async () => {
+        await postJSON('/api/tab/mine/remove', { id: tabView.song });
+        setSource(tabView.song, 'imported');
+        toast('Moved your draft and its takes to the Trash.');
+        await refreshLibrary();
+        reloadAudio();
+        loadTab();
+      } });
   });
 
   // ---------- Bass input: see the notes you play, hear yourself, record ----------
@@ -4191,7 +4532,7 @@
       sample_rate: ctx.sampleRate, first_frame: check.firstFrame, finished, score: game.score, hits: game.hits, judged: game.judged, best_streak: game.best,
       // frames: [ctx time, tab time (the game's clock), song position, level dB, newest-20-ms dB,
       // gate dB, pitch Hz (0: none), clear in-tune note (raw), steady note, pluck sign, new pitch, shown note]
-      frame_fields: ['ctx', 't', 'pos', 'db', 'fresh_db', 'gate_db', 'hz', 'raw', 'steady', 'plucked', 'new_pitch', 'shown'],
+      frame_fields: ['ctx', 't', 'pos', 'db', 'fresh_db', 'gate_db', 'hz', 'raw', 'steady', 'plucked', 'new_pitch', 'shown', 'hf_db', 'clicked'],
       frames: check.frames, events: check.events,
       notes: d.notes.map((n, k) => ({ start: n[0], end: n[1], string: n[2], fret: n[3], result: game.result[k] || null, grade: game.grade[k] || null })),
     };
@@ -4755,6 +5096,20 @@
     if (raw !== null && prevRaw === raw) input.rawNote = raw;
     if (isGuitar()) listenChords(freshDb, hist);
     input.freshHist = [...hist.slice(-2), freshDb];
+    // A pick's click (user: detection "way better using my fingers than a pick"): picking a
+    // ringing note again barely changes its level (+1.4-3.8 dB, under the 4 above) or its
+    // pitch readings (no blink), but the pick's click is bright: the newest 20 ms's high
+    // frequencies (the signal's 2nd difference) jump. 9 dB over the two readings before.
+    // Replaying the user's Fireman & Dancer games: pick 202 -> 210 of 224 (fingers 221 of
+    // 233 either way); every other recorded game the same or better (Addictive 696 -> 708);
+    // the wrong-notes control (tab moved 2 semitones) within +-2. Only for the game and Show
+    // my timing; the readout and string detection keep `plucked`.
+    let hfSum = 0;
+    for (let i = buf.length - tail + 2; i < buf.length; i++) { const v = buf[i] - 2 * buf[i - 1] + buf[i - 2]; hfSum += v * v; }
+    const hfDb = 10 * Math.log10(hfSum / Math.max(1, tail - 2) + 1e-24), hfHist = input.hfHist || [];
+    const clicked = hfHist.length >= 2 && hfDb - Math.max(...hfHist.slice(-2)) >= 9 && freshDb > gateDb;
+    input.hfHist = [...hfHist.slice(-1), hfDb];
+    input.clicked = clicked && !plucked;
     input.freshDb = freshDb;                            // the game's pluck loudness
     if (input.stringDue && performance.now() >= input.stringDue && !isGuitar()) { input.stringDue = 0; readString(buf, raw); }
     // The note shown (and checked for wrong notes) needs 5 readings in a row (~100 ms)
@@ -4768,11 +5123,11 @@
     input.shownMidi = shown;
     if (!isGuitar()) showNote(shown);
     if (check.on) check.frames.push([+ctx.currentTime.toFixed(4), +tabTime().toFixed(4), +currentTime().toFixed(4), +db.toFixed(1), +freshDb.toFixed(1),
-                                     +gateDb.toFixed(1), hz ? +hz.toFixed(2) : 0, raw, steady ?? null, plucked ? 1 : 0, newPitch ? 1 : 0, shown]);
+                                     +gateDb.toFixed(1), hz ? +hz.toFixed(2) : 0, raw, steady ?? null, plucked ? 1 : 0, newPitch ? 1 : 0, shown, +hfDb.toFixed(1), clicked ? 1 : 0]);
     if (calib.on) { calibListen(db); return; }
-    if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked, newPitch, rePluck);
+    if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked || clicked, newPitch, rePluck);
     if (game.on && !game.countdown) {
-      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw, plucked, newPitch, rePluck); }
+      if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw, plucked || clicked, newPitch, rePluck); }
       else if (game.started && !game.paused) {
         if (player.offset === 0) endGame();               // the song ended (its end resets the position)
         else pauseGame();                                 // paused (Space): the pause menu
@@ -5124,6 +5479,7 @@
       $('#input-device').replaceChildren(...inputs.map((dv) => el('option', { value: dv.deviceId, textContent: dv.label || 'Audio input' })));
       $('#input-device').value = saved && inputs.some((dv) => dv.deviceId === saved) ? saved : (interfaceInput?.deviceId || current);
       if ($('#input-device').value !== current) await openInput($('#input-device').value);
+      checkDevice(inputs);
     } catch (err) {
       const why = {
         NotAllowedError: /system/i.test(err.message)
@@ -5160,8 +5516,25 @@
   $('#input-close').addEventListener('click', closeInputBar);
   $('#input-device').addEventListener('change', (e) => {
     setPref(INPUT_KEY, e.target.value);
-    openInput(e.target.value).catch((err) => toast(`Couldn't open that input: ${err.message}`, 'error'));
+    openInput(e.target.value).then(() => navigator.mediaDevices.enumerateDevices())
+      .then((all) => checkDevice(all.filter((dv) => dv.kind === 'audioinput')))
+      .catch((err) => toast(`Couldn't open that input: ${err.message}`, 'error'));
   });
+  // Listening to a microphone while an audio interface is plugged in: say so, with a
+  // button to switch (user: takes kept "came in quietly and nothing matches"; they were a
+  // room microphone's sound: a steady ~332 Hz ring, the bass 9 dB down, a third of the
+  // energy above 250 Hz, where the Scarlett's recordings were 93-96% below it).
+  const inputLabel = () => input.stream?.getAudioTracks()[0]?.label || '';
+  function checkDevice(inputs) {
+    const label = inputLabel(), iface = inputs.find((dv) => /scarlett|focusrite/i.test(dv.label));
+    const wrong = !!iface && !/scarlett|focusrite/i.test(label);
+    $('#input-wrongdev').classList.toggle('hidden', !wrong);
+    if (!wrong) return;
+    $('#input-wrongdev-text').textContent = `Listening to “${label || 'another input'}”, not your ${iface.label.replace(/\s*\(.*\)$/, '')}.`;
+    $('#input-wrongdev-use').textContent = `Use ${iface.label.replace(/\s*\(.*\)$/, '').replace(/ USB$/, '')}`;
+    $('#input-wrongdev-use').onclick = () => { $('#input-device').value = iface.deviceId; $('#input-device').dispatchEvent(new Event('change')); };
+    toast(`The bass input is “${label}”, not your ${iface.label.replace(/\s*\(.*\)$/, '')}: switch it in Bass input → Input.`, 'error');
+  }
   $('#input-channel').addEventListener('change', (e) => {
     setPref(CHANNEL_KEY, e.target.value);
     openInput($('#input-device').value).catch(() => {});
@@ -5260,8 +5633,83 @@
       $('#input-record-text').textContent = `Stop ${fmtTime((Date.now() - began) / 1000)}`;
       $('#tab-input-text').textContent = `Rec ${fmtTime((Date.now() - began) / 1000)}`;
       if (rec.startedAt !== null && !player.playing) stopRecording();   // paused or the song ended
+      if (rec.redo?.stopAt != null && currentTime() >= rec.redo.stopAt + 0.3) stopRecording();   // a redo ends where the section does
     }, 250);
   }
+
+  // Takes are reviewed before they're saved (user: "a way to redo a section and then save
+  // my changes instead of auto saving, and maybe display what was added and an option to
+  // redo sections that were added"): a finished take waits in the draft (the server's
+  // "pending") shown as it would change it: notes it adds in green, notes it would replace
+  // struck through in red, with Keep / Discard / Redo / Play it. Redo (here or for a saved
+  // take in Your takes…) records the same stretch again from 2 s before, stopping by
+  // itself at its end; on Keep the take it redoes is replaced. "Show what I added" (View)
+  // colours the notes your kept takes put in.
+  const SHOW_ADDED_KEY = 'track-splitter-show-added';   // showAdded is declared at the top (tab lines can draw first)
+  $('#tab-added').addEventListener('change', (e) => {
+    showAdded = e.target.checked;
+    setPref(SHOW_ADDED_KEY, showAdded ? '1' : '0');
+    tabView.line = -1; tabFrame(true);
+  });
+  function showReview(p) {
+    $('#take-review').classList.toggle('hidden', !p);
+    if (!p) return;
+    $('#tr-title').textContent = p.replaces ? `Redo of take ${p.replaces}` : 'New take';
+    const what = [p.added ? `+${p.added} note${p.added === 1 ? '' : 's'}` : 'no new notes', p.removed ? `−${p.removed} replaced` : ''].filter(Boolean).join(', ');
+    $('#tr-sub').textContent = `${fmtTime(p.start)}–${fmtTime(p.end)} · ${p.mode === 'add' ? 'Add notes' : 'Replace'} · ${what}`;
+    // A take that doesn't sound like the bass coming in properly (barely matches the tab,
+    // or very quiet): say so, it's usually the input or the gain, not the playing.
+    // Quiet alone is fine (a good take of the user's peaked at -36 dB and matched 88%).
+    const off = p.match != null ? p.match < 0.2 : p.peak_db != null && p.peak_db < -45, quiet = p.peak_db != null && p.peak_db < -30;
+    $('#tr-warn').classList.toggle('hidden', !off);
+    const from = p.device ? ` Recorded from “${p.device}”${p.channel != null && p.channel !== 'both' ? `, Input ${Number(p.channel) + 1}` : ''}.` : '';
+    $('#tr-warn').textContent = `⚠ ${p.match != null ? `Only ${Math.round(p.match * 100)}% of what was heard matches the tab here` : 'Very little came in'}${quiet ? `, and it came in quietly (${Math.round(p.peak_db)} dB)` : ''}.${from} Is your bass on the input chosen in Bass input → Input, with the interface's gain up?`;
+  }
+  async function takeAction(body, done) {
+    try {
+      await postJSON('/api/tab/mine/take', { song: tabView.song, ...body });
+      if (done) toast(done);
+      await refreshLibrary();
+      reloadAudio();                                     // "My bass" plays the kept takes
+      loadTab();
+    } catch (err) { toast(err.message, 'error'); }
+  }
+  $('#tr-keep').addEventListener('click', () => takeAction({ keep: true }, 'Saved into your draft.'));
+  $('#tr-discard').addEventListener('click', () => takeAction({ keep: false }, 'Take thrown away; your draft is as it was.'));
+  $('#tr-play').addEventListener('click', () => { const p = tabView.data?.pending; if (p) { seekTo(Math.max(0, p.start - 1)); play(); } });
+  $('#tr-redo').addEventListener('click', () => { const p = tabView.data?.pending; if (p) redoSection(p.start, p.end, p.mode, p.replaces_made); });
+  async function redoSection(start, end, mode, replaces) {
+    if (rec.active) return;
+    if (!input.stream) await openInputBar();
+    if (!input.source) { toast('Connect your bass input first (Bass input).', 'error'); return; }
+    recordMode = mode; setPref(RECORD_MODE_KEY, recordMode); showRecordMode();
+    rec.redo = { replaces: replaces ?? null, stopAt: end };
+    seekTo(start);                                       // startRecording starts 2 s before this
+    startRecording();
+  }
+  function showTakes() {
+    const d = tabView.data, list = d?.take_list || [];
+    $('#takes-sub').textContent = `${list.length} section${list.length === 1 ? '' : 's'} recorded into your draft`;
+    $('#takes-list').replaceChildren(...list.map((t) => {
+      const go = el('button', { type: 'button', className: 'btn sm', textContent: 'Go there' });
+      go.addEventListener('click', () => { $('#takes-dlg').close(); seekTo(Math.max(0, t.start - 1)); });
+      const redo = el('button', { type: 'button', className: 'btn sm', textContent: 'Redo', title: 'Record this section again; you review it before it replaces this take' });
+      redo.addEventListener('click', () => { $('#takes-dlg').close(); redoSection(t.start, t.end, t.mode, t.made); });
+      const remove = el('button', { type: 'button', className: 'btn sm danger', textContent: 'Remove', title: 'Take this take out of your draft (its recording goes to the Trash)' });
+      remove.addEventListener('click', () => {
+        $('#takes-dlg').close();
+        ask({ title: `Remove take ${t.n}?`, danger: true, ok: 'Remove take',
+          text: `What it put into ${fmtTime(t.start)}–${fmtTime(t.end)} comes out of your draft, and its recording goes to the Trash.`,
+          submit: () => takeAction({ remove: t.made }, `Take ${t.n} removed.`) });
+      });
+      return el('div', { className: 'take-row' },
+        el('div', { className: 'tk-text' }, el('strong', { textContent: `Take ${t.n} · ${fmtTime(t.start)}–${fmtTime(t.end)}` }),
+          el('span', { textContent: `${t.mode === 'add' ? 'Add notes' : 'Replace'} · ${t.added} note${t.added === 1 ? '' : 's'} in your draft from it` })),
+        go, redo, remove);
+    }));
+    $('#takes-dlg').showModal();
+  }
+  $('#tab-takes').addEventListener('click', () => { closeMore(); showTakes(); });
 
   function wavFile(samples, rate) {
     const b = new DataView(new ArrayBuffer(44 + samples.length * 4));
@@ -5294,6 +5742,10 @@
     form.append('song_start', String(rec.songStart));
     form.append('shift', String(player.shift));
     form.append('mode', recordMode);
+    form.append('device', inputLabel());
+    form.append('channel', String(inputChannel()));
+    if (rec.redo?.replaces != null) form.append('replaces', String(rec.redo.replaces));
+    rec.redo = null;
     form.append('file', wavFile(samples, ctx.sampleRate), 'take.wav');
     try {
       const res = await fetch('/api/tab/record', { method: 'POST', body: form });
@@ -5403,7 +5855,7 @@
       else { p.final = true; game.levels = [...(game.levels || []).slice(-39), p.db]; }
     }
     if (attack) { game.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null, db: fd, at: now }); game.lastAttack = now; }
-    if (attack) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: fresh ? 'newest 20 ms jumped' : 'level jumped' });
+    if (attack) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: input.clicked ? 'click (high frequencies)' : fresh ? 'newest 20 ms jumped' : 'level jumped' });
     if (newPitch) game.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, final: true, db, at: now });   // how loud the string is
     if (newPitch) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'new pitch' });
     if (rePluck && !attack && !newPitch) {               // timed where the readings blurred
