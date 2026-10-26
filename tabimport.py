@@ -53,9 +53,10 @@ class TabTrack:
     strings: list       # open-string MIDI notes, lowest first
     bars: list
     tempo: float = 120.0
-    timed: bool = True  # False for text tabs: positions are only the order of the notes
+    timed: bool = True  # False: positions are only the order of the notes (sync's fallback for spaced text tabs)
     capo: int = 0       # frets are written from the capo: a note sounds strings[s] + capo + fret
     tempo_known: bool = True   # False for text tabs with counts: rhythm but no tempo (sync guesses it)
+    spaced: bool = False       # text tab without counts: rhythm read from the spacing (see read_text)
 
     def pitch(self, string, fret):
         return self.strings[string] + self.capo + fret
@@ -361,7 +362,8 @@ def read_text(text):
     from the song's, see sync). Also read: repeat signs (|o ... o| or |: ... :|) with a
     play count after the system ("x4", default 2), hammer-ons / pull-offs (h, p) and
     slides (/ \\). Text after a system's last bar line isn't read as notes ("x4" was a
-    dead note and a 4)."""
+    dead note and a 4). Without count lines the rhythm comes from the spacing
+    (`_rhythm_from_spacing`)."""
     lines = text.replace("\t", "    ").splitlines()
     systems, block = [], []
     for line in lines + [""]:
@@ -416,6 +418,11 @@ def read_text(text):
             inside = [(k, note) for k, note in notes if a <= note[0] < b or (a == edges[0] and note[0] < a)]
             if b - a <= 1 or (timed and not inside and b - a < per_beat):
                 continue
+            # Without counts a bar's time starts after its bar line and the "-" padding
+            # Ultimate Guitar puts after it ("|-3---3---...": the first 8th is at 0, not
+            # a quarter beat in, which left a gap at every bar line).
+            lead = 0 if timed else sum(1 for c in (a, a + 1) if c < b - 1 and all(r[c] in "|-" for r in rows))
+            a += lead
             bar = TabBar(beats=(b - a) / per_beat)
             for k, (col, fret, into, out) in inside:
                 if timed:   # until the next note on any string, within the bar
@@ -425,7 +432,7 @@ def read_text(text):
                     dur = 0.25
                 bar.notes.append(TabNote(max(0, col - a) / per_beat, dur, n - 1 - k, fret or 0,
                                          dead=fret is None, legato_in=into, legato_out=out))
-            made.append((a, b, bar))
+            made.append((a - lead, b, bar))
         # A repeat opens on the first bar from its sign on, and closes on the last bar
         # that ends by its sign (the space before a count's first 1 and after its last
         # measure isn't a bar).
@@ -438,7 +445,34 @@ def read_text(text):
             if hit:
                 hit[2].repeat_close = plays
         bars += [m[2] for m in made]
-    return [TabTrack("Pasted tab", strings, bars, 120.0, timed=timed, tempo_known=not timed)]
+    if not timed:
+        _rhythm_from_spacing(bars)
+    return [TabTrack("Pasted tab", strings, bars, 120.0, timed=True, tempo_known=False, spaced=not timed)]
+
+
+def _rhythm_from_spacing(bars):
+    """A text tab without count lines: take the rhythm from the spacing. Ultimate Guitar
+    lays tabs out roughly in proportion to time (a steady 8th every 4 columns, the same bar
+    29-33 columns wide), so a bar is 4 beats unless it's much shorter or longer than the
+    typical bar (then its width against that, in whole beats: "|--------|" is 1), and notes
+    sit where their column puts them, each lasting until the next. Read as order only, the
+    strummed chorus of So Far So Fake came out with its steady 8ths 0.03-0.8 s apart (user:
+    "some of it comes in ok, but other parts are just flat out wrong"): each note was pulled
+    onto whatever the guitar transcription heard nearby."""
+    widths = [b.beats for b in bars if b.notes]
+    if not widths:
+        return
+    typical = float(np.median(widths))
+    for bar in bars:
+        ratio = bar.beats / typical
+        beats = 4.0 if 0.7 <= ratio <= 1.3 else max(1.0, float(round(4 * ratio)))
+        k = beats / bar.beats
+        starts = sorted({n.pos * k for n in bar.notes})
+        for n in bar.notes:
+            n.pos *= k
+            nxt = next((s for s in starts if s > n.pos + 1e-9), beats)
+            n.dur = max(0.125, nxt - n.pos)
+        bar.beats = beats
 
 
 # --- Any file ----------------------------------------------------------------------
@@ -765,12 +799,22 @@ def _sync_order(tab_p, heard, expected=None, unit=None):
     return match
 
 
+SPACING_TRUST = 0.8   # a spaced text tab keeps its spacing unless order-only placing finds 25% more notes
+
+
 def sync(track, heard, beat=None):
     """The tab's notes and bars on the recording's clock (beat: the song's beat length in
     seconds, from the beat tracker; text tabs need it, they have no tempo of their own).
 
     Returns {"notes": [[start, end, string, fret, dead]], "bars": [start s],
     "quality": share of tab notes that matched a heard note}."""
+    if track.spaced:
+        # Rhythm read from a pasted tab's spacing: usually close (Ultimate Guitar lays tabs
+        # out in proportion to time), but a hand-typed tab can be spaced anyhow, so if
+        # placing notes in order finds far more of them, that wins.
+        by_spacing = sync(replace(track, spaced=False), heard, beat)
+        by_order = sync(replace(track, spaced=False, timed=False), heard, beat)
+        return by_spacing if by_spacing["found"] >= SPACING_TRUST * by_order["found"] else by_order
     if track.timed and not track.tempo_known:
         # A pasted tab with counts has rhythm but no tempo: try the song's (the beat
         # tracker's, which can be off by 2x either way) and keep the best fit; the tempo
@@ -778,13 +822,15 @@ def sync(track, heard, beat=None):
         bpm = 60 / beat if beat else 120.0
         guesses = [b for b in (bpm, bpm / 2, bpm * 2) if 50 <= b <= 260] or [120.0]
         tries = [sync(replace(track, tempo=b, tempo_known=True), heard, beat) for b in guesses]
-        return max(tries, key=lambda r: r["quality"])
+        # Judged on all the tab's notes: "quality" leaves out bars the sync left out, and
+        # at half or double speed it left out half the tab and still looked best.
+        return max(tries, key=lambda r: r["found"])
     notes, bar_starts = timeline(track)
     playable = [k for k, n in enumerate(notes) if not n[4]]
     tab_t = [notes[k][0] for k in playable]
     tab_p = [track.pitch(notes[k][2], notes[k][3]) for k in playable]
     if not heard or not playable:
-        return {"notes": [list(n[:5]) for n in notes], "bars": bar_starts, "quality": 0.0}
+        return {"notes": [list(n[:5]) for n in notes], "bars": bar_starts, "quality": 0.0, "found": 0.0}
     if track.timed:
         bar_of = np.array([notes[k][5] for k in playable])
         ends = list(bar_starts[1:]) + [bar_starts[-1] + (bar_starts[-1] - bar_starts[-2] if len(bar_starts) > 1 else 2.0)]
@@ -799,7 +845,8 @@ def sync(track, heard, beat=None):
         return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], notes[k][6] or ""] for k, n in enumerate(out)
                           if bar_audio[notes[k][5]] is not None],
                 "bars": [round(float(x), 3) for x in bar_audio if x is not None],
-                "quality": round(matched / max(1, sum(1 for k in playable if bar_audio[notes[k][5]] is not None)), 2)}
+                "quality": round(matched / max(1, sum(1 for k in playable if bar_audio[notes[k][5]] is not None)), 2),
+                "found": matched / len(playable)}
     # Order only (text tab): spacing inside a bar isn't reliable, and matching the whole
     # pitch sequence slips by a riff repetition (60% right on a test line). So bars are
     # placed by their notes' content (which pitches, not where), at the song's own bar
@@ -872,7 +919,8 @@ def _sync_text(track, notes, playable, tab_p, heard, beat):
     out, matched = _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends,
                                   lambda b: length, keep_lengths=False)
     return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:]] for n in out],
-            "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2)}
+            "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2),
+            "found": matched / max(1, len(playable))}
 
 
 STEADY_MAX = 0.08   # how far (s) a bar may be shifted to fit what's heard (see _place_in_bars)

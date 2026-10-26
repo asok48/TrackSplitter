@@ -1123,7 +1123,7 @@
       <div class="player-inst" title="What you're playing: Bass or Guitar (what the input listens for, and what Match the song's tone matches), and which of your saved instruments">
         <div class="segmented" id="player-kind" role="group" aria-label="Instrument type">
           <button type="button" data-instrument="bass">Bass</button>
-          <button type="button" data-instrument="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
+          <button type="button" data-instrument="guitar">Guitar</button>
         </div>
         <select id="player-inst" aria-label="Which of your instruments"></select>
       </div>
@@ -1359,7 +1359,7 @@
         <input type="text" id="inst-name" maxlength="40" placeholder="Name, e.g. Fender P" aria-label="Instrument name">
         <div class="segmented" id="inst-kind" role="group" aria-label="Type" title="Bass is matched with the song's bass, Guitar with its guitar">
           <button type="button" data-kind="bass">Bass</button>
-          <button type="button" data-kind="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
+          <button type="button" data-kind="guitar">Guitar</button>
         </div>
         <button type="button" class="btn sm primary" id="inst-add-go">Capture 45 s</button>
       </div>
@@ -4146,6 +4146,8 @@
       }
     }
 
+    // Guitar: repeat strums of a chord are bars (drawChordBars), their gems left out below.
+    const chordRepeats = game.members ? (drawChordBars(g, t, d, { sx, depth, Z, zPast, laneY, gemW, gemH, laneColor }), d.chordRuns.repeats) : null;
     // Notes, far ones first so near ones are drawn on top.
     g.textAlign = 'center'; g.textBaseline = 'middle';
     let lo = 0, hi = notes.length;
@@ -4168,7 +4170,7 @@
         quad([[sx(z), laneY(s, z) - w0 / 2], [sx(zEnd), laneY(s, zEnd) - w1 / 2], [sx(zEnd), laneY(s, zEnd) + w1 / 2], [sx(z), laneY(s, z) + w0 / 2]], colour);
         g.shadowBlur = 0; g.globalAlpha = 1;
       }
-      if (holding) continue;                                          // the button glows instead (effects below)
+      if (holding || chordRepeats?.has(k)) continue;                  // the button glows instead (effects below); or a chord bar
       const k2 = depth(z), w = gemW * k2, h = gemH * k2, x = sx(z), y = laneY(s, z), r = Math.min(12, w / 3) * k2 + 2;
       g.globalAlpha = res === 'miss' ? 0.45 : z < 0 ? Math.max(0, 1 + z / -zPast) : 1;
       // Far notes fade in over the last 15% of the board instead of popping in.
@@ -4212,6 +4214,8 @@
       }
       g.globalAlpha = 1;
     }
+
+    if (game.members) drawChordCards(g, t, d, { sx, depth, Z, nearX, W, laneColor, top: (z) => edgeY(-1, z) });   // guitar: chord names and shapes
 
     // Effects: per hit a flash and sparks from the strike button (gold too on a Perfect),
     // "Perfect!"/"Good" rising; while a long note is held, sparks stream and it glows.
@@ -4675,8 +4679,12 @@
   // Record captures a take (an AudioWorklet posts each block with its frame number) and
   // sends it as a float WAV with the song time it starts at; the server lines it up.
   const RECORDER = `class Rec extends AudioWorkletProcessor {
-    constructor() { super(); this.channel = 0; this.port.onmessage = (e) => { this.channel = e.data.channel; }; }
+    constructor() {
+      super(); this.channel = 0; this.done = false;
+      this.port.onmessage = (e) => { if (e.data.stop) this.done = true; else this.channel = e.data.channel; };
+    }
     process(inputs) {
+      if (this.done) return false;
       const ch = inputs[0];
       if (ch && ch.length) {
         let data;
@@ -4691,6 +4699,16 @@
   }
   registerProcessor('track-splitter-recorder', Rec);`;
   let recorderLoaded = null;
+  // A recorder that's done: disconnecting only its output left the input feeding it, so it
+  // kept running and its old handler pushed every block into the next capture / take /
+  // game check as well (a 45 s capture came out 90 s, two copies interleaved block by block).
+  function dropRecorder(node) {
+    if (!node) return;
+    node.port.onmessage = null;
+    node.port.postMessage({ stop: true });
+    try { input.source?.disconnect(node); } catch { /* already gone */ }
+    node.disconnect();
+  }
   const input = { stream: null, source: null, analyser: null, mon: null, monIn: null, monTone: [], monOut: null, timer: 0, recent: [], note: null, lane: null, match: false };
   const rec = { node: null, sink: null, chunks: [], startedAt: null, songStart: 0, active: false, timer: 0 };
   // Game check (user: "inconsistencies with the game and picking up random notes, can we
@@ -4719,8 +4737,7 @@
   }
   async function finishCheck(played, finished) {
     check.on = false;
-    try { input.source?.disconnect(check.node); } catch { /* already gone */ }
-    check.node?.disconnect(); check.sink?.disconnect();
+    dropRecorder(check.node); check.node = null; check.sink?.disconnect();
     if (!check.chunks.length || !played) return;
     const total = check.chunks.reduce((a, c) => a + c.length, 0), samples = new Float32Array(total);
     let o = 0;
@@ -4891,47 +4908,201 @@
     showToneSwitch();
     const m = input.mon, token = ++toneToken;
     const note = $('#input-tone-note');
-    if (!toneOn()) { note.textContent = ''; wireTone(m, null); return; }
+    if (!toneOn()) { note.textContent = ''; note.title = ''; wireTone(m, null); return; }
     if (!m) { note.textContent = 'Turn on Hear myself to hear it.'; return; }
     const kind = toneKind(), key = `${state.current.song.id}|${m.sampleRate}|${kind}|${insts.current[kind]}`;
     if (!toneCache.has(key)) {
       note.textContent = `Measuring the song’s ${kind}…`;
       toneCache.set(key, await api(`/api/tone?song=${encodeURIComponent(state.current.song.id)}&rate=${m.sampleRate}&kind=${kind}`).catch((err) => ({ error: err.message })));
     }
-    if (token !== toneToken || m !== input.mon) return;   // changed meanwhile
     const t = toneCache.get(key);
+    if (t.groups && !m.gateLoaded) {                   // the noise gate in front of the drive
+      m.gateLoaded = m.audioWorklet.addModule(URL.createObjectURL(new Blob([GATE], { type: 'application/javascript' })))
+        .then(() => true, (err) => { console.warn('Noise gate unavailable:', err); return false; });
+    }
+    const gate = t.groups ? await m.gateLoaded : false;
+    if (token !== toneToken || m !== input.mon) return;   // changed meanwhile
     if (t.error) { toneCache.delete(key); note.textContent = t.error; wireTone(m, null); return; }
-    wireTone(m, t);
-    // Low / mid / high: what the EQ does on average there (dB).
+    wireTone(m, t, gate);
+    showToneNote();
+  }
+  // Low / mid / high: what an EQ does on average there (dB).
+  function toneSummary(t, g) {
     const avg = (lo, hi) => {
-      const v = t.bands.map((b, i) => [b, t.fit[i]]).filter(([b]) => b >= lo && b <= hi).map(([, g]) => g + t.trim_db);
+      const v = t.bands.map((b, i) => [b, g.fit[i]]).filter(([b]) => b >= lo && b <= hi).map(([, x]) => x + g.trim_db);
       return Math.round(v.reduce((a, b) => a + b, 0) / v.length);
     };
     const sign = (v) => (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0');
-    const vs = yourName(t.instrument.name);
-    note.textContent = `Low ${sign(avg(40, 160))} · Mid ${sign(avg(200, 1000))} · High ${sign(avg(1250, 6400))} dB`;
-    note.title = `The song's ${kind} (${t.track}) compared with ${vs}. ${t.filters.length} filters, within ${t.fit_error_db} dB of the measured difference.`;
+    return `Low ${sign(avg(40, 160))} · Mid ${sign(avg(200, 1000))} · High ${sign(avg(1250, 6400))} dB`;
   }
-  function wireTone(m, t) {
+  // What a part of the song sounds like: by how noise-like its guitar is (tone.py).
+  const toneName = (g) => (!g.drive && g.flat < 0.03 ? 'Clean' : g.flat < 0.1 ? 'Crunch' : 'Distorted');
+  function showToneNote() {
+    const live = input.toneLive, note = $('#input-tone-note');
+    if (!live) return;
+    const t = live.t, vs = yourName(t.instrument.name);
+    if (!t.groups) {
+      note.textContent = toneSummary(t, t);
+      note.title = `The song's ${t.instrument.kind} (${t.track}) compared with ${vs}. ${t.filters.length} filters, within ${t.fit_error_db} dB of the measured difference.`;
+      return;
+    }
+    const g = t.groups[live.group ?? 0];
+    const names = [...new Set(t.groups.map(toneName))];
+    note.textContent = `Now: ${toneName(g)}${g.drive ? ` (drive ${Math.round(20 * Math.log10(g.drive))} dB)` : ''}`
+      + `${g.room?.wet ? ` + room ${Math.round(100 * g.room.wet ** 2)}%` : ''} · ${toneSummary(t, g)}`
+      + (t.needs_capture ? ' · Capture your guitar again (Instruments…) to hear the distortion'
+        : ' · Turn the interface\'s Direct Monitor off: its plain guitar covers this');
+    note.title = `Follows the song's guitar (${t.track}): ${t.sections.length} parts, ${t.groups.length} tones (${names.join(', ').toLowerCase()}), `
+      + `each matched with ${vs}${t.needs_capture ? ' (EQ only: this capture was made before drive was measured)' : ''}.`;
+  }
+  // Guitar parts change tone (user: "So Far So Fake starts with a clean tone and then
+  // changes to a distorted tone. I want my guitar to sound pretty close to the album"):
+  // the server splits the song into parts and sends each tone (`groups`: drive, make-up
+  // and EQ) and when each plays (`sections`). Built once:
+  //   in → clean ─────────────────────────────────────────────┐
+  //   in → gate → pre (high-pass, mid hump) → drive → tanh → low-pass → dirty ┴→ EQ → trim → out
+  // and moved between tones as the song plays (`followTone`, ramps of ~15 ms). The
+  // WaveShaper oversamples 2x against the harsh aliasing of high drive: that adds 128
+  // samples (2.7 ms at 48 kHz) to the distorted path only; 4x would add 192.
+  const SHAPE_RANGE = 8;                                // the curve covers tanh(-8..8)
+  let shapeCurve = null;
+  function tanhCurve() {
+    if (shapeCurve) return shapeCurve;
+    shapeCurve = new Float32Array(4097);
+    for (let i = 0; i < shapeCurve.length; i++) shapeCurve[i] = Math.tanh(SHAPE_RANGE * (i / 2048 - 1));
+    return shapeCurve;
+  }
+  function wireTone(m, t, gateOk) {
     if (!m || !input.monIn) return;
+    clearInterval(input.toneTimer);
+    input.toneLive = null;
     input.monIn.disconnect();
     input.monTone.forEach((n) => n.disconnect());
     input.monTone = [];
-    if (t) {
-      for (const f of t.filters) {
-        const b = m.createBiquadFilter();
-        b.type = f.type; b.frequency.value = f.freq; b.gain.value = f.gain;
-        if (f.q) b.Q.value = f.q;
-        input.monTone.push(b);
-      }
-      const trim = m.createGain();
-      trim.gain.value = 10 ** (t.trim_db / 20);         // same loudness as without
-      input.monTone.push(trim);
+    const biquad = (f) => {
+      const b = m.createBiquadFilter();
+      b.type = f.type; b.frequency.value = f.freq; b.gain.value = f.gain;
+      if (f.q !== undefined) b.Q.value = f.q;
+      return b;
+    };
+    const chain = (from, nodes) => nodes.reduce((a, n) => a.connect(n), from);
+    if (!t) { input.monIn.connect(input.monOut); return; }
+    if (!t.groups) {
+      input.monTone = [...t.filters.map(biquad), m.createGain()];
+      input.monTone.at(-1).gain.value = 10 ** (t.trim_db / 20);   // same loudness as without
+      chain(input.monIn, input.monTone).connect(input.monOut);
+      input.toneLive = { t };
+      return;
     }
-    let node = input.monIn;
-    for (const n of input.monTone) { node.connect(n); node = n; }
-    node.connect(input.monOut);
+    const sum = m.createGain(), clean = m.createGain(), dirty = m.createGain(), drive = m.createGain(), trim = m.createGain();
+    const dry = m.createGain(), wet = m.createGain(), room = m.createConvolver();
+    const shaper = m.createWaveShaper();
+    shaper.curve = tanhCurve();
+    shaper.oversample = '2x';
+    const gate = gateOk ? new AudioWorkletNode(m, 'track-splitter-gate') : null;
+    const pre = t.chain.pre.map(biquad), post = t.chain.post.map(biquad), eq = t.groups[0].filters.map(biquad);
+    clean.gain.value = 0; dirty.gain.value = 0; drive.gain.value = 0;
+    input.monIn.connect(clean).connect(sum);
+    chain(gate ? input.monIn.connect(gate) : input.monIn, [...pre, drive, shaper, ...post, dirty]).connect(sum);
+    chain(sum, [...eq, trim, dry]).connect(input.monOut);
+    room.normalize = false;
+    room.buffer = roomImpulse(m, t.bands, t.song_db.map((v) => 10 ** (v / 10)));
+    wet.gain.value = 0;
+    trim.connect(room).connect(wet).connect(input.monOut);   // the room, in parallel (tone.room)
+    input.monTone = [sum, clean, dirty, drive, trim, dry, wet, room, shaper, ...pre, ...post, ...eq, ...(gate ? [gate] : [])];
+    input.toneLive = { t, m, clean, dirty, drive, trim, dry, wet, eq, gate, group: null };
+    followTone(true);
+    input.toneTimer = setInterval(followTone, 50);
   }
+  // The room for clean parts (tone.room): a stereo impulse response, independent noise
+  // left and right (so the room is wide, as a record's clean guitar is and a DI isn't)
+  // after 12 ms, dying away over ROOM_SECONDS (to -60 dB), highs fading faster than mids
+  // (a one-pole low-pass sliding from 7 kHz to 1.5 kHz) and no lows under ~150 Hz (they
+  // muddy it). Scaled so that, on average over the song's guitar spectrum (`weights`, per
+  // tone.py band), the room is as loud as what goes in; scaling it to unit energy instead
+  // made it ~2.4 dB louder than meant (its energy sits where a guitar's is).
+  const ROOM_SECONDS = 1.2;
+  function roomImpulse(m, bands, weights) {
+    const sr = m.sampleRate, len = Math.round(sr * ROOM_SECONDS), pre = Math.round(sr * 0.012);
+    const buf = m.createBuffer(2, len, sr);
+    let seed = 12345;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32) * 2 - 1;
+    const hp = Math.exp(-2 * Math.PI * 150 / sr);
+    const cutoff = (t) => 7000 * (1500 / 7000) ** (t / ROOM_SECONDS), env = (t) => Math.exp(-6.91 * t / ROOM_SECONDS);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      let lp = 0, last = 0, hpOut = 0;
+      for (let i = pre; i < len; i++) {
+        const t = (i - pre) / sr, a = Math.exp(-2 * Math.PI * cutoff(t) / sr);
+        lp = (1 - a) * rand() + a * lp;
+        hpOut = hp * (hpOut + lp - last); last = lp;
+        d[i] = hpOut * env(t);
+      }
+    }
+    // Expected power gain at each band (the noise's variance 1/3 through both filters,
+    // summed over the decay), weighted by the guitar's power there.
+    let num = 0, den = 0;
+    bands.forEach((f, b) => {
+      if (f < 60 || f > 12000) return;
+      const w = Math.cos(2 * Math.PI * f / sr), hpG = hp * hp * (2 - 2 * w) / (1 - 2 * hp * w + hp * hp);
+      let g = 0;
+      for (let i = pre; i < len; i += 32) {
+        const t = (i - pre) / sr, a = Math.exp(-2 * Math.PI * cutoff(t) / sr);
+        g += 32 * env(t) ** 2 * (1 - a) ** 2 / (1 - 2 * a * w + a * a);
+      }
+      num += weights[b] * g * hpG / 3; den += weights[b];
+    });
+    const k = 1 / Math.sqrt(num / den);
+    for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] *= k; }
+    return buf;
+  }
+  // Which part of the song is playing (what you hear: minus the output delay), and its tone.
+  function followTone(now) {
+    const live = input.toneLive;
+    if (!live?.t.groups || live.m !== input.mon) { clearInterval(input.toneTimer); return; }
+    const at = currentTime() - (player.playing ? (ctx.outputLatency || 0) + (ctx.baseLatency || 0) : 0);
+    const sec = live.t.sections.find(([a, b]) => at >= a && at < b) || live.t.sections.at(at < 0 ? 0 : -1);
+    if (sec[2] === live.group) return;
+    live.group = sec[2];
+    const g = live.t.groups[sec[2]], when = live.m.currentTime, tau = now === true ? 0.001 : 0.015;
+    const set = (param, v) => param.setTargetAtTime(v, when, tau);
+    const on = g.drive > 0;
+    set(live.clean.gain, on ? 0 : 1);
+    set(live.dirty.gain, on ? 10 ** (g.makeup_db / 20) : 0);
+    set(live.drive.gain, on ? g.drive / SHAPE_RANGE : 0);
+    g.filters.forEach((f, i) => set(live.eq[i].gain, f.gain));
+    set(live.trim.gain, 10 ** (g.trim_db / 20));
+    set(live.dry.gain, g.room?.dry ?? 1);
+    set(live.wet.gain, g.room?.wet ?? 0);
+    // The gate shuts the drive between notes, else it brings up the input's hiss and hum
+    // (at 40-60 dB of drive): opens 12 dB over the input's own quiet level (`floorDb`),
+    // but always at least 25 dB under the guitar's playing level when it was captured
+    // (`play_db`; with nothing but playing to go on, floorDb is the playing level).
+    const playDb = live.t.play_db ?? -20;
+    const gateDb = Math.min(Math.max(-80, input.floorDb ?? playDb - 35) + 12, playDb - 25);
+    if (live.gate) set(live.gate.parameters.get('threshold'), on ? 10 ** (gateDb / 20) : 0);
+    showToneNote();
+  }
+  const GATE = `class Gate extends AudioWorkletProcessor {
+    static get parameterDescriptors() { return [{ name: 'threshold', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' }]; }
+    constructor() { super(); this.env = 0; this.g = 1; }
+    process(inputs, outputs, params) {
+      const x = inputs[0][0], out = outputs[0];
+      if (!x) return true;
+      const th = params.threshold[0];
+      const rel = Math.exp(-1 / (0.08 * sampleRate)), open = Math.exp(-1 / (0.001 * sampleRate)), close = Math.exp(-1 / (0.04 * sampleRate));
+      for (let i = 0; i < x.length; i++) {
+        const a = Math.abs(x[i]);
+        this.env = a > this.env ? a : this.env * rel;     // peak, held ~80 ms
+        const want = this.env >= th ? 1 : 0;
+        this.g = want + (this.g - want) * (want > this.g ? open : close);
+        const y = x[i] * this.g;
+        for (const ch of out) ch[i] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('track-splitter-gate', Gate);`;
   function setToneOn(on) {
     if (!state.current) return;
     const songs = toneSongs();
@@ -5008,9 +5179,12 @@
     $('#inst-add-go').textContent = capture.active && !capture.target?.id ? capture.label : 'Capture 45 s';
   }
   let newKind = 'bass';
-  function showNewKind() { document.querySelectorAll('#inst-kind button').forEach((b) => b.classList.toggle('active', b.dataset.kind === newKind)); }
+  function showNewKind() {
+    document.querySelectorAll('#inst-kind button').forEach((b) => b.classList.toggle('active', b.dataset.kind === newKind));
+    $('#inst-name').placeholder = newKind === 'guitar' ? 'Name, e.g. Strat' : 'Name, e.g. Fender P';
+  }
   function openInstruments() {
-    newKind = 'bass'; showNewKind();                    // guitar is off for now (#inst-kind)
+    newKind = toneKind(); showNewKind();                // what you're playing now
     $('#inst-name').value = '';
     $('#inst-status').textContent = input.stream ? '' : `The ${inputName().toLowerCase()} is off: captures turn it on.`;
     renderInstDialog();
@@ -5052,7 +5226,7 @@
     if (!capture.active) return;
     capture.active = false;
     clearInterval(capture.timer);
-    capture.node?.disconnect(); capture.sink?.disconnect();
+    dropRecorder(capture.node); capture.node = null; capture.sink?.disconnect();
     const length = capture.chunks.reduce((n, c) => n + c.length, 0);
     const samples = new Float32Array(length);
     let at = 0;
@@ -5953,7 +6127,7 @@
     if (!rec.active) return;
     rec.active = false;
     clearInterval(rec.timer);
-    rec.node?.disconnect(); rec.sink?.disconnect();
+    dropRecorder(rec.node); rec.node = null; rec.sink?.disconnect();
     $('#input-bar').classList.remove('recording');
     $('#tab-input').classList.remove('recording');
     $('#input-record-text').textContent = 'Record';
@@ -6650,6 +6824,159 @@
   $('#gs-check').addEventListener('change', (e) => setPref(CHECK_KEY, e.target.checked ? '1' : '0'));
   $('#mistake-sound').addEventListener('change', (e) => { mistakeSound = e.target.checked; setPref(MISTAKE_SOUND_KEY, mistakeSound ? '1' : '0'); if (mistakeSound) thunk(); });
   // Rock Band score box and star medallions (top right), for the board and the tab game.
+  // Chord cards on the guitar game's board (user: "above the highway, show the name of
+  // the chord with the fingering below it; for chords repeated more than once, just some
+  // indicator to show it's the same chord"). Notes starting within 30 ms are one chord
+  // (as the game judges them); strums of one shape in a row are a run (single notes in
+  // between don't break it, 2.5 s without the chord does; a strum of fewer strings of
+  // the same shape, an upstroke, is the same chord). A run's card (name + chord box,
+  // strings low E on the left, dots in the lanes' colours) rides above the board with
+  // its first strum, then waits above the strike line until the run ends or the next
+  // card pushes it off; its repeat strums are bars with the name (drawChordBars).
+  function chordRuns(d) {
+    const open = d.tunings.find((x) => x.key === (showRaised() ? 'standard' : d.tuning)).open;
+    if (d.chordRuns?.open === open) return d.chordRuns.runs;
+    const notes = d.notes, runs = [], repeats = new Set();
+    for (let k = 0; k < notes.length;) {
+      const first = k;
+      let j = k + 1;
+      while (j < notes.length && notes[j][0] - notes[k][0] < 0.03) j++;
+      const group = notes.slice(k, j), t0 = notes[k][0], end = Math.max(...group.map((nt) => nt[1]));
+      k = j;
+      if (group.length < 2) continue;
+      const frets = new Array(open.length).fill(null);
+      for (const [, , s, f] of group) frets[s] = f;
+      const run = runs[runs.length - 1];
+      if (run && t0 - run.end < 2.5 && frets.every((f, s) => f === null || run.frets[s] === f)) {
+        run.times.push(t0); run.end = Math.max(run.end, end);
+        const strings = group.map((nt) => nt[2]);
+        run.reps.push({ t: t0, lead: first, lo: Math.min(...strings), hi: Math.max(...strings) });
+        for (let i = first; i < j; i++) repeats.add(i);
+        continue;
+      }
+      const midis = group.filter((nt) => nt[3] !== 'x').map(([, , s, f]) => open[s] + f).sort((a, b) => a - b);
+      const ch = midis.length ? chordOf(midis.map((midi) => ({ midi, s: 1 }))) : null;
+      runs.push({ frets, name: ch ? ch.name : midis.length ? NOTE_NAMES[pcOf(midis[0])] : '×', start: t0, end, times: [t0], reps: [] });
+    }
+    d.chordRuns = { open, runs, repeats };
+    return runs;
+  }
+  // Repeat strums of a run (user: "just show the chord name and have the fingering be a
+  // solid bar across all the frets"): one bar across the strings the strum plays, in their
+  // colours, with the chord's name above it, instead of a gem per string. Hit, it bursts
+  // like a gem (not drawn); missed, it greys.
+  function drawChordBars(g, t, d, v) {
+    const runs = chordRuns(d);
+    let lo = 0, hi = runs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (runs[mid].end < t - 1) lo = mid + 1; else hi = mid; }
+    const bars = [];
+    for (let i = lo; i < runs.length && runs[i].start - t < v.Z; i++) for (const r of runs[i].reps) bars.push([r, runs[i].name]);
+    for (let i = bars.length - 1; i >= 0; i--) {               // far ones first
+      const [r, name] = bars[i], z = r.t - t, res = game.result[r.lead];
+      if (z < v.zPast || z > v.Z || res === 'hit') continue;
+      const k = v.depth(z), x = v.sx(z), half = v.gemH * k * 0.44;
+      const top = v.laneY(r.hi, z) - half, bottom = v.laneY(r.lo, z) + half, w = Math.max(8, v.gemW * 0.42) * k;
+      g.globalAlpha = res === 'miss' ? 0.45 : z < 0 ? Math.max(0, 1 + z / -v.zPast) : 1;
+      if (z > v.Z * 0.85) g.globalAlpha *= Math.max(0, (v.Z - z) / (v.Z * 0.15));
+      const fill = g.createLinearGradient(0, top, 0, bottom);
+      if (res === 'miss') { fill.addColorStop(0, '#6b7280'); fill.addColorStop(1, '#4b5563'); }
+      else for (let s = r.hi; s >= r.lo; s--) fill.addColorStop(r.hi === r.lo ? 0 : (r.hi - s) / (r.hi - r.lo), v.laneColor(s));
+      g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.roundRect(x - w / 2 + 2 * k, top + 4 * k, w, bottom - top, w / 2); g.fill();   // shadow
+      g.fillStyle = fill; g.beginPath(); g.roundRect(x - w / 2, top, w, bottom - top, w / 2); g.fill();
+      const gloss = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+      gloss.addColorStop(0, 'rgba(255,255,255,0)'); gloss.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gloss.addColorStop(0.6, 'rgba(255,255,255,0)');
+      g.fillStyle = gloss; g.fill();
+      g.lineWidth = Math.max(1, 2 * k); g.strokeStyle = 'rgba(0,0,0,0.5)'; g.stroke();
+      const size = Math.round(Math.max(10, 16 * k));
+      g.font = `900 ${size}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+      g.lineWidth = Math.max(2, size * 0.2); g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,0.7)';
+      g.strokeText(name, x, top - 5 * k); g.fillStyle = '#ede9fe'; g.fillText(name, x, top - 5 * k);
+      g.globalAlpha = 1;
+    }
+  }
+  // One card: its bottom centre at (cx, bottom), `h` tall; `shape` false draws the name only.
+  function chordCard(g, run, cx, bottom, h, shape, alpha, glow, laneColor) {
+    const n = run.frets.length;
+    g.save();
+    g.globalAlpha = alpha;
+    g.font = `900 ${Math.round(shape ? h * 0.19 : h * 0.62)}px system-ui, sans-serif`;
+    const nameW = g.measureText(run.name).width, w = shape ? Math.max(h * 0.8, nameW + h * 0.16) : nameW + h * 0.7;
+    const x = cx - w / 2, y = bottom - h, r = Math.min(12, h * 0.12);
+    g.fillStyle = 'rgba(14,11,24,0.9)'; g.shadowColor = glow ? '#a78bfa' : 'rgba(0,0,0,0.6)'; g.shadowBlur = glow ? 10 + 18 * glow : 10;
+    g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); g.shadowBlur = 0;
+    g.lineWidth = glow ? 2.5 : 1.5; g.strokeStyle = glow ? '#c4b5fd' : 'rgba(255,255,255,0.32)'; g.stroke();
+    g.fillStyle = 'rgba(14,11,24,0.9)';                     // a pointer down to the board
+    g.beginPath(); g.moveTo(cx - h * 0.06, bottom - 1); g.lineTo(cx, bottom + h * 0.06); g.lineTo(cx + h * 0.06, bottom - 1); g.fill();
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff';
+    if (!shape) { g.fillText(run.name, cx, y + h * 0.53); g.restore(); return; }
+    g.fillText(run.name, cx, y + h * 0.15);
+    const fretted = run.frets.filter((f) => typeof f === 'number' && f > 0);
+    const hi = fretted.length ? Math.max(...fretted) : 1, lo = fretted.length ? Math.min(...fretted) : 1;
+    const base = hi <= 4 ? 1 : lo, rows = Math.max(4, hi - base + 1);
+    const label = base > 1 ? h * 0.15 : 0, pad = h * 0.09;
+    const gx0 = x + pad + label, gx1 = x + w - pad, sp = (gx1 - gx0) / (n - 1);
+    const gy0 = y + h * 0.38, gy1 = bottom - h * 0.07, fh = (gy1 - gy0) / rows;
+    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = Math.max(1, h * 0.008);
+    for (let s = 0; s < n; s++) { g.beginPath(); g.moveTo(gx0 + s * sp, gy0); g.lineTo(gx0 + s * sp, gy1); g.stroke(); }
+    for (let i = 0; i <= rows; i++) { g.beginPath(); g.moveTo(gx0, gy0 + i * fh); g.lineTo(gx1, gy0 + i * fh); g.stroke(); }
+    if (base === 1) { g.lineWidth = Math.max(2, h * 0.03); g.strokeStyle = '#f5f3ff'; g.beginPath(); g.moveTo(gx0 - 1, gy0); g.lineTo(gx1 + 1, gy0); g.stroke(); }
+    else {
+      g.font = `700 ${Math.round(h * 0.085)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,255,255,0.75)'; g.textAlign = 'right';
+      g.fillText(`${base}fr`, gx0 - h * 0.035, gy0 + fh / 2); g.textAlign = 'center';
+    }
+    const dot = Math.min(sp, fh) * 0.4, mark = h * 0.035, my = gy0 - h * 0.065;
+    for (let s = 0; s < n; s++) {
+      const f = run.frets[s], sxp = gx0 + s * sp;
+      g.lineWidth = Math.max(1.2, h * 0.014); g.strokeStyle = 'rgba(255,255,255,0.7)';
+      if (f === null || f === 'x') {                   // not played: ×
+        g.beginPath(); g.moveTo(sxp - mark, my - mark); g.lineTo(sxp + mark, my + mark); g.moveTo(sxp + mark, my - mark); g.lineTo(sxp - mark, my + mark); g.stroke();
+      } else if (f === 0) {                            // open: ○
+        g.strokeStyle = laneColor(s); g.beginPath(); g.arc(sxp, my, mark * 1.1, 0, Math.PI * 2); g.stroke();
+      } else {
+        g.fillStyle = laneColor(s); g.beginPath(); g.arc(sxp, gy0 + (f - base + 0.5) * fh, dot, 0, Math.PI * 2); g.fill();
+        g.lineWidth = Math.max(1, h * 0.01); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
+      }
+    }
+    g.restore();
+  }
+  // All the cards and repeat marks for this frame. `v`: the board's geometry from drawGame.
+  function drawChordCards(g, t, d, v) {
+    const runs = chordRuns(d);
+    if (!runs.length) return;
+    const room = v.top(0) - 70;                             // under the song title, over the board
+    if (room < 34) return;
+    const full = Math.min(150, room), shapes = full >= 64;
+    let lo = 0, hi = runs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (runs[mid].end < t - 1) lo = mid + 1; else hi = mid; }
+    const shown = [];
+    for (let i = lo; i < runs.length && runs[i].start - t < v.Z; i++) shown.push(runs[i]);
+    // Cards, far ones first; each card's x, then the one waiting at the strike line is
+    // pushed left by the next one coming in.
+    const place = shown.map((run) => {
+      const z = Math.max(0, run.start - t), k = v.depth(z);
+      return { run, z, k, x: v.sx(z), h: full * k };
+    });
+    for (let i = place.length - 1; i >= 0; i--) {
+      const p = place[i], next = place[i + 1];
+      const wOf = (q) => (shapes ? q.h * 0.8 : q.h * 2);
+      p.compact = !shapes || (next && next.z > 0 && next.x - p.x < (wOf(p) + wOf(next)) / 2 + 6 && p.z > 0);
+      if (p.z === 0 && next) p.x = Math.min(p.x, next.x - (wOf(p) + wOf(next)) / 2 - 8);
+    }
+    for (let i = place.length - 1; i >= 0; i--) {
+      const p = place[i], { run } = p;
+      let alpha = p.z > v.Z * 0.85 ? Math.max(0, (v.Z - p.z) / (v.Z * 0.15)) : 1;
+      if (t > run.end) alpha *= Math.max(0, 1 - (t - run.end) / 0.4);                   // the run is over
+      if (p.x < v.nearX) alpha *= Math.max(0, 1 - (v.nearX - p.x) / (p.h * 0.8));       // pushed off
+      if (alpha <= 0.01) continue;
+      const waiting = p.z === 0, since = Math.min(...run.times.map((tm) => (t >= tm ? t - tm : 9)));
+      // Under the score box and stars at the top right (the flat board's far end reaches them).
+      const bottom = v.top(p.z) - 8 * p.k, roomHere = p.x + p.h * 0.5 > v.W - 290 ? bottom - 132 : Infinity;
+      if (roomHere < 20) continue;
+      const shape = !p.compact && Math.min(p.h, roomHere) >= 64;
+      const h = shape ? Math.min(p.h, roomHere) : Math.min(34 * p.k, full * 0.3 * p.k, roomHere);
+      chordCard(g, run, p.x, bottom, h, shape, alpha, waiting ? 0.4 + 0.6 * Math.max(0, 1 - since / 0.2) : 0, v.laneColor);
+    }
+  }
   function rbScore(g, W, notesLen) {
     const boxW = 250, boxH = 54, boxX = W - boxW - 20, boxY = 20;
     g.fillStyle = 'rgba(0,0,0,0.88)'; g.beginPath(); g.roundRect(boxX, boxY, boxW, boxH, 7); g.fill();
