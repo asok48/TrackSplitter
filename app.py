@@ -50,6 +50,7 @@ import yt_dlp
 from demucs.apply import apply_model
 from demucs.pretrained import get_model
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -190,12 +191,13 @@ def run_roformer(mix, on_progress, device=DEVICE, fast=False):
     return out[..., fade:fade + length] / np.maximum(weight[fade:fade + length], 1e-6)
 
 
-def decode(path, samplerate):
-    """Decode an audio file to a float32 stereo array shaped (2, samples)."""
+def decode(path, samplerate, channels=2):
+    """Decode an audio file to a float32 array shaped (channels, samples). (ffmpeg turns
+    mono into stereo 3 dB down: where the level matters, ask for 1 channel.)"""
     cmd = [FFMPEG, "-v", "error", "-i", str(path),
-           "-f", "f32le", "-ac", "2", "-ar", str(samplerate), "-"]
+           "-f", "f32le", "-ac", str(channels), "-ar", str(samplerate), "-"]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
-    return np.frombuffer(raw, dtype=np.float32).reshape(-1, 2).T.copy()
+    return np.frombuffer(raw, dtype=np.float32).reshape(-1, channels).T.copy()
 
 
 def encode_mp3(audio, samplerate, dest):
@@ -640,7 +642,9 @@ IMPORT_FILE = ".bass-tab-imported.json"
 # 3: notes keep whether they're slid or hammered into (Guitar Pro marks), for the game.
 # 7: pasted text tabs with count lines ("1 + 2 + ...") are read with their rhythm, repeats
 #    and hammer-ons / slides, and synced like files.
-IMPORT_RULES = 7
+# 8: pasted text tabs without count lines take their rhythm from the spacing (a strummed
+#    chorus's steady 8ths had come out 0.03-0.8 s apart).
+IMPORT_RULES = 8
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 INSTRUMENTS_WITH_TABS = ("bass", "guitar")
 # Guitar tabs (imported only, for now) live beside the bass ones under their own names
@@ -2237,7 +2241,8 @@ def game_check_audio(check_id: str):
 # I am playing", "it should work for any instrument"), one picked per type; for bass,
 # every DI recording in the library pooled ("recordings") is there until one is captured.
 TONE_FILE = ".tone.json"
-TONE_RULES = 1          # bump when tone.profile changes: songs' spectra are measured again
+TONE_RULES = 3          # bump when tone.profile / tone.sections change: songs' spectra are measured again
+TONE_AUDIO = ".instrument-tones"   # (library root) each capture's audio, FLAC, by instrument id
 KINDS = ("bass", "guitar")
 POOLED = "recordings"   # the id of the pooled bass recordings in the list
 tone_lock = threading.Lock()
@@ -2319,17 +2324,22 @@ def instrument_list(data):
     return {"current": current, "instruments": out}
 
 
+def kind_of(id_):
+    i = read_instruments()["instruments"].get(id_)
+    return i and i["kind"]
+
+
 def di_tone(kind, id_=None):
-    """(id, name, profile) of the instrument asked for, else the one picked for `kind`;
-    None if there's nothing to go on."""
+    """(id, name, profile, drive table or None) of the instrument asked for, else the one
+    picked for `kind`; None if there's nothing to go on."""
     data = read_instruments()
     want = id_ or instrument_list(data)["current"][kind]
     if want in data["instruments"]:
         i = data["instruments"][want]
-        return want, i["name"], i["profile"]
+        return want, i["name"], i["profile"], i.get("drives")
     if want == POOLED and kind == "bass":
         pool = pooled_tone(data)
-        return (POOLED, f"recordings ({pool['takes']} takes)", pool["profile"]) if pool else None
+        return (POOLED, f"recordings ({pool['takes']} takes)", pool["profile"], None) if pool else None
     return None
 
 
@@ -2354,7 +2364,11 @@ def song_tone(song_dir, kind):
     stamp = [track.name, round(track.stat().st_mtime)]
     if saved.get(kind, {}).get("track") == stamp and saved[kind].get("rules") == TONE_RULES:
         return saved[kind]
-    saved[kind] = {"rules": TONE_RULES, "track": stamp, "profile": tone.profile(decode(track, tone.SR).mean(0))}
+    lr = decode(track, tone.SR)
+    x = lr.mean(0)
+    saved[kind] = {"rules": TONE_RULES, "track": stamp, "profile": tone.profile(x)}
+    if kind == "guitar":                          # guitar tones change within a song (clean / distorted)
+        saved[kind]["sections"] = tone.sections(x, (lr[0] - lr[1]) / 2)
     write_json(song_dir / TONE_FILE, saved)
     return saved[kind]
 
@@ -2376,9 +2390,22 @@ def get_tone(song: str, rate: int = 48000, kind: str = "bass", id: Optional[str]
         di = di_tone(kind, id)
     if not di:
         raise HTTPException(404, f"No {kind} of yours to compare with yet: add one under Instruments.")
-    m = tone.match(st["profile"], di[2], min(max(rate, 22050), 192000))
-    return {"bands": st["profile"]["bands"], "song_db": st["profile"]["db"], "di_db": di[2]["db"],
-            "track": st["track"][0], "instrument": {"id": di[0], "name": di[1], "kind": kind}, **m}
+    sr = min(max(rate, 22050), 192000)
+    m = tone.match(st["profile"], di[2], sr, tone.GUITAR_LO if kind == "guitar" else tone.FIT_LO)
+    out = {"bands": st["profile"]["bands"], "song_db": st["profile"]["db"], "di_db": di[2]["db"],
+           "track": st["track"][0], "instrument": {"id": di[0], "name": di[1], "kind": kind}, **m}
+    # Guitar: the song's tones over time (clean / distorted parts), each with its own drive
+    # and EQ; the page switches between them as the song plays. A guitar captured before
+    # drives were measured gets the EQs only (and the page asks for a new capture).
+    sec = st.get("sections")
+    if kind == "guitar" and sec:
+        table = di[3] or [{"drive": 0, "flat": 0.0, "db": di[2]["db"]}]
+        out["sections"] = sec["sections"]
+        out["groups"] = tone.match_sections(sec, table, sr)
+        out["chain"] = tone.CHAIN
+        out["play_db"] = table[0].get("play_db")
+        out["needs_capture"] = not di[3] and any(g["flat"] >= tone.CLEAN_FLAT for g in sec["groups"])
+    return out
 
 
 @api.get("/api/tone/instruments")
@@ -2397,11 +2424,17 @@ async def capture_tone(file: UploadFile = File(...), name: str = Form(""), kind:
     path = STAGE_DIR / f"{uuid.uuid4().hex}-tone.wav"
     path.write_bytes(await file.read())
     try:
-        p = tone.profile(decode(path, tone.SR).mean(0))
+        x = decode(path, tone.SR, 1)[0]          # the level as it came in: the drive depends on it
+        p = tone.profile(x)
+        if not p or p["seconds"] < 15:
+            raise HTTPException(400, "Not enough playing in that capture: keep playing for the whole 45 seconds.")
+        # Guitar: what each amount of drive does to it (for the song's distorted parts),
+        # ~10 s; and the audio, kept so this can be worked out again if the method changes.
+        drives = await run_in_threadpool(tone.drive_table, x) if kind == "guitar" or (id and kind_of(id) == "guitar") else None
+        audio = path.with_suffix(".flac")
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(path), "-ac", "1", "-c:a", "flac", str(audio)], capture_output=True)
     finally:
         path.unlink(missing_ok=True)
-    if not p or p["seconds"] < 15:
-        raise HTTPException(400, "Not enough playing in that capture: keep playing for the whole 45 seconds.")
     with tone_lock:
         data = read_instruments()
         old = data["instruments"].get(id)
@@ -2410,7 +2443,10 @@ async def capture_tone(file: UploadFile = File(...), name: str = Form(""), kind:
         kind = old["kind"] if old else (kind if kind in KINDS else "bass")
         n = sum(i["kind"] == kind for i in data["instruments"].values()) + 1
         data["instruments"][id] = {"name": name or (old or {}).get("name") or f"{kind.title()} {n}", "kind": kind,
-                                   "made": time.time(), "profile": p}
+                                   "made": time.time(), "profile": p, **({"drives": drives} if drives else {})}
+        if audio.exists():
+            (OUTPUT_DIR / TONE_AUDIO).mkdir(parents=True, exist_ok=True)
+            audio.replace(OUTPUT_DIR / TONE_AUDIO / f"{id}.flac")
         data["current"][kind] = id
         save_instruments(data)
         return instrument_list(data)

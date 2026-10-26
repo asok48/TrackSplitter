@@ -856,9 +856,27 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   bpm, half and double, and keeps the best fit. Also read: repeat signs `|o`/`o|` (or
   `|:`/`:|`) with "x4" after the system (default 2 plays), h/p and / \ (`_row_notes`:
   legato like Guitar Pro's). Text after a system's last bar line is skipped: " x4" used
-  to be read as a dead note and a 4. Without count lines it reads as before. Hysteria
+  to be read as a dead note and a 4. Hysteria
   (the user's paste): one 16-beat bar per system and untimed before, first note at 0:41,
   24% matched; now 4/4 bars of 8ths, intro x4, first note 0:00.2, 75%. IMPORT_RULES 7.
+  The tempo guesses are judged by notes found over the whole tab (`found`), not
+  `quality`, which leaves out bars the sync skipped (at 2x off it skipped half the tab and
+  still won).
+- Pasted tabs without count lines (user, guitar paste of So Far So Fake, Ultimate
+  Guitar's "Page 1/4" layout: "some of it comes in ok, but other parts are just flat out
+  wrong"): the notes were read right, but placing them by order only pulled each onto
+  whatever the guitar transcription heard nearby, so the strummed chorus's steady 8ths
+  came out 0.03-0.8 s apart (clean single-note riffs were fine). Ultimate Guitar lays tabs
+  out in proportion to time (an 8th every 4 columns, one "-" after each bar line), so
+  `_rhythm_from_spacing` reads the rhythm from the columns (a bar is 4 beats unless far
+  from the typical width; the bar line and its "-" aren't time) and the paste syncs like a
+  counted one (`spaced`: timed, tempo unknown; bars placed by the Viterbi with jumps and
+  skips, then kept steady). If order-only placing finds 25% more notes (`SPACING_TRUST`,
+  a hand-typed tab spaced anyhow) that's used instead. So Far So Fake: chorus 8ths now
+  0.22-0.25 s apart, matched notes a median 1 ms off (p25-75 -32/+25 ms), found 54% vs
+  54% order-only (power chords in a distorted mix are only partly transcribed); the same
+  tab re-spaced at random like a hand-typed one: 48% vs 45%. ~20 s to sync it (both ways).
+  IMPORT_RULES 8.
 - Stored next to the song: the file as given (`imported-tab - <name>.<ext>`, text as
   `imported-tab.txt`; a replaced import goes to the Trash after the new one reads OK) and
   `.bass-tab-imported.json` (synced notes, lines, tuning, match quality).
@@ -1039,6 +1057,23 @@ User: "Can we try adding it to game mode?" The Game section works for guitar tab
   ~40 ms (drawing starves it) and hits drop to ~60%; at 640x480 it runs every 20 ms. Not
   tried on a real guitar or a real recording. Show my timing doesn't judge chords yet.
 
+- Chord cards (user: "above the highway, show the name of the chord with the fingering
+  below it; for chords repeated more than once, just some indicator that it's the same
+  chord"): on the board (`drawChordCards`, `chordRuns`, `chordCard`), each run of one chord
+  shape (strums in a row; single notes between don't break it, 2.5 s without it does; a
+  strum of fewer strings of the shape counts as the same) gets a card above the board's top
+  rail at its first strum: the name (`chordOf` on the shape's pitches; raised songs named
+  as played) and a chord box (low E left, × / ○, dots in the lane colours, "5fr" past the
+  4th fret). It waits above the strike line, glowing on each repeat strum, until the run
+  ends or the next card pushes it off. Only the first strum of a run has gems with fret
+  numbers; repeat strums are one rounded bar across the strings they play, in those
+  strings' colours, with the chord name above it (`drawChordBars`; user: "just show the
+  chord name and have the fingerings be a solid bar across all the frets"; it was a "%"
+  pill over the repeat's gems). Hit, the bar goes like a gem; missed, it greys. Cards
+  too close to the next shrink to the name; on short windows (< 64 px above the board) and
+  under the score box only the name. Board only, not "Play on: Tab". Tested on a synthetic
+  tab (G C D Em F A5 B5, 8th strums) in 3D and Flat at 1440x900 and 1280x720.
+
 ## Guitar calibration
 
 User: "add timing and string calibration for guitar similar to how bass works". Both follow
@@ -1188,6 +1223,31 @@ with the band.
     (recorder worklet, `POST /api/tone/capture`, needs 15 s of playing; 20 s varied up
     to ~7 dB, 45 s ~4), since the user's DI changes (two takes were ~20 dB brighter at
     8 kHz: pick or tone knob).
+    Recorder leak (fixed): stopping a capture, take or game check disconnected only the
+    recorder's output, so the input kept feeding it and its handler pushed blocks into the
+    next one too; the user's PRS "Capture again" came out 90 s, two copies interleaved, so
+    its spectrum and drive table were wrong. `dropRecorder` now stops the worklet and drops
+    its handler; tested: cancel a capture then capture again, 4.5 s of audio for 4.5 s (was
+    9.0). Direct Monitor on the interface plays the dry guitar over the matched tone, so the
+    drawer note says to turn it off.
+    Clean parts (user: "I want my clean sound to be as close to the original guitar in the
+    song as possible"): measured So Far So Fake's clean parts against the PRS capture: the
+    EQ already fits within 0.6-1.1 dB; what's missing is space. The song's clean intro has
+    side (L-R) only 3.6 dB under mid (L/R correlation 0.43), more in quiet moments (tails),
+    no echo; a DI is mono and dry. No sign of compression to copy (the song's level drops
+    as fast after attacks as the DI's; the level spread gap is the playing). So clean parts
+    (no drive) get a stereo room (`tone.room`, page `roomImpulse`: independent decaying
+    noise L/R, 12 ms pre-delay, 1.2 s, highs dying faster, no lows under 150 Hz, scaled to
+    unit gain over the song's guitar spectrum) in parallel, wet so the output's side/mid
+    matches the song's, capped at -6 dB (`ROOM_MAX`); `sections()` now takes the side
+    signal and stores `side_db` per group (TONE_RULES 3). Distorted parts stay dry (the user
+    liked them). Measured in the page with the clean intro as the guitar: side -6.0 dB as
+    meant, flatness 0.0073 (song 0.0062; dry it was 0.0018). The quiet bridge (song 0.0016,
+    very tonal, side +3 dB from some stereo effect) comes out wetter than the record.
+    `CLEAN_FLAT` 0.03 -> 0.015: a "clean" part noticeably noisier than the guitar gets a
+    light drive (Crunch) matched by flatness, so edge-of-breakup parts aren't left clean.
+    A guitar song with one tone now also gets `groups` (so the room applies). Not yet heard
+    on the real guitar.
     Instruments (user: "I have 3 different basses that all sound different, would be nice
     to pick which I am playing", "a settings menu where you can manage this", "it should
     work for any instrument"): each capture is saved with a name and a type (bass /
@@ -1206,7 +1266,43 @@ with the band.
     level spread toward the songs' at any setting; the gap is playing, not processing)
     and distortion (can't be told from leakage in a stem). Before/after spectra were
     plotted for The Eternal, American Idiot, You Only Live Once and Electra. Tested with a
-    simulated Scarlett only; not yet heard on the real bass. `TONE_RULES` in app.py: bump
+    simulated Scarlett only; not yet heard on the real bass.
+    Guitar: the curve is measured from 70 Hz (`tone.GUITAR_LO`; bass 40 Hz) and held flat
+    below: a guitar's lowest note is 82 Hz, and what a separated guitar stem has under it
+    is bass leakage, which a guitar DI lacks (a synthetic stem with 55 Hz leakage asked for
+    +10 dB at 50 Hz on the guitar; now -2, flat). Only EQ: a clean guitar DI against a
+    distorted song guitar gets a big treble lift (+11 dB in the test), not distortion.
+    Tested on a scratch library (synthetic distorted guitar stem, clean DI capture) through
+    the API and the page (fake microphone); not yet heard on a real guitar.
+    Following the song (user: "So Far So Fake starts with a clean tone and then changes to a
+    distorted tone. I want my guitar to sound pretty close to the album"): for guitar,
+    `tone.sections` splits the song's guitar track into parts (1 s windows: spectral
+    flatness 150 Hz-4 kHz + spectral shape; optimal segmentation, `SECTION_COST` per part,
+    >= 4 s; alike parts grouped, `GROUP_DIST`), stored in `.tone.json` (TONE_RULES 2).
+    So Far So Fake: clean to 0:37 (flatness ~0.006), distorted 0:37-0:53 / 1:25-2:00 /
+    2:35-3:23 (~0.21), a mostly clean verse, a quieter clean bridge, a crunchy outro (0.08);
+    American Idiot distorted throughout (0.25) bar a lighter stretch. A guitar capture now
+    keeps its audio (`<library>/.instrument-tones/<id>.flac`, decoded mono: ffmpeg's
+    mono-to-stereo is 3 dB down, which put the drive's make-up 3 dB off) and its
+    `drives` table (`tone.drive_table`, ~8 s at capture): the capture through `CHAIN`
+    (high-pass 120 Hz, +6 dB at 800 Hz, gain, tanh, low-pass 6.5 kHz) at drives 1-2048x,
+    flatness and spectrum each. `/api/tone` (guitar) adds `sections`, `groups` (per tone:
+    drive whose flatness is nearest the song's, capped at 90% of what the guitar reaches,
+    since a mix's stacked distorted chords are noisier than one guitar: the clean intro as a
+    stand-in DI topped out at 0.13; make-up to the clean guitar's A-weighted loudness; EQ
+    fitted against the driven guitar), `chain`, `play_db`, and `needs_capture` for a guitar
+    captured before (EQs only; the note asks for a new capture). Page (`wireTone`,
+    `followTone` every 50 ms on the song position minus the output delay): clean and
+    driven paths summed into one EQ, gains ramped on each change of part; a noise gate
+    worklet (`GATE`) before the drive, opening 12 dB over the input's quiet level
+    (`floorDb`) but never above `play_db` - 25 (with constant playing floorDb was the
+    playing level and the gate stayed shut); WaveShaper oversample 2x (+2.7 ms on the
+    driven path; 4x +4 ms). The drawer note says "Now: Distorted (drive 60 dB) · Low ..."
+    with the parts in its tooltip. Tested with the clean intro (-17 dB) as the guitar via a
+    simulated input: the page's output flatness clean 0.004 / distorted 0.21 / outro 0.13
+    (song 0.006 / 0.21 / 0.08), loudness by the server's model within 0.2 dB across parts,
+    in the page ~3 dB quieter when distorted (the gate between notes). Not yet heard on a
+    real guitar; the user's first guitar capture ("PRS guitar") predates drives. `TONE_RULES` in app.py: bump
     when `tone.profile` changes.
   - Quiet input: the meter is in dB (-60 to 0 dBFS; tooltip gives the level) and pitch
     detection listens from -50 dBFS (YIN doesn't depend on loudness). Simulated input
@@ -1425,9 +1521,10 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
   a dropdown updates with your saved instruments"): Bass | Guitar (`#player-kind`, the same
   `setInstrument` as the drawer's switch) and that type's saved instruments (`#player-inst`,
   "Default" when there are none, "Manage instruments…" opens Your instruments).
-  Guitar is disabled there and in Your instruments' type choice for now (user: "my
-  brother is handling guitar, so leave the option disabled"); the server side and the
-  drawer's Bass / Guitar input switch (the guitar input mode he uses) are unchanged.
+  Guitar was disabled there and in Your instruments' type choice for a while (user: "my
+  brother is handling guitar"); turned on again when the user asked for guitar tone
+  matching "similar to what exists for bass". Your instruments' new-instrument type
+  starts on what you're playing now (placeholder "e.g. Strat" for guitar).
 - Add songs dialog: drop files or paste a link, edit title/artist per item, pick
   instruments (guitar is All guitar / Lead guitar / Rhythm guitar), level, HQ, and
   "Faster guitar/piano" (shown only with HQ + guitar/piano). Upload is disabled until the required fields are filled. On
