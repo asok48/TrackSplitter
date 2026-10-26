@@ -335,6 +335,8 @@
   .tab-line .note.editable { cursor: pointer; }
   .tab-line .note.editable:hover rect { fill: var(--hover); }
   .tab-line .note.selected rect { fill: #ef4444; }
+  .tab-line .lg { fill: #c4b5fd; font-weight: 800; pointer-events: none; }
+  .tab-line .lg-line { stroke: #c4b5fd; stroke-width: 1.8; fill: none; stroke-linecap: round; pointer-events: none; }
   /* Draft: what a take waiting for review adds (green) or replaces (red, struck), and
      with "Show what I added" the notes your takes put in (blue). */
   .tab-line .note.n-new rect { fill: rgba(74, 222, 128, .28); stroke: #4ade80; stroke-width: 1.2; }
@@ -808,6 +810,9 @@
   .repeat-way .rw-easy { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(34, 197, 94, .16); color: #86efac; font-weight: 700; font-size: 11px; }
   .repeat-group .rg-head .rw-badge { margin-left: auto; font-size: 12px; font-weight: 700; color: #c4b5fd; }
   .repeat-group .rg-head .rw-badge + .btn { margin-left: 0; }
+  .repeat-group .rw-label { margin: 8px 8px 2px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+  .repeat-group .rw-label.rw-none { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; }
+  .repeat-way .rw-where { white-space: nowrap; background: rgba(56, 189, 248, .14); color: #7dd3fc; }
   .repeats-empty { color: var(--muted); font-size: 13.5px; padding: 14px 4px; }
   .fancy-dlg .field .hint { font-size: 12px; line-height: 1.5; color: var(--faint); margin-top: 10px; }
   .up-options { padding: 16px 16px 10px; border-radius: 14px; background: rgba(255, 255, 255, .025); border: 1px solid rgba(255, 255, 255, .06); }
@@ -1035,6 +1040,7 @@
             <button type="button" class="btn sm" id="tab-import" title="Bring in a tab you trust (Guitar Pro, MusicXML, or pasted text)">Import tab…</button>
             <button type="button" class="btn sm only-tab" id="tab-remake" title="Make this song's tab again">Redo tab</button>
             <button type="button" class="btn sm hidden" id="tab-repeats" title="Find parts the tab repeats but fingers differently, and pick one way to play them all">Make repeats match…</button>
+            <button type="button" class="btn sm hidden" id="tab-patterns" title="The tab's repeated parts with other places on the neck to play them (lower, higher, with open strings)">Other ways to play…</button>
             <button type="button" class="btn sm danger hidden" id="tab-remove-import" title="Move the imported tab to the Trash">Remove import</button>
             <button type="button" class="btn sm danger hidden" id="tab-remove-mine" title="Move your draft and its takes to the Trash">Delete draft</button>
           </div>
@@ -1241,11 +1247,12 @@
       </button>
     </div>
     <div class="dlg-body">
-      <p class="import-intro">Bars that play (nearly) the same notes in different places. Use one way everywhere, or let each bar take the way that's easiest with the bars around it. The tab file itself isn't changed.</p>
+      <p class="import-intro" id="repeats-intro"></p>
       <div class="repeat-groups" id="repeat-groups"></div>
     </div>
     <div class="dlg-foot">
       <button type="button" class="btn hidden" id="repeats-clear" title="Every bar back to how the tab writes it">Put all back as written</button>
+      <button type="button" class="btn hidden" id="repeats-lower" title="Each repeated part that can be: the easiest way at least 1.5 frets lower on the neck (on average) than the tab plays it">Lower on the neck everywhere</button>
       <button type="button" class="btn primary" data-close>Done</button>
     </div>
   </form>
@@ -2963,16 +2970,17 @@
     $('#timing-calibrate').classList.toggle('hidden', !d || !timingShown);
     $('#timing-avg').classList.toggle('hidden', !d || !timingShown || tabMode === 'highway');   // the Highway draws its own
     $('#timing-reset').classList.toggle('hidden', !inputCalibration);
-    if (d) {
-      let bests = {};
-      try { bests = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* none */ }
-      const best = bests[bestKey(tabView.song, d.source)];   // per song, tab, timing and difficulty
-      $('#game-best-now').textContent = best ? `Your best: ${best.toLocaleString()}` : 'No score yet for this tab';
-    }
+    // Always set: with no tab (a new song) it kept the last song's best (user: "it still had
+    // the 'Your best' score indicator from the previous song").
+    let bests = {};
+    if (d) try { bests = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* none */ }
+    const best = d ? bests[bestKey(tabView.song, d.source)] : null;   // per song, tab, timing and difficulty
+    $('#game-best-now').textContent = !d ? '' : best ? `Your best: ${best.toLocaleString()}` : 'No score yet for this tab';
     document.querySelectorAll('#tab-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === tabMode));
     $('#tab-remake').classList.toggle('hidden', !d || d.source !== 'auto');
     $('#tab-remove-import').classList.toggle('hidden', !imported);
     $('#tab-repeats').classList.toggle('hidden', !imported || d.tuning !== d.written);
+    $('#tab-patterns').classList.toggle('hidden', !imported || d.tuning !== d.written);
     $('#tab-raise-row').classList.toggle('hidden', !d || d.tuning !== 'half-down');
     $('#tab-split-row').classList.toggle('hidden', !d || d.source !== 'auto');
     $('#tab-split').checked = !!d?.split;
@@ -3048,6 +3056,21 @@
   };
 
   // Per note: the next / previous note on the same string (-1: none), cached.
+  // Slides and hammer-ons / pull-offs from an imported tab (its notes' 5th value: "s" slid
+  // from the note before on that string, "h" hammered or pulled from it, "b"/"a" slid in from
+  // below/above, then "d"/"u" slides off; older imports had true). The marks to draw:
+  // into = "/" "\\" "h" "p", prev = the note it comes from (slide / hammer), out = "/" "\\".
+  const legatoIn = (v) => v === true || (typeof v === 'string' && /^[shba]/.test(v));
+  function legatoMarks(d, k) {
+    const code = d.notes[k][4];
+    if (!code || typeof code !== 'string') return code === true ? { into: '/', kind: 's', prev: -1, out: null, up: true } : null;
+    const c = code[0], prev = c === 's' || c === 'h' ? laneLinks(d).prev[k] : -1;
+    const f = d.notes[k][3], pf = prev >= 0 ? d.notes[prev][3] : null;
+    const up = pf === null || f === 'x' || pf === 'x' || f >= pf;
+    const into = c === 's' ? (up ? '/' : '\\') : c === 'h' ? (up ? 'h' : 'p') : c === 'b' ? '/' : c === 'a' ? '\\' : null;
+    const out = code.includes('d') ? '\\' : code.includes('u') ? '/' : null;
+    return into || out ? { into, kind: 'shba'.includes(c) ? c : '', prev, out, up } : null;
+  }
   function laneLinks(d) {
     if (!d.lanes) {
       const next = new Array(d.notes.length).fill(-1), prev = new Array(d.notes.length).fill(-1), last = {};
@@ -3178,6 +3201,20 @@
       g.append(svgEl('rect', { x: x(t) - w / 2, y: y(s) - size * 0.62, width: w, height: size * 1.24, rx: 3 }));
       g.append(svgEl('text', { x: x(t), y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size }, f));
       svg.append(g);
+      const lm = legatoMarks(d, k);   // slides (5/7, 7\\5) and hammer-ons / pull-offs (h, p arcs)
+      if (lm) {
+        const pk = lm.prev, inLine = pk >= 0 && d.notes[pk][0] >= start, glyph = font * 0.78;
+        if (inLine) {
+          const px = x(d.notes[pk][0]), pw = String(d.notes[pk][3]).length * size * 0.62 + 4, dy = size * 0.28 * (lm.up ? 1 : -1);
+          if (lm.kind === 's') svg.append(svgEl('line', { class: 'lg-line', x1: px + pw / 2 + 1, y1: y(s) + dy, x2: x(t) - w / 2 - 1, y2: y(s) - dy }));
+          else {
+            const top = y(s) - size * 0.62, mid = (px + x(t)) / 2;
+            svg.append(svgEl('path', { class: 'lg-line', d: `M ${px} ${top} Q ${mid} ${top - size * 0.55} ${x(t)} ${top}` }));
+            svg.append(svgEl('text', { class: 'lg', x: mid, y: top - size * 0.45, 'text-anchor': 'middle', 'font-size': glyph * 0.8 }, lm.into));
+          }
+        } else if (lm.into) svg.append(svgEl('text', { class: 'lg', x: x(t) - w / 2 - glyph * 0.35, y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': glyph }, lm.into));
+        if (lm.out) svg.append(svgEl('text', { class: 'lg', x: x(t) + w / 2 + glyph * 0.35, y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': glyph }, lm.out));
+      }
       notes.push([t, te, g, tail(k, t), k]);
     }
     for (const [t, , s, f] of d.gone || []) {             // what the take waiting for review would replace
@@ -3525,6 +3562,21 @@
       g.beginPath(); g.roundRect(xs - w / 2, y(s) - h / 2, w, h, 5); g.fill();
       g.fillStyle = playing ? '#fff' : done ? color('--muted') : color('--text');
       g.fillText(label, xs, y(s) + 1);
+      const lm = legatoMarks(d, k);   // slides and hammer-ons / pull-offs, as in Lines
+      if (lm) {
+        g.save(); g.strokeStyle = g.fillStyle = '#c4b5fd'; g.lineWidth = 2; g.lineCap = 'round';
+        if (lm.prev >= 0) {
+          const px = x(notes[lm.prev][0]), pw = String(notes[lm.prev][3]).length * size * 0.62 + 8, dy = size * 0.28 * (lm.up ? 1 : -1);
+          if (lm.kind === 's') { g.beginPath(); g.moveTo(px + pw / 2 + 1, y(s) + dy); g.lineTo(xs - w / 2 - 1, y(s) - dy); g.stroke(); }
+          else {
+            const top = y(s) - h / 2 - 2, mid = (px + xs) / 2;
+            g.beginPath(); g.moveTo(px, top); g.quadraticCurveTo(mid, top - size * 0.5, xs, top); g.stroke();
+            g.font = `800 ${Math.round(size * 0.6)}px system-ui, sans-serif`; g.fillText(lm.into, mid, top - size * 0.45);
+          }
+        } else if (lm.into) { g.font = `800 ${Math.round(size * 0.8)}px system-ui, sans-serif`; g.fillText(lm.into, xs - w / 2 - size * 0.3, y(s) + 1); }
+        if (lm.out) { g.font = `800 ${Math.round(size * 0.8)}px system-ui, sans-serif`; g.fillText(lm.out, xs + w / 2 + size * 0.3, y(s) + 1); }
+        g.restore();
+      }
       const mk = timingShown && !game.on ? practice.marks.get(k) : null;   // Show my timing
       if (mk) { g.font = `800 ${Math.round(font * 0.45)}px system-ui, sans-serif`; g.fillStyle = mk.colour; g.fillText(mk.short, xs, y(s) - h / 2 - font * 0.3); }
     }
@@ -3813,6 +3865,17 @@
       g.fillStyle = '#111';
       g.font = `800 ${gemFont}px system-ui, sans-serif`;
       g.fillText(f, gx, cy(s) + 1);
+      const lm = legatoMarks(d, k);   // slid / hammered into: a line from the gem before, the mark above
+      if (lm) {
+        g.save(); g.strokeStyle = g.fillStyle = '#e9d5ff'; g.lineWidth = 3; g.lineCap = 'round';
+        if (lm.kind === 's' && lm.prev >= 0) {
+          const px = x(notes[lm.prev][0]) + gemW / 2 + 2, dy = gemH * 0.18 * (lm.up ? 1 : -1);
+          if (gx - w / 2 - 2 > px) { g.beginPath(); g.moveTo(px, cy(s) + dy); g.lineTo(gx - w / 2 - 2, cy(s) - dy); g.stroke(); }
+        }
+        const mark = [lm.into, lm.out].filter(Boolean).join(' ');
+        if (mark) { g.font = `800 ${Math.round(gemFont * 0.62)}px system-ui, sans-serif`; g.fillText(mark, gx, gy - gemFont * 0.38); }
+        g.restore();
+      }
       g.globalAlpha = 1;
     }
     // Show my timing: each note you played rises from its target as "Perfect" or "Early
@@ -4094,6 +4157,12 @@
       g.font = `900 ${size}px system-ui, sans-serif`;
       g.lineWidth = Math.max(2, size * 0.18); g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineJoin = 'round';
       g.strokeText(f, x, y - edge / 2 + 1); g.fillStyle = '#fff'; g.fillText(f, x, y - edge / 2 + 1);
+      const lm = legatoMarks(d, k);   // slid / hammered into: the mark above the gem
+      const mark = lm && [lm.into, lm.out].filter(Boolean).join(' ');
+      if (mark) {
+        g.font = `900 ${Math.round(size * 0.62)}px system-ui, sans-serif`;
+        g.strokeText(mark, x, y - h / 2 - size * 0.38); g.fillStyle = '#e9d5ff'; g.fillText(mark, x, y - h / 2 - size * 0.38);
+      }
       g.globalAlpha = 1;
     }
 
@@ -4324,18 +4393,39 @@
   // Make repeats match: the imported tab's repeated bars that are fingered differently,
   // each way listed (cells that differ from the most common way lit), one click to use
   // it in all of them. Shown in the tab's own tuning (other tunings are fingered anew).
+  // Other ways to play (user: "I play Hysteria lower on the neck and want to move to
+  // that"): the same dialog over every part the tab repeats (`patterns`), each also with
+  // places on the neck the tab doesn't use (lower, higher, open strings), how easy each
+  // is against the tab's own fingering, and "Lower on the neck everywhere".
   const repeatsDlg = $('#repeats-dlg');
-  async function showRepeats() {
-    const song = tabView.song;
+  let repeatsMode = 'repeats';
+  const REPEAT_TEXT = {
+    repeats: ['Make repeats match', "Bars that play (nearly) the same notes in different places. Use one way everywhere, or let each bar take the way that's easiest with the bars around it. The tab file itself isn't changed.",
+      'Every repeated part in this tab is already played the same way.'],
+    patterns: ['Other ways to play', "Parts the tab repeats, as written and in other places on the neck. Pick one and every bar of that part plays it there. The tab file itself isn't changed.",
+      'This tab has no part that repeats (3+ notes in 2+ bars).'],
+  };
+  // Where a way sits: the frets it uses, and whether it leans on open strings.
+  function wayPlace(map, names) {
+    const at = Object.values(map), frets = at.map(([, f]) => f).filter((f) => f > 0);
+    const open = [...new Set(at.filter(([, f]) => !f).map(([s]) => names[s] ?? String(s + 1)))];
+    const place = frets.length ? (Math.min(...frets) === Math.max(...frets) ? `Fret ${frets[0]}` : `Frets ${Math.min(...frets)}–${Math.max(...frets)}`) : 'Open strings';
+    return frets.length && open.length ? `${place} · open ${open.join(' ')}` : place;
+  }
+  async function showRepeats(mode) {
+    if (typeof mode === 'string') repeatsMode = mode;
+    const song = tabView.song, patterns = repeatsMode === 'patterns', [title, intro, none] = REPEAT_TEXT[repeatsMode];
+    $('#repeats-title').textContent = title;
+    $('#repeats-intro').textContent = intro;
     let r;
-    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}`); } catch (err) { toast(err.message, 'error'); return; }
+    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}${patterns ? '&patterns=true' : ''}`); } catch (err) { toast(err.message, 'error'); return; }
     if (song !== tabView.song) return;
     const names = r.strings, box = $('#repeat-groups');
     box.replaceChildren(...r.groups.map((g) => {
       const common = g.variants[0].map, perPlace = g.chosen === 'easiest', chosen = !perPlace && g.chosen && JSON.stringify(g.chosen);
       const head = el('div', { className: 'rg-head' }, ...[
         el('strong', { textContent: `${g.bars} bars alike` }),
-        el('span', { textContent: `${g.variants.length} ways` })]);
+        el('span', { textContent: patterns ? `${g.variants.length > 1 ? `${g.variants.length} ways in the tab · ` : ''}${g.notes.slice(0, 8).join(' ')}${g.notes.length > 8 ? ' …' : ''}` : `${g.variants.length} ways` })]);
       // Each bar the way that's easiest between the bar before and the bar after it.
       const split = g.variants.map((v, k) => `way ${k + 1} in ${v.fits}`).join(', ');
       if (perPlace) head.append(el('span', { className: 'rw-badge', textContent: '✓ Easiest in each place', title: `Uses ${split} of the bars` }));
@@ -4366,11 +4456,31 @@
           action = el('button', { type: 'button', className: 'btn sm', textContent: 'Use everywhere' });
           action.addEventListener('click', () => setRepeat(g.key, v.map));
         }
-        return el('div', { className: `repeat-way${isChosen ? ' chosen' : ''}` }, ...[notes, action, when]);
-      })]);
+        // A part the tab always plays one way: that way is "as written" (chosen when
+        // nothing else is).
+        if (patterns && g.variants.length === 1) {
+          when.firstChild.textContent = `As written · ${wayPlace(v.map, names)} · ${v.bars.length} bars · `;
+          action = !g.chosen ? el('span', { className: 'rw-badge', textContent: '✓ As written' }) : el('span');
+        }
+        return el('div', { className: `repeat-way${isChosen || (patterns && !g.chosen && g.variants.length === 1) ? ' chosen' : ''}` }, ...[notes, action, when]);
+      }), ...(!patterns ? [] : g.others.length ? [el('div', { className: 'rw-label', textContent: 'Other ways' }), ...g.others.map((o, k) => {
+        const isChosen = chosen === JSON.stringify(o.map), d = g.written.cost ? (o.cost - g.written.cost) / g.written.cost : 0;
+        const ease = Math.abs(d) < 0.05 ? 'about as easy as written' : `${Math.round(Math.abs(d) * 100)}% ${d < 0 ? 'easier' : 'harder'} than as written`;
+        const where = o.pos < g.written.pos - 1 ? 'lower' : o.pos > g.written.pos + 1 ? 'higher' : '';
+        const when = el('div', { className: 'rw-when' }, ...[wayPlace(o.map, names), ` · ${ease}`,
+          where ? el('span', { className: 'rw-easy rw-where', textContent: where === 'lower' ? 'Lower on the neck' : 'Higher on the neck' }) : '']);
+        let action;
+        if (isChosen) action = el('span', { className: 'rw-badge', textContent: '✓ Used everywhere' });
+        else {
+          action = el('button', { type: 'button', className: 'btn sm', textContent: 'Use everywhere' });
+          action.addEventListener('click', () => setRepeat(g.key, o.map));
+        }
+        return el('div', { className: `repeat-way other${isChosen ? ' chosen' : ''}` }, ...[repeatLine(o, common, names, `Other way ${k + 1}`), action, when]);
+      })] : [el('div', { className: 'rw-label rw-none', textContent: 'No other hand position reaches every note of this part.' })])]);
     }));
-    if (!r.groups.length) box.replaceChildren(el('div', { className: 'repeats-empty', textContent: 'Every repeated part in this tab is already played the same way.' }));
+    if (!r.groups.length) box.replaceChildren(el('div', { className: 'repeats-empty', textContent: none }));
     $('#repeats-clear').classList.toggle('hidden', !r.groups.some((g) => g.chosen));
+    $('#repeats-lower').classList.toggle('hidden', !patterns || !r.groups.some((g) => g.others.some((o) => o.lower)));
     $('#repeats-sub').textContent = r.groups.length ? `${r.groups.length} ${r.groups.length === 1 ? 'part' : 'parts'} found in “${tabView.data?.import_name || 'the imported tab'}”` : '';
     if (!repeatsDlg.open) repeatsDlg.showModal();
   }
@@ -4388,7 +4498,7 @@
       svgNode.append(svgEl('line', { x1: left, x2: W - right, y1: y(s), y2: y(s), class: 'rw-string' }));
     }
     for (const bx of [left, W - right]) svgNode.append(svgEl('line', { x1: bx, x2: bx, y1: y(n - 1), y2: y(0), class: 'rw-bar' }));
-    svgNode.prepend(svgEl('title', {}, `Way ${num}`));
+    svgNode.prepend(svgEl('title', {}, typeof num === 'number' ? `Way ${num}` : num));
     fing.forEach(([s, f], k) => {
       const c = common[v.pitches[k]], diff = !!c && (s !== c[0] || f !== c[1]), w = String(f).length > 1 ? 22 : 15;
       svgNode.append(svgEl('rect', { x: x(k) - w / 2, y: y(s) - 9, width: w, height: 18, rx: 5, class: diff ? 'rw-bg diff' : 'rw-bg' }));
@@ -4396,14 +4506,16 @@
     });
     return svgNode;
   }
-  async function setRepeat(key, map, easiest = false) {
+  async function setRepeat(key, map, easiest = false, lower = false) {
     try {
-      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song } : { song: tabView.song, key, map, easiest });
+      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, lower } : { song: tabView.song, key, map, easiest });
       await loadTab();
       showRepeats();
     } catch (err) { toast(err.message, 'error'); }
   }
-  $('#tab-repeats').addEventListener('click', showRepeats);
+  $('#tab-repeats').addEventListener('click', () => showRepeats('repeats'));
+  $('#tab-patterns').addEventListener('click', () => showRepeats('patterns'));
+  $('#repeats-lower').addEventListener('click', () => setRepeat(undefined, null, false, true));
   $('#repeats-clear').addEventListener('click', () => setRepeat(undefined));
   $('#tab-remove-import').addEventListener('click', async () => {
     try {
@@ -5068,6 +5180,7 @@
     const gateDb = Math.max(GATE_DB, (input.floorDb ?? -100) + 10);
     const hz = db > gateDb ? pitchOf(buf, ctx.sampleRate) : 0;   // pitch doesn't depend on loudness, so quiet is fine
     const semis = hz ? 12 * Math.log2(hz / 440) + 69 : 0;
+    input.semis = semis;                                // the exact pitch, for the game's tuning check
     const raw = hz && Math.abs(semis - Math.round(semis)) <= 0.4 ? Math.round(semis) : null;   // clearly pitched and in tune, or nothing
     if (tunerOn) showTuner(db > GATE_DB ? hz || pitchOf(buf, ctx.sampleRate) : 0);   // the tuner shows out-of-tune notes too
     input.recent = [...input.recent.slice(-4), raw];
@@ -5814,6 +5927,28 @@
   }
   // A new pitch the tab doesn't have while it expects another note (within the timing
   // window): a wrong note. Notes played over rests aren't counted.
+  // A pitch a slide passes through isn't a wrong note (user: "get slides and hammer-ons /
+  // pull-offs working"): between the two notes of a slide the tab has around then (from
+  // 0.6 s before the note slid to), up to 5 semitones under / over a note slid in from below /
+  // above, and up to 7 past a note that slides off (for 0.6 s after it).
+  function onSlide(d, open, t, heard) {
+    const notes = d.notes, prev = laneLinks(d).prev;
+    for (let k = Math.max(0, game.next - 8); k < notes.length && notes[k][0] <= t + 0.6; k++) {
+      const code = notes[k][4], [ns, ne, s, f] = notes[k];
+      if (!code || f === 'x' || ns < t - 1.5) continue;
+      const p = open[s] + f, c = typeof code === 'string' ? code : 's';
+      if (c[0] === 's' && t >= ns - 0.6 && t <= ns + 0.2) {
+        const pk = prev[k], q = pk >= 0 && notes[pk][3] !== 'x' ? open[notes[pk][2]] + notes[pk][3] : null;
+        if (q !== null && heard >= Math.min(p, q) && heard <= Math.max(p, q)) return true;
+      }
+      if (c[0] === 'b' && t >= ns - 0.6 && t <= ns + 0.2 && heard >= p - 5 && heard <= p) return true;
+      if (c[0] === 'a' && t >= ns - 0.6 && t <= ns + 0.2 && heard <= p + 5 && heard >= p) return true;
+      const end = Math.max(ne, ns + 0.1);
+      if (c.includes('d') && t >= ns && t <= end + 0.6 && heard <= p && heard >= p - 7) return true;
+      if (c.includes('u') && t >= ns && t <= end + 0.6 && heard >= p && heard <= p + 7) return true;
+    }
+    return false;
+  }
   function checkWrong(t, midi) {
     const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
     const [early, late] = TIMINGS[gameTiming], heard = midi - player.shift;
@@ -5824,9 +5959,39 @@
       near.push({ s, pitch: open[s] + f, label: `${noteName(open[s] + f)}` });
     }
     if (!near.length || near.some((x) => samePitch(heard, x.pitch)) || performance.now() - game.wrongAt < 250) return;
+    if (onSlide(d, open, t, heard)) return;
     game.wrongAt = performance.now();
     mistake(near[near.length - 1].s, 'WRONG', `${noteName(midi)} · tab ${near[near.length - 1].label}`);
     checkEvent({ e: 'wrong', t, at: tabTime(), midi: heard, tab: near.map((x) => x.pitch), s: near[near.length - 1].s });
+  }
+
+  // Is a string out of tune? (user: slides and some notes on the E string kept missing; their
+  // E string read 21-30 cents sharp in three games, the others 2-13, so its notes sat between
+  // two notes, past the 40 cents a reading may be off.) While a tab note sounds (0.08-0.4 s
+  // in), a pitch within 75 cents of it counts toward its string's offset; at the end a string
+  // off by >= 15 cents (median of >= 30 readings over >= 5 notes) is named in the results.
+  function tuneCheck(t) {
+    if (!input.semis || instrument !== 'bass') return;
+    const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
+    for (let k = Math.max(0, game.next - 4); k < notes.length && notes[k][0] <= t; k++) {
+      const [ns, ne, s, f] = notes[k];
+      if (f === 'x' || t < ns + 0.08 || t > Math.min(Math.max(ne, ns + 0.1), ns + 0.4)) continue;
+      const cents = 100 * (input.semis - player.shift - (open[s] + f));
+      if (Math.abs(cents) > 75) continue;
+      const log = game.tuneLog[s] ||= { cents: [], notes: new Set() };
+      log.cents.push(cents); log.notes.add(k);
+      return;
+    }
+  }
+  function tuningVerdict() {
+    const d = tabView.data, names = d?.tunings.find((x) => x.key === d.tuning)?.strings || [];
+    const out = [];
+    for (const [s, log] of Object.entries(game.tuneLog || {})) {
+      if (log.cents.length < 30 || log.notes.size < 5) continue;
+      const c = [...log.cents].sort((a, b) => a - b)[log.cents.length >> 1];
+      if (Math.abs(c) >= 15) out.push(`${names[s] || 'one'} string ${Math.round(Math.abs(c))} cents ${c > 0 ? 'sharp' : 'flat'}`);
+    }
+    return out.length ? `Your ${out.join(', ')}: notes on it can miss. Retune with the Tuner (Bass input).` : '';
   }
 
   function gameListen(db, midi, raw, fresh, newPitch, rePluck = 0) {
@@ -5864,6 +6029,7 @@
     }
     game.prevDb2 = game.prevDb; game.prevDb = db;
     if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
+    tuneCheck(now - 0.05 - fix);
     // A wrong note needs a real attack just before it: lifting a finger lets the open
     // string (or another fretted note) ring, which isn't a mistake (the user saw those).
     if (midi !== null && midi !== game.lastMidi && now - (game.lastAttack ?? -9) < 0.3) checkWrong(now - 0.1 - fix, midi);
@@ -5899,7 +6065,7 @@
       // real hits the same, 696/726).
       const ownPitch = (p) => pitch === null || game.heard.some(([, m, at]) => samePitch(m, pitch) && at >= p.at + (p.soft ? 0 : 0.015) && at <= p.at + PITCH_WAIT + 0.02
         && !game.plucks.some((q) => q !== p && q.at > p.at && q.at < at - (q.soft ? 0 : 0.015)));
-      const cands = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03) && p.db >= quietBelow && ownPitch(p));
+      const cands = game.plucks.filter((p) => p.t >= ns - early && p.t <= ns + late && (p.used === null || Math.abs(p.used - ns) < 0.03) && (p.db >= quietBelow || (p.soft && legatoIn(notes[k][4]))) && ownPitch(p));   // a hammer-on / pull-off is often quieter
       const match = pitch === null ? null : game.heard.find(([t, m]) => samePitch(m, pitch) && t >= ns - early && t <= ns + late + 0.15);
       const heard = pitch === null || !!match;
       // The pluck that started this note: the last one before its pitch was first heard.
@@ -5931,7 +6097,7 @@
           return false;
         };
         let messy = false;
-        if (notes[k][4] === true) messy = false;           // the tab says it's slid or hammered into
+        if (legatoIn(notes[k][4])) messy = false;          // the tab says it's slid or hammered into
         else if (pitch !== null && pluck.soft) {
           const hard = game.plucks.filter((p) => !p.soft && p.t < pluck.t && p.t > pluck.t - 0.35).pop();
           if (hard) messy = heldWrong(hard.t, pluck.t + 0.06);
@@ -6029,7 +6195,7 @@
     Object.assign(game, { on: true, started: false, score: 0, streak: 0, best: 0, hits: 0, judged: 0, next: firstNote,
                           result: new Array(tabView.data.notes.length).fill(null), hitAt: [], grade: [], laneHit: {}, plucks: [], heard: [],
                           bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
-                          laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0,
+                          laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, tuneLog: {},
                           prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false });
     document.body.classList.add('game-on');
     $('#tab-game').textContent = 'Pause';
@@ -6091,7 +6257,7 @@
     $('#game-acc').textContent = `${game.judged ? Math.round((game.hits / game.judged) * 100) : 0}%`;
     $('#game-hits').textContent = `${game.hits} of ${game.judged}`;
     $('#game-streak').textContent = String(game.best);
-    $('#game-note').textContent = finished ? '' : `Stopped at ${fmtTime(currentTime())}: the song has ${total} notes.`;
+    $('#game-note').textContent = [finished ? '' : `Stopped at ${fmtTime(currentTime())}: the song has ${total} notes.`, tuningVerdict()].filter(Boolean).join(' ');
     $('#game-dlg').showModal();
     renderTabHead();                                     // "Your best" next to Start
   }

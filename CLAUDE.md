@@ -531,6 +531,8 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     the tab doesn't have, plucked just before). Simulated Electra: 0 false MESSY in 40 s;
     a held wrong note slid into the right one: MESSY.
   - Pause is a pill at the top centre (the HUD has the corners).
+  - "Your best" in the Game section is set on every render (no tab: empty); it only changed
+    when a song had a tab, so a new song kept the last song's best (user noticed).
 - Game settings (user: "a settings page in the pause menu, like changing the look"):
   `#settings-dlg`, opened from the pause menu's Settings (Done returns to it) or
   "Game settings" in the Game section: Look, Note speed (drives `#hw-speed`), Timing,
@@ -846,6 +848,17 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   (`_place_in_bars`): files use their exact rhythm between matches, text tabs plain
   order. Test song (line played 3.2 s late, 3% slower, +-0.15 s drift, real band
   leakage, through the full app): MusicXML 93% of notes within 50 ms, pasted text 97%.
+- Pasted Ultimate Guitar tabs (user: "I also want to be able to use ultimate guitar tabs,
+  even if it is just pasting"; still never fetched from the site): `read_text` uses the
+  count line under each system ("1 + 2 + 3 + 4 + ...", `COUNT`) for bars (each "1") and
+  rhythm (columns per beat from "1" to "2"), so such a paste is `timed` and synced like a
+  file; with no tempo of its own (`tempo_known` False) `sync` tries the beat tracker's
+  bpm, half and double, and keeps the best fit. Also read: repeat signs `|o`/`o|` (or
+  `|:`/`:|`) with "x4" after the system (default 2 plays), h/p and / \ (`_row_notes`:
+  legato like Guitar Pro's). Text after a system's last bar line is skipped: " x4" used
+  to be read as a dead note and a 4. Without count lines it reads as before. Hysteria
+  (the user's paste): one 16-beat bar per system and untimed before, first note at 0:41,
+  24% matched; now 4/4 bars of 8ths, intro x4, first note 0:00.2, 75%. IMPORT_RULES 7.
 - Stored next to the song: the file as given (`imported-tab - <name>.<ext>`, text as
   `imported-tab.txt`; a replaced import goes to the Trash after the new one reads OK) and
   `.bass-tab-imported.json` (synced notes, lines, tuning, match quality).
@@ -904,6 +917,54 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
     fingers from `unified_notes`, `learn_sources()` records a tab's `unify` with its time,
     and `set_repeats` queues learning (~2-3 min on the test library); a restart with
     nothing changed doesn't re-learn.
+- Other ways to play (user: "similar to the pattern matching, also find common patterns
+  and give you other options on how to play it", "I play Hysteria lower on the neck and
+  want to move to that"): More ▾ → "Other ways to play…" (imported tab, written tuning)
+  opens the Make repeats match dialog in a patterns mode: every part played in 2+ bars
+  (`repeat_groups(every=True)`; Make repeats match keeps only parts with 2+ fingerings),
+  as written, then up to 5 ways the tab doesn't use (`other_ways`): per hand position (4
+  frets + a 1-fret stretch, plus open strings) each pitch on a string under the hand,
+  once with open strings anywhere and once open only where the tab plays open (the
+  difficulty measure counts open strings as free, so without the second Hysteria's riff
+  never came out on the D string at 5-7 over the open A, only on open D and G); ranked
+  by `fit_costs` over all the part's bars with their neighbours, kept if 1.5 frets apart
+  (`_neck_pos`: mean fretted fret; open strings left out, the open A pedal made every way
+  look low), always with the lowest and the easiest that's 1.5+ frets lower ("lower").
+  Each shows its frets, "n% easier/harder than as written" and Lower/Higher on the neck;
+  Use everywhere saves it in `unify` like a chosen way (set_repeats accepts any map
+  playing each of the part's pitches). "Lower on the neck everywhere" (`lower: true`)
+  sets each part's "lower" way, keeping other choices. Learning uses these too.
+- Slides and hammer-ons / pull-offs (user: "get slides and hammer-ons/pull-offs working";
+  chose: show them in the tab, count them in the game). The readers keep the kind
+  (`TabNote.legato_in` "b"/"a" slid in from below/above, "h" hammered into; `legato_out`
+  "s" slide / "h" hammer or pull to the next note on the string, "d"/"u" slide off; GP3-5 via
+  PyGuitarPro slides + hammer, GP7/8 Slide flags 1|2/4/8/16/32 + HopoOrigin/Destination;
+  MusicXML and text tabs carry none). `timeline` gives each note a code: how it's reached
+  ("s", "h", "b", "a") then "d"/"u" if it slides off; it's the imported note's 6th value
+  and /api/tab's 5th (IMPORT_RULES 6 re-synced old imports, which had true/false). In the
+  user's tabs: Baby 35 slides, 10 hammer-ons/pull-offs, 5 slides off; YOLO 28 slides; Save
+  Yourself 32; Sha-La-La-Lady 11. Page: `legatoMarks(d, k)` (into "/" "\" "h" "p", the note
+  it comes from, out mark); Lines / Whole tab draw a slide as a sloped line from the note
+  before (5/7, 7\5) or "/" "\" beside the number when that note is on another line, a
+  hammer-on / pull-off as an arc with "h" / "p", slides off after the number; Scroll the
+  same on its canvas; the Highway a line between the gems and the mark above the gem; the
+  game board the mark above the slab. Game: `legatoIn` keeps such notes from being messy;
+  a pitch-change pluck counts for them however quiet (a hammer-on / pull-off is quieter
+  than a pluck); `onSlide` stops WRONG for pitches a slide passes through (between a
+  slide's two notes, up to 5 semitones under / over a slide in, up to 7 past a slide off,
+  for 0.6 s). Only 10 slid / hammered notes in the user's game checks so far (7 hit), so the
+  game side was untested on real slides. The user's first game with them (Baby, 08:26;
+  "seems inconsistent"): hammer-ons / pull-offs 2/2, slides 3/7, other notes 172/194. The 4
+  missed slides all landed on G1 (E3) and read 45-50 cents sharp (A♭1-47), and the E8 they
+  came from +30-40: the E string was out of tune (median +21-30 cents in the last three
+  games against +2-13 on the others; +7 the day before), past the 40 cents a reading may
+  be off; "heard A♭1, tab G1" WRONGs and Cry Baby Cry's G1/A♭1 misses had the same cause.
+  Tuning check (`tuneCheck` / `tuningVerdict`): in a game, a pitch within 75 cents of a tab
+  note sounding 0.08-0.4 s in counts toward its string's offset (`input.semis`, the exact
+  reading); the results name a string off by >= 15 cents (median of >= 30 readings over >= 5
+  notes): "Your E string 26 cents sharp: notes on it can miss. Retune with the Tuner (Bass
+  input)." Simulated bass 30 cents sharp: "A string 43 cents sharp" (the track itself
+  reads ~+13).
 - Dead notes ("x") are left out of imported tabs when shown (user: "remove Xs in
   tabs"; Amsterdam's .gp had 223 of 868), so they're not in the views or the game;
   the saved import still has them (`notes[i][4]`).

@@ -11,6 +11,7 @@ static/index.html.
 
 import bisect
 import hashlib
+import itertools
 import json
 import multiprocessing
 import os
@@ -637,7 +638,9 @@ IMPORT_FILE = ".bass-tab-imported.json"
 #    written ones (Save Yourself, I'll Hold Them Back was 1.3-1.7 s early for two minutes
 #    and 15% of its notes were squeezed together).
 # 3: notes keep whether they're slid or hammered into (Guitar Pro marks), for the game.
-IMPORT_RULES = 5
+# 7: pasted text tabs with count lines ("1 + 2 + ...") are read with their rhythm, repeats
+#    and hammer-ons / slides, and synced like files.
+IMPORT_RULES = 7
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 
 
@@ -1539,13 +1542,14 @@ def _similar(a, b):
     return prev[-1] / max(len(a), len(b))
 
 
-def repeat_groups(imported):
+def repeat_groups(imported, every=False):
     """Parts the imported tab repeats but plays in different places: bars (3+ played notes)
     whose pitches mostly match (>= 75% in order: a pickup note or a changed last note still
     counts; user: an A7 A7 A9 ending against a D2 D4 D4 one wasn't caught) and that put a
     pitch they share on different strings. {key: [ways]}, key = the first such bar's
     pitches; each way = {"map": {pitch: (string, fret)}, "bars": [(start, note indexes,
-    pitches)]}, the most played way first; only groups with more than one way."""
+    pitches)]}, the most played way first; only groups with more than one way, or with
+    `every` every part played in 2+ bars (the patterns "Other ways to play" works on)."""
     opens = import_opens(imported)
     starts = sorted({b for line in imported["lines"] for b in line[2]})
     if not opens or not starts:
@@ -1577,7 +1581,7 @@ def repeat_groups(imported):
                 way["bars"].append(bar)
             else:
                 ways.append({"map": dict(fmap), "bars": [bar]})
-        if len(ways) > 1:
+        if len(ways) > 1 or (every and len(bars) > 1):
             ways.sort(key=lambda w: (-len(w["bars"]), w["bars"][0][0]))
             groups[",".join(map(str, first))] = ways
     return groups
@@ -1623,6 +1627,68 @@ def best_here(costs, own):
     return own if costs[own] <= min(costs) + 1e-9 else costs.index(min(costs))
 
 
+def _neck_pos(ways, fmap, notes):
+    """Where on the neck a part sits played with `fmap`: the mean fret of its fretted notes
+    in all its bars (pitches the map doesn't cover as the tab has them; open strings left
+    out: with Hysteria's open A pedal they made every way look low)."""
+    frets = [fmap[p][1] if p in fmap else notes[i][3] for w in ways for _, idx, ps in w["bars"] for i, p in zip(idx, ps)]
+    frets = [f for f in frets if f]
+    return sum(frets) / max(1, len(frets))
+
+
+def other_ways(imported, ways, notes=None, keep=5):
+    """Ways to play a repeated part that the tab doesn't use (user: "I play Hysteria lower
+    on the neck and want to move to that"). For each hand position (4 frets and a 1-fret
+    stretch, plus open strings) every pitch of the part goes on a string where it falls
+    under the hand; when some fit on two strings there, the combination tab._difficulty
+    rates easiest on a few of its bars. Each is then rated over all the part's bars with
+    their neighbours (fit_costs). Up to `keep`, in different places on the neck, always
+    with the lowest one and the easiest that's 1.5+ frets lower than the tab ("lower": what
+    "Lower on the neck everywhere" uses): [{"map", "cost", "pos", "lower"}], easiest first."""
+    opens, notes = import_opens(imported), notes or imported["notes"]
+    pitches = sorted({p for w in ways for p in w["map"]})
+    tab_open = {p for w in ways for p, (s, f) in w["map"].items() if f == 0}
+    sample = [b for w in ways for b in w["bars"][:2]]
+
+    def quick(fmap):
+        return sum(tab._difficulty([notes[i][0] for i in idx], [fmap[p] for p in ps]) for _, idx, ps in sample)
+
+    found = {}
+    for a in range(1, tab.MAX_FRET - 3):
+        opts = [[(s, p - o) for s, o in enumerate(opens) if p - o == 0 or a <= p - o <= a + 4] for p in pitches]
+        if not all(opts):
+            continue
+        # Twice: open strings wherever they fit, and open exactly where the tab plays a
+        # pitch open, the rest fretted under the hand (tab._difficulty counts open strings as
+        # free, so the first alone never gave Hysteria's riff over the open A on the D
+        # string at frets 5-7, only ways on open D and G).
+        fretted = [[o for o in here if bool(o[1]) != (p in tab_open)] or here for p, here in zip(pitches, opts)]
+        for choice in (opts, fretted):
+            combos = (itertools.product(*choice) if np.prod([len(o) for o in choice]) <= 256
+                      else [tuple(o[0] for o in choice)])
+            fmap = min((dict(zip(pitches, c)) for c in combos), key=quick)
+            if not any(all(fmap.get(p) == f for p, f in w["map"].items()) for w in ways):
+                found[tuple(sorted(fmap.items()))] = fmap
+    cands = list(found.values())
+    if not cands:
+        return []
+    costs = fit_costs(imported, ways + [{"map": m, "bars": []} for m in cands], notes)
+    out = [{"map": m, "cost": sum(c[len(ways) + k] for c in costs.values()), "pos": _neck_pos(ways, m, notes)}
+           for k, m in enumerate(cands)]
+    written = _neck_pos(ways, {}, imported["notes"])
+    lower = [o for o in out if o["pos"] <= written - 1.5]
+    picked = [min(out, key=lambda o: o["pos"])]
+    if lower:
+        best = min(lower, key=lambda o: o["cost"])
+        best["lower"] = True
+        if best is not picked[0]:
+            picked.append(best)
+    for o in sorted(out, key=lambda o: o["cost"]):
+        if len(picked) < keep and all(abs(o["pos"] - q["pos"]) >= 1.5 for q in picked):
+            picked.append(o)
+    return sorted(picked, key=lambda o: o["cost"])
+
+
 def unify_rules(imported, groups):
     """The import's saved choices as {group key: {pitch: (string, fret)}}. Choices saved
     before near repeats were grouped are keyed by one exact pitch sequence: each goes to the
@@ -1651,7 +1717,7 @@ def unified_notes(imported, skip=None):
     notes = [list(n) for n in imported["notes"]]
     if not imported.get("unify") or not import_opens(imported):
         return notes
-    groups = repeat_groups(imported)
+    groups = repeat_groups(imported, every=True)
     rules = {k: r for k, r in unify_rules(imported, groups).items() if k != skip}
     for key in sorted(rules, key=lambda k: rules[k] == "easiest"):
         costs = fit_costs(imported, groups[key], notes) if rules[key] == "easiest" else None
@@ -1765,7 +1831,10 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
         # Dead (muted) notes, written "x", are left out: the user asked for no x's. A 5th
         # value says the note is slid or hammered into (the game doesn't call it messy).
         played = [n for n in unified_notes(imported) if not n[4]]
-        legato = lambda n: bool(n[5]) if len(n) > 5 else False
+        # How a note is reached / left (tabimport.timeline): "s" slid, "h" hammered or pulled
+        # from the note before on its string, "b"/"a" slid in from below/above, then "d"/"u"
+        # for a slide off. Imports synced before IMPORT_RULES 6 only had true/false.
+        legato = lambda n: (n[5] if isinstance(n[5], str) else "s" if n[5] else "") if len(n) > 5 else ""
         if tuning in (None, written) or tuning not in tab.TUNINGS or not opens:
             return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3], legato(n)] for n in played]}
         # In another tuning: the tab's pitches fingered again (learned fingering), the
@@ -2351,20 +2420,23 @@ def remove_import(req: IdRequest):
 
 
 @api.get("/api/tab/repeats")
-def tab_repeats(song: str):
+def tab_repeats(song: str, patterns: bool = False):
     """Repeated parts of the imported tab played in different places: per group each way
     (where it plays each pitch, its bars, and its first bar's notes to draw) and the one
-    chosen, if any."""
+    chosen, if any. With `patterns` ("Other ways to play"): every part played in 2+ bars,
+    each also with ways the tab doesn't use (`other_ways`), "as written" being the cost of
+    playing each bar the way the tab does."""
     imported = read_import(library_path(song, 2))
     if not imported:
         raise HTTPException(404, "This song has no imported tab.")
-    groups = repeat_groups(imported)
+    groups = repeat_groups(imported, every=patterns)
     names, rules, out = imported.get("strings") or [], unify_rules(imported, groups), []
     starts = sorted({b for line in imported["lines"] for b in line[2]})
     notes = imported["notes"]
     as_json = lambda fmap: {str(p): list(fmap[p]) for p in sorted(fmap)}
     for key, ways in groups.items():
-        costs, variants = fit_costs(imported, ways, unified_notes(imported, skip=key)), []
+        around = unified_notes(imported, skip=key)
+        costs, variants = fit_costs(imported, ways, around), []
         # Used everywhere, how hard each way is over all the group's bars (with their
         # neighbours); and how many bars each way fits best (Easiest in each place).
         totals = [sum(costs[b[0]][k] for w in ways for b in w["bars"]) for k in range(len(ways))]
@@ -2382,10 +2454,19 @@ def tab_repeats(song: str):
                              "times": [round(max(0.0, notes[i][0] - start) / max(length, 0.1), 4) for i in idx],
                              "easiest": totals[len(variants)] <= min(totals) + 1e-9 and len(set(round(t, 6) for t in totals)) > 1,
                              "fits": fits[len(variants)]})
-        out.append({"key": key, "notes": [note_name(int(p)) for p in key.split(",")],
-                    "bars": sum(len(w["bars"]) for w in ways),
+        group = {"key": key, "notes": [note_name(int(p)) for p in key.split(",")],
+                 "bars": sum(len(w["bars"]) for w in ways),
                     "chosen": rules.get(key) if rules.get(key) == "easiest" else as_json(rules[key]) if key in rules else None,
-                    "variants": variants})
+                 "variants": variants}
+        if patterns:
+            start, idx, pitches = ways[0]["bars"][0]
+            written = sum(costs[b[0]][k] for k, w in enumerate(ways) for b in w["bars"])
+            group["written"] = {"cost": round(written, 3), "pos": round(_neck_pos(ways, {}, notes), 2)}
+            group["others"] = [{"map": as_json(o["map"]), "cost": round(o["cost"], 3), "pos": round(o["pos"], 2),
+                                "lower": bool(o.get("lower")), "pitches": pitches, "times": variants[0]["times"],
+                                "fingering": [list(o["map"][p]) for p in pitches]}
+                               for o in other_ways(imported, ways, around)]
+        out.append(group)
     out.sort(key=lambda g: (-g["bars"], min(v["bars"][0] for v in g["variants"])))
     return {"groups": out, "strings": names}
 
@@ -2395,6 +2476,7 @@ class UnifyRequest(BaseModel):
     key: Optional[str] = None     # a group's key; none (with no map) = put all back
     map: Optional[dict] = None    # {pitch: [string, fret]}: play these pitches there in all its bars; none = as written
     easiest: bool = False         # instead: each bar the way that fits it best between its neighbours
+    lower: bool = False           # (no key) every repeated part that can be: the easiest way lower on the neck
 
 
 @api.post("/api/tab/repeats")
@@ -2405,9 +2487,17 @@ def set_repeats(req: UnifyRequest):
     imported = read_import(song_dir)
     if not imported:
         raise HTTPException(404, "This song has no imported tab.")
-    groups = repeat_groups(imported)
+    groups = repeat_groups(imported, every=True)
     rules = unify_rules(imported, groups)   # older saved choices move to the new groups here
-    if req.key is None:
+    if req.lower:
+        # Part by part, the easiest other way that sits at least 1.5 frets lower on average
+        # than the tab plays it (the very lowest leans on open strings oddly: Hysteria's
+        # riff on open G), as the dialog shows it; parts with none keep what they had.
+        for key, ways in groups.items():
+            lower = [o for o in other_ways(imported, ways, unified_notes(imported, skip=key)) if o.get("lower")]
+            if lower:
+                rules[key] = lower[0]["map"]
+    elif req.key is None:
         rules = {}
     elif req.easiest:
         if req.key not in groups:
@@ -2417,8 +2507,12 @@ def set_repeats(req: UnifyRequest):
         rules.pop(req.key, None)
     else:
         chosen = {int(p): tuple(f) for p, f in req.map.items()}
-        if not any(w["map"] == chosen for w in groups.get(req.key) or []):
-            raise HTTPException(400, "That way of playing it isn't in the tab.")
+        ways, opens = groups.get(req.key) or [], import_opens(imported)
+        # One of the tab's ways, or another way that plays each of the part's pitches.
+        if not ways or not (any(w["map"] == chosen for w in ways) or (
+                set(chosen) == {p for w in ways for p in w["map"]}
+                and all(0 <= s < len(opens) and 0 <= f <= tab.MAX_FRET and opens[s] + f == p for p, (s, f) in chosen.items()))):
+            raise HTTPException(400, "That way of playing it doesn't fit this part.")
         rules[req.key] = chosen
     imported["unify"] = {k: m if m == "easiest" else {str(p): list(m[p]) for p in sorted(m)} for k, m in rules.items()}
     (song_dir / IMPORT_FILE).write_text(json.dumps(imported), encoding="utf-8")

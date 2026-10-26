@@ -14,7 +14,7 @@ tab's own tempo, and `sync()` maps those times onto the recording.
 
 import re
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -31,8 +31,10 @@ class TabNote:
     fret: int
     tie: bool = False   # continues the previous note on this string
     dead: bool = False  # muted ("x")
-    legato_in: bool = False    # slid or hammered into (Guitar Pro "slide in", hammer-on/pull-off target)
-    legato_out: bool = False   # slides or hammers on into the next note on this string
+    # Slides and hammer-ons / pull-offs, as letters (shown in the tab, and the game doesn't
+    # want a pluck for a note slid or hammered into):
+    legato_in: str = ""    # "b" / "a" slid in from below / above, "h" hammered or pulled into
+    legato_out: str = ""   # "s" slides / "h" hammers or pulls to the next note on this string, "d" / "u" slides off down / up
 
 
 @dataclass
@@ -52,6 +54,7 @@ class TabTrack:
     bars: list
     tempo: float = 120.0
     timed: bool = True  # False for text tabs: positions are only the order of the notes
+    tempo_known: bool = True   # False for text tabs with counts: rhythm but no tempo (sync guesses it)
 
 
 def is_bass(track):
@@ -86,8 +89,9 @@ def read_gp5(path):
                     slides = {s_.name for s_ in (note.effect.slides or [])}
                     bar.notes.append(TabNote(pos, beat.duration.time / 960, n - note.string, note.value,
                                              tie=note.type.name == "tie", dead=note.type.name == "dead",
-                                             legato_in=bool(slides & {"intoFromBelow", "intoFromAbove"}),
-                                             legato_out=bool(slides & {"shiftSlideTo", "legatoSlideTo"}) or bool(note.effect.hammer)))
+                                             legato_in="b" if "intoFromBelow" in slides else "a" if "intoFromAbove" in slides else "",
+                                             legato_out="s" if slides & {"shiftSlideTo", "legatoSlideTo"} else "h" if note.effect.hammer
+                                             else "d" if "outDownwards" in slides else "u" if "outUpwards" in slides else ""))
             bars.append(bar)
         tracks.append(TabTrack(t.name, strings, bars, float(song.tempo)))
     return tracks
@@ -170,14 +174,16 @@ def read_gp(path):
                     if string is None or fret is None:
                         continue
                     tie = note.find("Tie")
-                    # Slide flags: 1 shift slide / 2 legato slide to the next note, 16 / 32
-                    # slide in from below / above; hammer-ons and pull-offs: HopoOrigin/Destination.
+                    # Slide flags: 1 shift slide / 2 legato slide to the next note, 4 / 8 slide out
+                    # down / up, 16 / 32 slide in from below / above; hammer-ons and pull-offs:
+                    # HopoOrigin/Destination.
                     slide = int(props["Slide"].findtext("Flags") or 0) if "Slide" in props else 0
                     bar.notes.append(TabNote(pos, dur, int(string.findtext("String")), int(fret.findtext("Fret")),
                                              tie=tie is not None and tie.get("destination") == "true",
                                              dead="Muted" in props,
-                                             legato_in=bool(slide & 48) or "HopoDestination" in props,
-                                             legato_out=bool(slide & 3) or "HopoOrigin" in props))
+                                             legato_in="b" if slide & 16 else "a" if slide & 32 else "h" if "HopoDestination" in props else "",
+                                             legato_out="s" if slide & 3 else "h" if "HopoOrigin" in props
+                                             else "d" if slide & 4 else "u" if slide & 8 else ""))
                 pos += dur
             tbars.append(bar)
         name = track.findtext("Name") or ""
@@ -289,45 +295,116 @@ def _open_strings(labels):
     return pitches
 
 
+COUNT = re.compile(r"^\s*1(\s+[1-9+&ea])+\s*$")   # a count line under a system: "1 + 2 + 3 + 4 + 1 + ..."
+REPEATS = re.compile(r"[x×]\s*(\d+)|(\d+)\s*[x×]")
+
+
+def _row_notes(row, a, b):
+    """The notes in row[a:b] as (column, fret or None for "x", legato in, legato out): 5h7 /
+    5p4 hammer or pull to the next note, 5/7 5\\3 slide to it, 7\\- 7/- slide off down / up,
+    -/5 -\\5 slide in from below / above."""
+    out = []
+    for m in re.finditer(r"\d+|x", row[a:b]):
+        i, j = a + m.start(), a + m.end()
+        before, after = row[i - 1] if i > a else "", row[j] if j < b else ""
+        nxt = row[j + 1] if j + 1 < b else ""
+        if after == "-" and nxt in ("/", "\\") and not row[j + 2:j + 3].isdigit():   # "7-\\-": slides off
+            after, nxt = nxt, ""
+        out_mark = ("h" if after in "hp" and nxt.isdigit() else "s" if after in "/\\" and nxt.isdigit()
+                    else "u" if after == "/" else "d" if after == "\\" else "") if after else ""
+        prev = row[i - 2] if i - 2 >= a else ""
+        in_mark = ("b" if before == "/" else "a" if before == "\\" else "") if before and not prev.isdigit() else ""
+        out.append((i, None if m.group() == "x" else int(m.group()), in_mark, out_mark))
+    return out
+
+
 def read_text(text):
     """Systems of 4-6 lines like 'G|--5--7--|' (highest string on top). Columns give the
-    order and rough spacing of notes; bar lines '|' give bars. No rhythm or tempo."""
+    order and rough spacing of notes; bar lines '|' give bars. With a count line under
+    every system ("1 + 2 + 3 + 4 + ...", as Ultimate Guitar bass tabs have; user: "I also
+    want to be able to use ultimate guitar tabs, even if it is just pasting") the counts
+    give the bars and the rhythm, so the tab is synced like a file (its tempo is guessed
+    from the song's, see sync). Also read: repeat signs (|o ... o| or |: ... :|) with a
+    play count after the system ("x4", default 2), hammer-ons / pull-offs (h, p) and
+    slides (/ \\). Text after a system's last bar line isn't read as notes ("x4" was a
+    dead note and a 4)."""
     lines = text.replace("\t", "    ").splitlines()
     systems, block = [], []
     for line in lines + [""]:
         m = LINE.match(line)
         if m and "-" in line:
-            block.append((m.group(1), line[m.end() - 1:]))
-        else:
-            if 4 <= len(block) <= 6:
-                systems.append(block)
-            block = []
+            block.append((m.group(1), line, m.end() - 1))
+            continue
+        if 4 <= len(block) <= 6:   # a count line comes right under its system
+            systems.append({"rows": block, "count": line if COUNT.match(line) else None})
+        block = []
     if not systems:
         return []
-    labels = [l for l, _ in systems[0]]
+    labels = [l for l, _, _ in systems[0]["rows"]]
     strings = _open_strings(labels)
     n = len(strings)
-    bars, column = [], 0
-    for block in systems:
-        width = max(len(body) for _, body in block)
-        rows = [body.ljust(width, "-") for _, body in block]
-        cuts = [i for i in range(width) if all(r[i] == "|" for r in rows if i < len(r))] or [0, width]
-        if cuts[0] != 0:
-            cuts.insert(0, 0)
-        if cuts[-1] != width:
-            cuts.append(width)
-        for a, b in zip(cuts, cuts[1:]):
-            if b - a <= 1:
+    timed = all(sy["count"] for sy in systems)
+    bars = []
+    for sy in systems:
+        off = sy["rows"][0][2]
+        rows, tail = [], ""
+        for _, line, o in sy["rows"]:
+            body = line[o:]
+            last = body.rfind("|")
+            if last > 0 and body[last + 1:].strip():
+                tail += " " + body[last + 1:]
+                body = body[:last + 1]
+            rows.append(" " * (o - off) + body)
+        width = max(len(r) for r in rows)
+        rows = [r.ljust(width, "-") for r in rows]
+        # Repeat signs, then blanked so they aren't read as anything else.
+        opens = [i for i in range(width - 1) if any(r[i] == "|" and r[i + 1] in "o:" for r in rows)]
+        closes = [i for i in range(1, width) if any(r[i] == "|" and r[i - 1] in "o:" for r in rows)]
+        rows = [re.sub(r"(?<=\|)[o:]|[o:](?=\|)", "-", r) for r in rows]
+        times = REPEATS.search(tail)
+        plays = int(times.group(1) or times.group(2)) if times else 2
+        cuts = [i for i in range(width) if all(r[i] == "|" for r in rows if i < len(r))]
+        per_beat, edges = 4.0, sorted(set([0, width] + cuts))
+        if timed:
+            count = sy["count"][off:] if len(sy["count"]) > off else ""
+            ones = [m.start() for m in re.finditer(r"(?<!\S)1(?!\S)", count)]
+            twos = [m.start() for m in re.finditer(r"(?<!\S)2(?!\S)", count)]
+            if ones and twos and twos[0] > ones[0]:
+                per_beat = float(twos[0] - ones[0])
+            if ones:
+                measure = (ones[1] - ones[0]) if len(ones) > 1 else 4 * per_beat
+                end = ones[-1] + measure
+                edges = sorted(set(ones + [min(end, width)] + [c for c in cuts if c > end] + [width]))
+        notes = [(k, note) for k, r in enumerate(rows) for note in _row_notes(r, 0, width)]
+        starts = sorted({note[0] for _, note in notes})
+        made = []   # (first column, last column, bar) of this system
+        for a, b in zip(edges, edges[1:]):
+            inside = [(k, note) for k, note in notes if a <= note[0] < b or (a == edges[0] and note[0] < a)]
+            if b - a <= 1 or (timed and not inside and b - a < per_beat):
                 continue
-            bar = TabBar(beats=(b - a) / 4)
-            for k, row in enumerate(rows):
-                string = n - 1 - k        # top line = highest string
-                for m in re.finditer(r"\d+|x", row[a:b]):
-                    bar.notes.append(TabNote(m.start() / 4, 0.25, string, 0 if m.group() == "x" else int(m.group()),
-                                             dead=m.group() == "x"))
-            bars.append(bar)
-        column += width
-    return [TabTrack("Pasted tab", strings, bars, 120.0, timed=False)]
+            bar = TabBar(beats=(b - a) / per_beat)
+            for k, (col, fret, into, out) in inside:
+                if timed:   # until the next note on any string, within the bar
+                    nxt = next((c for c in starts if c > col), b)
+                    dur = max(0.25, (min(nxt, b) - col) / per_beat)
+                else:
+                    dur = 0.25
+                bar.notes.append(TabNote(max(0, col - a) / per_beat, dur, n - 1 - k, fret or 0,
+                                         dead=fret is None, legato_in=into, legato_out=out))
+            made.append((a, b, bar))
+        # A repeat opens on the first bar from its sign on, and closes on the last bar
+        # that ends by its sign (the space before a count's first 1 and after its last
+        # measure isn't a bar).
+        for c in opens:
+            hit = next((m for m in made if m[0] >= c - 2), None)
+            if hit:
+                hit[2].repeat_open = True
+        for c in closes:
+            hit = next((m for m in reversed(made) if m[1] <= c + 2), None)
+            if hit:
+                hit[2].repeat_close = plays
+        bars += [m[2] for m in made]
+    return [TabTrack("Pasted tab", strings, bars, 120.0, timed=timed, tempo_known=not timed)]
 
 
 # --- Any file ----------------------------------------------------------------------
@@ -381,9 +458,10 @@ def play_order(bars):
 
 def timeline(track):
     """[(tab time s, end s, string, fret, dead, bar number, legato)] in playing order,
-    ties merged into the note they continue, plus the bar start times. legato: the note is
-    slid or hammered into (its own mark, or the note before it on that string slides or
-    hammers on to it), so it starts without a pluck of its own."""
+    ties merged into the note they continue, plus the bar start times. legato: letters for
+    how the note is reached and left: "s" slid from the note before on its string, "h"
+    hammered or pulled from it, "b" / "a" slid in from below / above (each: starts without a
+    pluck of its own), then "d" / "u" when it slides off down / up; "" for none."""
     tempo, t, notes, bar_starts = track.tempo, 0.0, [], []
     open_note, leads_on = {}, {}
     for k, idx in enumerate(play_order(track.bars)):
@@ -405,7 +483,10 @@ def timeline(track):
             if note.tie and note.string in open_note:
                 open_note[note.string][1] = end          # extend the note it continues
                 continue
-            row = [start, end, note.string, note.fret, note.dead, k, note.legato_in or leads_on.get(note.string, False)]
+            came = leads_on.get(note.string, "")
+            into = came if came in ("s", "h") else note.legato_in
+            off = note.legato_out if note.legato_out in ("d", "u") else ""
+            row = [start, end, note.string, note.fret, note.dead, k, into + off]
             notes.append(row)
             open_note[note.string] = row
             leads_on[note.string] = note.legato_out
@@ -645,6 +726,14 @@ def sync(track, heard, beat=None):
 
     Returns {"notes": [[start, end, string, fret, dead]], "bars": [start s],
     "quality": share of tab notes that matched a heard note}."""
+    if track.timed and not track.tempo_known:
+        # A pasted tab with counts has rhythm but no tempo: try the song's (the beat
+        # tracker's, which can be off by 2x either way) and keep the best fit; the tempo
+        # search in _tempo_fit then fine-tunes it (0.6-1.7x).
+        bpm = 60 / beat if beat else 120.0
+        guesses = [b for b in (bpm, bpm / 2, bpm * 2) if 50 <= b <= 260] or [120.0]
+        tries = [sync(replace(track, tempo=b, tempo_known=True), heard, beat) for b in guesses]
+        return max(tries, key=lambda r: r["quality"])
     notes, bar_starts = timeline(track)
     playable = [k for k, n in enumerate(notes) if not n[4]]
     tab_t = [notes[k][0] for k in playable]
@@ -662,7 +751,7 @@ def sync(track, heard, beat=None):
         out, matched = _place_in_bars(track, notes, playable, heard, list(bar_audio), bar_starts, ends,
                                       lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=True, bar_audio_end=bar_audio_end)
         # Bars left out (not in this recording) drop their notes; the tab file keeps them.
-        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], bool(notes[k][6])] for k, n in enumerate(out)
+        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], notes[k][6] or ""] for k, n in enumerate(out)
                           if bar_audio[notes[k][5]] is not None],
                 "bars": [round(float(x), 3) for x in bar_audio if x is not None],
                 "quality": round(matched / max(1, sum(1 for k in playable if bar_audio[notes[k][5]] is not None)), 2)}
