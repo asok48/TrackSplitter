@@ -793,6 +793,11 @@
   .import-chosen .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .import-chosen .what { color: var(--muted); font-size: 12px; }
   .import-intro { font-size: 13px; line-height: 1.5; }
+  .sec-label { font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .import-for { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .import-track { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .import-track.hidden { display: none; }
+  .import-track select { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -861,6 +866,10 @@
       <div class="tab-head">
         <div class="tab-titles"><h2 id="tab-title">Bass tab</h2><p id="tab-sub"></p></div>
         <div class="tab-head-right">
+          <div class="segmented" id="tab-instrument" role="group" aria-label="Instrument" title="Which part's tab: the bass, or the guitar (guitar tabs are imported)">
+            <button type="button" data-instrument="bass" class="active">Bass</button>
+            <button type="button" data-instrument="guitar">Guitar</button>
+          </div>
           <div class="segmented" id="tab-section" role="group" aria-label="Section">
             <button type="button" data-section="tab" class="active">Tab</button>
             <button type="button" data-section="game">Game</button>
@@ -1151,7 +1160,14 @@
       </button>
     </div>
     <div class="dlg-body">
-      <p class="import-intro">Bring in a bass tab you trust; the app lines it up with this recording.</p>
+      <div class="import-for">
+        <span class="sec-label">Tab for</span>
+        <div class="segmented" id="import-instrument" role="group" aria-label="Instrument">
+          <button type="button" data-instrument="bass">Bass</button>
+          <button type="button" data-instrument="guitar">Guitar</button>
+        </div>
+      </div>
+      <p class="import-intro" id="import-intro">Bring in a bass tab you trust; the app lines it up with this recording.</p>
       <div class="field">
         <div class="dropzone" id="import-drop" tabindex="0" role="button" aria-label="Choose a tab file">
           <span class="dz-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
@@ -1164,6 +1180,8 @@
           <button type="button" class="icon-btn sm" id="import-clear" aria-label="Choose another file"></button>
         </div>
         <input type="file" id="import-file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl,.txt" hidden>
+        <div class="import-track hidden" id="import-track-row"><span class="sec-label">Track</span>
+          <select id="import-track" aria-label="Which track of the file" title="Which of the file's tracks to import"></select></div>
       </div>
       <div class="import-or">or paste a text tab</div>
       <div class="field">
@@ -1989,7 +2007,7 @@
   const songMenu = (song) => [
     { label: song.has_original ? 'New version…' : 'New version… (no saved original)', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song) },
     { label: 'Edit song & versions…', icon: icons.edit, action: () => openEdit(song) },
-    { label: 'Import bass tab…', icon: icons.music, disabled: !song.has_original && !song.versions.some((v) => v.removed === 'bass'),
+    { label: 'Import tab…', icon: icons.music, disabled: !song.has_original && !song.versions.some((v) => v.removed === 'bass'),
       action: () => importFromMenu(song) },
     '-',
     { label: 'Delete song', icon: icons.trash, danger: true, action: () => deleteSong(song) },
@@ -2533,12 +2551,21 @@
   }
 
   // section: 'tab' (read and edit the tab) or 'game' (the Highway with scoring).
-  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1, selected: null, lastRemoved: null, section: 'tab' };
+  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1, selected: null, lastRemoved: null, section: 'tab', instrument: 'bass' };
   const TAB_PREFS = 'track-splitter-tab-tuning';
+  // Bass or guitar tab, per song (bass until switched). Guitar tabs are imported only so far.
+  const INSTRUMENT_PREFS = 'track-splitter-tab-instrument';
+  const tabInstruments = () => { try { return JSON.parse(localStorage.getItem(INSTRUMENT_PREFS)) || {}; } catch { return {}; } };
+  const tabInstrument = (song) => (tabInstruments()[song] === 'guitar' ? 'guitar' : 'bass');
+  function setTabInstrument(song, which) {
+    try { localStorage.setItem(INSTRUMENT_PREFS, JSON.stringify({ ...tabInstruments(), [song]: which })); } catch { /* not kept */ }
+  }
+  const isGuitarTab = () => tabView.instrument === 'guitar';
   const tabPrefs = () => { try { return JSON.parse(localStorage.getItem(TAB_PREFS)) || {}; } catch { return {}; } };
   // Kept per song, and per tab for imported/recorded ones ("song|imported"), so a tuning
   // picked for one tab doesn't re-finger another.
-  const tuningPrefKey = (song, source) => (source && source !== 'auto' ? `${song}|${source}` : song);
+  const tuningPrefKey = (song, source, which = tabView.instrument) => (which === 'guitar' ? `${song}|guitar`
+    : source && source !== 'auto' ? `${song}|${source}` : song);
   function saveTabPref(song, tuning) {
     try { localStorage.setItem(TAB_PREFS, JSON.stringify({ ...tabPrefs(), [song]: tuning })); } catch { /* not kept */ }
   }
@@ -2592,14 +2619,17 @@
     const song = state.current?.song;
     if (!song) return openTab(false);
     tabView.song = song.id;
-    $('#tab-title').textContent = `${song.title} · bass tab`;
+    const which = tabView.instrument = tabInstrument(song.id);
+    if (which === 'guitar' && tabView.section === 'game') setSection('tab');   // no guitar game yet
+    document.querySelectorAll('#tab-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === which));
+    $('#tab-title').textContent = `${song.title} · ${which} tab`;
     const pick = tuning || tabPrefs()[tuningPrefKey(song.id, sourcePrefs()[song.id] || 'imported')];
     try {
       const data = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${splitParam(song.id)}`
-        + `&source=${sourcePrefs()[song.id] || 'imported'}`);   // an imported tab wins when there is one
-      if (tabView.song !== song.id) return;               // another song was picked meanwhile
+        + `&source=${sourcePrefs()[song.id] || 'imported'}&instrument=${which}`);   // an imported tab wins when there is one
+      if (tabView.song !== song.id || tabView.instrument !== which) return;   // another song (or part) was picked meanwhile
       tabView.data = data.exists ? data : null;
-      tabView.canMake = !!data.can_make;
+      tabView.canMake = !!(data.can_make || data.can_import);
       tabView.hasImport = !!data.has_import;
       tabView.hasMine = !!data.has_mine;
       tabView.selected = null;
@@ -2616,17 +2646,20 @@
   function renderTabHead() {
     const d = tabView.data;
     const imported = d?.source === 'imported', mine = d?.source === 'mine';
-    $('#tab-source').classList.toggle('hidden', !tabView.hasImport && !tabView.hasMine);
+    const guitar = isGuitarTab(), part = guitar ? 'guitar' : 'bass';
+    $('#tab-source').classList.toggle('hidden', guitar || (!tabView.hasImport && !tabView.hasMine));
+    $('#tab-section button[data-section="game"]').classList.toggle('hidden', guitar);   // the game scores single bass notes for now
+    $('#tab-raise-row span:last-child').textContent = `Standard ${part}: raise ½ step`;
     $('#tab-source button[data-source="imported"]').classList.toggle('hidden', !tabView.hasImport);
     $('#tab-source button[data-source="mine"]').classList.toggle('hidden', !tabView.hasMine);
     document.querySelectorAll('#tab-source button').forEach((b) => b.classList.toggle('active', b.dataset.source === (d?.source || 'auto')));
     $('#tab-remove-mine').classList.toggle('hidden', !mine);
-    $('#tab-draft').classList.toggle('hidden', !d || mine);
+    $('#tab-draft').classList.toggle('hidden', !d || mine || guitar);
     const picked = mine && tabView.selected !== null ? d.notes[tabView.selected] : null;
     $('#tab-delete-note').classList.toggle('hidden', !picked);
     if (picked) $('#tab-delete-note').textContent = `Delete ${d.tunings.find((x) => x.key === d.tuning).strings[picked[2]]}${picked[3]} at ${fmtTime(picked[0])}`;
     $('#tab-undo-note').classList.toggle('hidden', !mine || tabView.lastRemoved?.song !== tabView.song);
-    $('#tab-input').classList.toggle('hidden', !tabView.canMake);
+    $('#tab-input').classList.toggle('hidden', !tabView.canMake && !d);
     $('#tab-tuning').classList.toggle('hidden', !d);
     $('#tab-mode').classList.toggle('hidden', !d);
     $('#tab-game').classList.toggle('hidden', !d);
@@ -2645,7 +2678,7 @@
       $('#game-best-now').textContent = best ? `Your best: ${best.toLocaleString()}` : 'No score yet for this tab';
     }
     document.querySelectorAll('#tab-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === tabMode));
-    $('#tab-remake').classList.toggle('hidden', !d || d.source !== 'auto');
+    $('#tab-remake').classList.toggle('hidden', !d || d.source !== 'auto' || guitar);
     $('#tab-remove-import').classList.toggle('hidden', !imported);
     $('#tab-repeats').classList.toggle('hidden', !imported || d.tuning !== d.written);
     $('#tab-raise-row').classList.toggle('hidden', !d || d.tuning !== 'half-down');
@@ -2666,11 +2699,12 @@
       'Click a line to jump there',
     ].filter(Boolean).join(' · ') : imported ? [
       `Imported: ${d.import_name}${d.track && d.track !== d.import_name && d.track !== 'Pasted tab' ? ` (${d.track})` : ''}`,
+      d.capo && d.tuning === d.written ? `capo on fret ${d.capo}` : '',
       d.tuning !== d.written ? `fingered for ${d.tunings.find((x) => x.key === d.tuning).label} (written for ${d.tunings.find((x) => x.key === d.written)?.label || 'another tuning'})` : '',
       d.dropped ? `${d.dropped} notes too low for this tuning` : '',
       d.easiest && d.easiest !== d.tuning ? `easiest to play in ${d.tunings.find((x) => x.key === d.easiest).label}` : '',
       d.quality < 0.35 ? `only ${Math.round(d.quality * 100)}% of its notes matched the recording: it may be for another version or tuning` : '',
-      showRaised() ? 'Song raised a half step: play these shapes on a standard-tuned bass' : '',
+      showRaised() ? `Song raised a half step: play these shapes on a standard-tuned ${part}` : '',
       'Click a line to jump there',
     ].filter(Boolean).join(' · ') : !d.notes.length ? 'No bass found in this song (only other instruments leaking into the bass track).' : [
       d.bpm ? `${Math.round(d.bpm)} bpm · lines follow the bars` : 'No steady tempo found · 4-second lines',
@@ -2686,6 +2720,17 @@
 
   function renderTabEmpty() {
     const wrap = el('div', { className: 'tab-empty' });
+    if (isGuitarTab()) {   // guitar tabs come from a file or a pasted tab (no automatic ones yet)
+      wrap.append(el('h3', { textContent: 'No guitar tab for this song yet' }));
+      wrap.append(el('p', { textContent: tabView.canMake
+        ? 'Import one (Guitar Pro, MusicXML, or a pasted text tab) and the app lines it up with this recording. The first time, it isolates the guitar to listen to it, which takes about a minute.'
+        : 'This song has no saved original or guitar track to line a tab up with. Attach the original first (+ Version).' }));
+      const imp = el('button', { type: 'button', className: 'btn primary', textContent: 'Import a guitar tab', disabled: !tabView.canMake });
+      imp.addEventListener('click', () => openImport(undefined, 'guitar'));
+      wrap.append(el('div', { className: 'tab-empty-actions' }, imp));
+      $('#tab-body').replaceChildren(wrap);
+      return;
+    }
     wrap.append(el('h3', { textContent: tabView.outdated ? 'This tab can be made better now' : 'No bass tab for this song yet' }));
     wrap.append(el('p', { textContent: tabView.outdated
       ? 'It was made before repeated notes and low notes were handled better. Making it again takes a few seconds.'
@@ -3327,7 +3372,7 @@
   });
   document.querySelectorAll('#tab-mode button').forEach((b) => b.addEventListener('click', () => setTabMode(b.dataset.mode)));
 
-  const LANE_COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa', '#fb923c'];   // low string first, like the game's
+  const LANE_COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa', '#fb923c', '#c084fc'];   // low string first, like the game's; the 6th for guitar
   const AHEAD = 3, BEHIND = 0.4;   // seconds of notes shown ahead of / past the hit line
 
   function drawHighway(t, force) {
@@ -3923,17 +3968,56 @@
     setSource(tabView.song, b.dataset.source);
     loadTab();
   }));
+  document.querySelectorAll('#tab-instrument button').forEach((b) => b.addEventListener('click', () => {
+    if (!tabView.song || b.dataset.instrument === tabView.instrument) return;
+    if (isRaised(tabView.song)) { setRaised(tabView.song, false); reloadAudio(); }   // raised for the other part's tuning
+    setTabInstrument(tabView.song, b.dataset.instrument);
+    tabView.data = null;
+    loadTab();
+  }));
   const importDlg = $('#import-dlg');
-  let importSong = null;
-  function openImport(song = state.current?.song) {
+  let importSong = null, importFor = 'bass', importTracks = 0;
+  function openImport(song = state.current?.song, which = song && tabView.song === song.id ? tabView.instrument : tabInstrument(song?.id)) {
     if (!song) return;
     importSong = song;
     $('#import-file').value = '';
     $('#import-text').value = '';
     $('#import-error').classList.add('hidden');
     $('#import-sub').textContent = `For “${song.title}”${song.artist ? ` by ${song.artist}` : ''}`;
+    setImportFor(which);
     showImportFile();
     importDlg.showModal();
+  }
+  // Bass or guitar: which tab of the song this replaces, and which of a file's tracks fit.
+  function setImportFor(which) {
+    importFor = which === 'guitar' ? 'guitar' : 'bass';
+    document.querySelectorAll('#import-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === importFor));
+    $('#import-intro').textContent = `Bring in a ${importFor} tab you trust; the app lines it up with this recording.`
+      + (importFor === 'guitar' ? ' Chords are fine. The first time, it isolates the guitar to listen to it (about a minute).' : '');
+    $('#import-text').placeholder = importFor === 'guitar'
+      ? 'e|-----0-----|\nB|---1---1---|\nG|-0-------0-|\nD|-2---2-----|\nA|-3---------|\nE|-----------|'
+      : 'G|------------------|\nD|------------------|\nA|------2--4--------|\nE|--0--3-----5--3---|';
+    listTracks();
+  }
+  document.querySelectorAll('#import-instrument button').forEach((b) => b.addEventListener('click', () => setImportFor(b.dataset.instrument)));
+  // A file with several tracks (a band's Guitar Pro file): which one, the likeliest first.
+  async function listTracks() {
+    const file = $('#import-file').files[0], row = $('#import-track-row');
+    importTracks = 0;
+    row.classList.add('hidden');
+    if (!file || /\.txt$/i.test(file.name)) return;
+    const form = new FormData();
+    form.append('file', file);
+    form.append('instrument', importFor);
+    let r;
+    try { r = await api('/api/tab/tracks', { method: 'POST', body: form }); } catch { return; }   // reported on Import
+    if (file !== $('#import-file').files[0]) return;   // another file meanwhile
+    importTracks = r.tracks.length;
+    const kinds = { bass: 'bass', guitar: 'guitar', other: 'other' };
+    $('#import-track').replaceChildren(...r.tracks.map((t) => el('option', {
+      value: t.index, selected: t.index === r.default,
+      textContent: `${t.name} · ${t.strings} strings${t.capo ? `, capo ${t.capo}` : ''} · ${t.notes} notes${t.kind !== importFor ? ` (${kinds[t.kind]})` : ''}` })));
+    row.classList.toggle('hidden', r.tracks.length < 2);
   }
   // The chosen file replaces the drop zone (× to pick another).
   function showImportFile() {
@@ -3944,8 +4028,8 @@
   }
   $('#import-chosen .ui-ico').innerHTML = icons.note;
   $('#import-clear').innerHTML = icons.x;
-  $('#import-clear').addEventListener('click', () => { $('#import-file').value = ''; showImportFile(); });
-  $('#import-file').addEventListener('change', () => { $('#import-error').classList.add('hidden'); showImportFile(); });
+  $('#import-clear').addEventListener('click', () => { $('#import-file').value = ''; showImportFile(); listTracks(); });
+  $('#import-file').addEventListener('change', () => { $('#import-error').classList.add('hidden'); showImportFile(); listTracks(); });
   $('#import-drop').addEventListener('click', () => $('#import-file').click());
   $('#import-drop').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#import-file').click(); } });
   ['dragenter', 'dragover'].forEach((ev) => $('#import-drop').addEventListener(ev, (e) => { e.preventDefault(); $('#import-drop').classList.add('over'); }));
@@ -3957,6 +4041,7 @@
     $('#import-file').files = dt.files;
     $('#import-error').classList.add('hidden');
     showImportFile();
+    listTracks();
   });
   // From a song's ... menu: load the song (if it has a version to play) and open its tab
   // view behind the import box, so the imported tab shows as soon as it's lined up.
@@ -3976,11 +4061,14 @@
     if (busy()) return fail('Wait for the current processing to finish, or stop it first.');
     const form = new FormData();
     form.append('song', song.id);
+    form.append('instrument', importFor);
     if (file) form.append('file', file); else form.append('text', text);
+    if (file && importTracks > 1) form.append('track', $('#import-track').value);
     try {
       const { job } = await api('/api/tab/import', { method: 'POST', body: form });
       importDlg.close();
-      setSource(song.id, 'imported');
+      if (importFor === 'bass') setSource(song.id, 'imported');
+      setTabInstrument(song.id, importFor);   // shows the part just imported
       state.job = { status: 'queued', total: 1, index: 0, song: song.title, fraction: 0 };
       renderJob(); updateUploadButton();
       pollJob(job, [], 'import');
@@ -3993,7 +4081,7 @@
   async function showRepeats() {
     const song = tabView.song;
     let r;
-    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}`); } catch (err) { toast(err.message, 'error'); return; }
+    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}&instrument=${tabView.instrument}`); } catch (err) { toast(err.message, 'error'); return; }
     if (song !== tabView.song) return;
     const names = r.strings, box = $('#repeat-groups');
     box.replaceChildren(...r.groups.map((g) => {
@@ -4063,7 +4151,8 @@
   }
   async function setRepeat(key, map, easiest = false) {
     try {
-      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song } : { song: tabView.song, key, map, easiest });
+      const which = { instrument: tabView.instrument };
+      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, ...which } : { song: tabView.song, key, map, easiest, ...which });
       await loadTab();
       showRepeats();
     } catch (err) { toast(err.message, 'error'); }
@@ -4072,8 +4161,8 @@
   $('#repeats-clear').addEventListener('click', () => setRepeat(undefined));
   $('#tab-remove-import').addEventListener('click', async () => {
     try {
-      await postJSON('/api/tab/import/remove', { id: tabView.song });
-      setSource(tabView.song, 'auto');
+      await postJSON('/api/tab/import/remove', { id: tabView.song, instrument: tabView.instrument });
+      if (!isGuitarTab()) setSource(tabView.song, 'auto');
       toast('Moved the imported tab to the Trash.');
       loadTab();
     } catch (err) { toast(err.message, 'error'); }

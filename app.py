@@ -639,39 +639,144 @@ IMPORT_FILE = ".bass-tab-imported.json"
 # 3: notes keep whether they're slid or hammered into (Guitar Pro marks), for the game.
 IMPORT_RULES = 4
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
+INSTRUMENTS_WITH_TABS = ("bass", "guitar")
+# Guitar tabs (imported only, for now) live beside the bass ones under their own names
+# (imported-guitar-tab - <name>.<ext>, .guitar-tab-imported.json), so a song can have both.
+GUITAR_IMPORT_FILE = ".guitar-tab-imported.json"
+
+
+def import_file(instrument):
+    return GUITAR_IMPORT_FILE if instrument == "guitar" else IMPORT_FILE
+
+
+def import_prefix(instrument):
+    """How an imported tab's own file is named: "<prefix> - <name>.<ext>" or "<prefix>.txt"."""
+    return "imported-guitar-tab" if instrument == "guitar" else "imported-tab"
+
+
+def import_sources(song_dir, instrument):
+    prefix = import_prefix(instrument)
+    return [f for f in song_dir.glob(prefix + "*")
+            if f.suffix.lower() in TAB_EXTENSIONS and (f.stem == prefix or f.stem.startswith(prefix + " - "))]
+
+
+def instrument_of(imported):
+    return imported.get("instrument", "bass")
+
+
+def finger_notes(notes, tuning, instrument, learned=None):
+    """[(note index, string, fret)]: the bass's learned fingering, or a guitar's hand shapes."""
+    return tab.guitar_fingering(notes, tuning) if instrument == "guitar" else tab.fingering(notes, tuning, learned)
+
+
+def difficulty(instrument):
+    return tab.guitar_difficulty if instrument == "guitar" else tab._difficulty
+
+
+# --- Guitar notes heard in the recording ----------------------------------------------
+# Imported tabs are lined up with notes heard in the recording. For bass those are the
+# automatic bass tab's; a guitar has no automatic tab yet, so its notes (chords and all)
+# are transcribed from the guitar track and kept in .guitar-heard.json.
+
+GUITAR_HEARD_FILE = ".guitar-heard.json"
+GUITAR_HEARD_RULES = 1   # bump when the heard guitar notes would come out differently
+
+
+def guitar_track(song_dir):
+    """An existing "guitar only" file for exactly all guitar (HQ preferred), or None."""
+    tracks = list(song_dir.glob("* (guitar only).mp3"))
+    return min(tracks, key=lambda p: HQ_TAG not in p.name, default=None)
+
+
+def guitar_heard(song_dir, report, make=True):
+    """{"notes": [[start, end, pitch, amplitude]], "bpm"} heard in the song's guitar track
+    (a "guitar only" version's, or the guitar separated now with the standard 6-stem model,
+    ~a minute: lining a tab up doesn't need the high-quality one). None if not made yet
+    and make is False."""
+    try:
+        saved = json.loads((song_dir / GUITAR_HEARD_FILE).read_text(encoding="utf-8"))
+        if saved.get("rules") == GUITAR_HEARD_RULES:
+            return saved
+    except (OSError, ValueError):
+        pass
+    if not make:
+        return None
+    report(0.0, "Reading the song")
+    track = guitar_track(song_dir)
+    source = original_file(song_dir)
+    song = half_rate(decode(source, SAMPLERATE)) if source else None
+    if track:
+        guitar = decode(track, tab.SAMPLERATE).mean(0)
+    else:
+        mix = decode(source, SAMPLERATE)
+
+        def separating(fraction=None, step=None):
+            report(None if fraction is None else 0.7 * fraction, step and step.replace("Separating", "Isolating"))
+        guitar = half_rate(separate(mix, ["guitar"], False, separating))
+    report(0.7, "Listening to the guitar")
+    notes = tab.transcribe_guitar(guitar, song, lambda f: report(0.7 + 0.25 * f))
+    grid = tab.lines_for(song if song is not None else guitar, notes, len(guitar) / tab.SAMPLERATE)
+    out = {"rules": GUITAR_HEARD_RULES, "source": "guitar track" if track else "separated", "made": time.time(),
+           "bpm": grid["bpm"], "notes": [[round(a, 3), round(b, 3), p, round(float(v), 2)] for a, b, p, v in notes]}
+    (song_dir / GUITAR_HEARD_FILE).write_text(json.dumps(out), encoding="utf-8")
+    return out
+
+
+def track_kind(track):
+    return "bass" if tabimport.is_bass(track) else "guitar" if tabimport.is_guitar(track) else "other"
+
+
 
 
 def note_name(p):
     return ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"][p % 12]
 
 
-def import_tab(song_dir, source, report):
+def import_tab(song_dir, source, report, instrument="bass", track_index=None):
+    """Read a tab file, line the chosen track (track_index: its place in the file; by
+    default the first that looks like this instrument) up with the recording, save it."""
     report(0.0, "Reading the tab")
-    tracks = tabimport.read_file(source)
-    if not tracks:
+    tracks = tabimport.read_tracks(source)
+    if track_index is not None and 0 <= track_index < len(tracks):
+        track = tracks[track_index]
+    else:
+        track = (tabimport.rank_tracks(tracks, instrument) or [None])[0]
+        track_index = next((i for i, t in enumerate(tracks) if t is track), None)
+    if track is None:
         raise ValueError("no tab notes found in it")
-    track = tracks[0]                               # bass-looking tracks come first
-    data = read_tab(song_dir)
-    if data is None or data.get("notes_rules") != NOTES_RULES:
-        # The sync needs the notes heard in the recording: make the automatic tab first.
-        make_tab(song_dir, lambda f=None, step=None: report(None if f is None else 0.8 * f, step))
+    if instrument == "guitar":
+        heard = guitar_heard(song_dir, lambda f=None, step=None: report(None if f is None else 0.8 * f, step))
+        notes, bpm = heard["notes"], heard.get("bpm") or (read_tab(song_dir) or {}).get("bpm")   # or the bass tab's beat
+    else:
         data = read_tab(song_dir)
+        if data is None or data.get("notes_rules") != NOTES_RULES:
+            # The sync needs the notes heard in the recording: make the automatic tab first.
+            make_tab(song_dir, lambda f=None, step=None: report(None if f is None else 0.8 * f, step))
+            data = read_tab(song_dir)
+        notes, bpm = data["notes"], data.get("bpm")
     report(0.85, "Lining the tab up with the recording")
-    synced = tabimport.sync(track, [tuple(n) for n in data["notes"]], 60 / data["bpm"] if data.get("bpm") else None)
+    synced = tabimport.sync(track, [tuple(n) for n in notes], 60 / bpm if bpm else None)
     bars = synced["bars"]
     end = max((n[1] for n in synced["notes"]), default=bars[-1] if bars else 0.0)
     bar_len = float(np.median(np.diff(bars))) if len(bars) > 1 else 2.0
     per_line = int(np.clip(round(5.0 / max(bar_len, 0.1)), 1, 4))
     edges = bars[::per_line] + [max(end, bars[-1] + bar_len)]
     lines = [[float(a), float(b), [float(x) for x in bars if a <= x < b]] for a, b in zip(edges, edges[1:]) if b > a]
-    key = next((k for k, (_, strings, _) in tab.TUNINGS.items() if strings == track.strings), None)
-    names = tab.TUNINGS[key][2] if key else [note_name(p) for p in track.strings]
-    out = {"name": "Pasted tab" if source.name == "imported-tab.txt" else source.name.replace("imported-tab - ", ""),
-           "track": track.name, "made": time.time(), "quality": synced["quality"], "tuning": key or "custom",
-           "label": tab.TUNINGS[key][0] if key else "Tab's tuning (" + " ".join(names) + ")",
-           "strings": names, "open": track.strings, "notes": synced["notes"], "lines": lines, "bpm": data.get("bpm"),
+    tunings = tab.tunings_for(instrument)
+    # With a capo the tab's own tuning is the open strings plus the capo (frets as written).
+    opens = [o + track.capo for o in track.strings]
+    key = next((k for k, (_, strings, _) in tunings.items() if strings == opens), None) if not track.capo else None
+    names = tunings[key][2] if key else [note_name(p) for p in track.strings]
+    base = next((label for label, strings, _ in tunings.values() if strings == track.strings), None)
+    label = (tunings[key][0] if key else (base.split(" (")[0] if base else "Tab's tuning (" + " ".join(names) + ")")
+             + (f", capo {track.capo}" if track.capo else ""))
+    prefix = import_prefix(instrument)
+    out = {"name": "Pasted tab" if source.name == f"{prefix}.txt" else source.name.replace(f"{prefix} - ", ""),
+           "track": track.name, "track_index": track_index, "instrument": instrument, "capo": track.capo,
+           "made": time.time(), "quality": synced["quality"], "tuning": key or "custom",
+           "label": label, "strings": names, "open": opens, "notes": synced["notes"], "lines": lines, "bpm": bpm,
            "rules": IMPORT_RULES}
-    (song_dir / IMPORT_FILE).write_text(json.dumps(out), encoding="utf-8")
+    write_import(song_dir, out)
 
 
 # --- My tab (recorded) ---------------------------------------------------------------
@@ -1031,9 +1136,11 @@ def worker():
                     job["done"].append(rel(song_dir))
                     continue
                 if settings.get("kind") == "import":
-                    import_tab(song_dir, item["path"], report)
+                    instrument = item.get("instrument", "bass")
+                    import_tab(song_dir, item["path"], report, instrument, item.get("track"))
                     job["done"].append(rel(song_dir))
-                    queue_learning()
+                    if instrument == "bass":   # learning is from bass tabs only
+                        queue_learning()
                     continue
                 if item.get("stage"):
                     # New song: separate first, so a failed file leaves no empty song behind.
@@ -1358,26 +1465,37 @@ def delete_version(req: IdRequest):
     return {"ok": True}
 
 
-def read_import(song_dir):
+def read_import(song_dir, instrument="bass"):
     try:
-        return json.loads((song_dir / IMPORT_FILE).read_text(encoding="utf-8"))
+        return json.loads((song_dir / import_file(instrument)).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
 
+def write_import(song_dir, imported):
+    (song_dir / import_file(instrument_of(imported))).write_text(json.dumps(imported), encoding="utf-8")
+
+
 def resync_import(song_dir, imported):
     """An import made with older sync rules, synced again from its saved file (~1 s), when
-    the automatic tab it lines up with is current (making that would take minutes)."""
-    source = next((f for f in song_dir.glob("imported-tab*") if f.suffix.lower() in TAB_EXTENSIONS), None)
-    auto = read_tab(song_dir)
-    if not source or not auto or auto.get("notes_rules") != NOTES_RULES:
+    the notes it lines up with are current (making those would take minutes)."""
+    instrument = instrument_of(imported)
+    source = next(iter(import_sources(song_dir, instrument)), None)
+    if instrument == "guitar":
+        if not guitar_heard(song_dir, None, make=False):
+            return imported
+    else:
+        auto = read_tab(song_dir)
+        if not auto or auto.get("notes_rules") != NOTES_RULES:
+            return imported
+    if not source:
         return imported
     try:
-        import_tab(song_dir, source, lambda fraction=None, step=None: None)
+        import_tab(song_dir, source, lambda fraction=None, step=None: None, instrument, imported.get("track_index"))
     except Exception as err:   # keep the old one rather than fail the page
         print(f"Couldn't sync {source.name} again: {err}")
         return imported
-    fresh = read_import(song_dir)
+    fresh = read_import(song_dir, instrument)
     if not fresh:
         return imported
     # Same tab, synced again: it keeps its time, which is what tells the learner whether
@@ -1385,14 +1503,14 @@ def resync_import(song_dir, imported):
     fresh["made"] = imported.get("made", fresh["made"])
     if imported.get("unify"):   # the user's "make repeats match" choices
         fresh["unify"] = imported["unify"]
-    (song_dir / IMPORT_FILE).write_text(json.dumps(fresh), encoding="utf-8")
+    write_import(song_dir, fresh)
     return fresh
 
 
 def import_opens(imported):
     """An imported tab's open-string MIDI notes (its own tuning), or None."""
-    w = imported["tuning"]
-    return imported.get("open") or (tab.TUNINGS[w][1] if w in tab.TUNINGS else None)
+    w, tunings = imported["tuning"], tab.tunings_for(instrument_of(imported))
+    return imported.get("open") or (tunings[w][1] if w in tunings else None)
 
 
 def _bar_map(notes, idx, opens):
@@ -1474,6 +1592,7 @@ def fit_costs(imported, ways, notes=None):
     skips) over those three bars, the neighbours as `notes` has them (the user's other
     choices applied) or as written. {bar start: [cost per way]}."""
     notes, opens = notes or imported["notes"], import_opens(imported)
+    hard = difficulty(instrument_of(imported))
     starts = sorted({b for line in imported["lines"] for b in line[2]})
     played = [i for i, n in enumerate(notes) if not n[4]]
     times = [notes[i][0] for i in played]
@@ -1489,7 +1608,7 @@ def fit_costs(imported, ways, notes=None):
             for other in ways:
                 pos = [tuple(other["map"].get(opens[notes[i][2]] + notes[i][3], (notes[i][2], notes[i][3])))
                        if i in mine else (notes[i][2], notes[i][3]) for i in window]
-                costs.append(tab._difficulty([notes[i][0] for i in window], pos) * len(window))
+                costs.append(hard([notes[i][0] for i in window], pos) * len(window))
             out[start] = costs
     return out
 
@@ -1544,18 +1663,19 @@ def easiest_tunings(song_dir, imported, opens):
     """For an imported tab: per tuning, how many notes it can't reach and how hard the
     fingering is (tab._difficulty: hand shifts, quick jumps, string skips), with the
     easiest one; saved in the import, recomputed when the learned fingering changes."""
-    learned, style_id = learned_style()
+    instrument = instrument_of(imported)
+    learned, style_id = learned_style() if instrument == "bass" else (None, "guitar")
     saved = imported.get("tuning_report")
     if saved and saved.get("style") == style_id and saved.get("rules") == 2:
         return saved
     played = [n for n in imported["notes"] if not n[4]]
     notes = [(n[0], n[1], opens[n[2]] + n[3], 1.0) for n in played]
     report = {"style": style_id, "rules": 2, "tunings": {}}
-    for key in tab.TUNINGS:
-        fingered = tab.fingering(notes, key, learned)
-        report["tunings"][key] = {"dropped": len(notes) - len(fingered),
-                                  "difficulty": round(tab._difficulty([notes[i][0] for i, _, _ in fingered],
-                                                                       [(s, f) for _, s, f in fingered]), 3)}
+    for key in tab.tunings_for(instrument):
+        done = finger_notes(notes, key, instrument, learned)
+        report["tunings"][key] = {"dropped": len(notes) - len(done),
+                                  "difficulty": round(difficulty(instrument)([notes[i][0] for i, _, _ in done],
+                                                                             [(s, f) for _, s, f in done]), 3)}
     # Easiest: every note reachable first, then a 4-string tuning, then the easiest
     # fingering; retuning is a bother, so the tab's own tuning wins unless another is at
     # least 25% easier (Cry Baby Cry, Electra: drop D ~1/3 easier; YOLO's half step
@@ -1567,18 +1687,22 @@ def easiest_tunings(song_dir, imported, opens):
         return (r["dropped"], key == "five-string" and written != "five-string", r["difficulty"] * (0.75 if key == written else 1.0))
     report["easiest"] = min(report["tunings"], key=cost)
     imported["tuning_report"] = report
-    (song_dir / IMPORT_FILE).write_text(json.dumps(imported), encoding="utf-8")
+    write_import(song_dir, imported)
     return report
 
 
 @api.get("/api/tab")
-def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = None, source: str = "auto"):
+def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = None, source: str = "auto",
+            instrument: str = "bass"):
     """A song's bass tab: the automatic one in a tuning (default: the suggested one), with
     repeated notes split on the beat or as heard; or the imported one (source=imported);
     or the one recorded from the user's playing (source=mine); or, without a tab, what's
     possible. split: None = as learned from imported tabs. A source the song doesn't
-    have falls back to the imported tab, then the recorded one, then the automatic one."""
+    have falls back to the imported tab, then the recorded one, then the automatic one.
+    instrument=guitar: the song's imported guitar tab (the only kind of guitar tab so far)."""
     song_dir = library_path(song, 2)
+    if instrument == "guitar":   # imported guitar tabs only, so far
+        return get_guitar_tab(song_dir, tuning)
     imported, mine = read_import(song_dir), read_mine(song_dir)
     if imported and imported.get("rules") != IMPORT_RULES:
         imported = resync_import(song_dir, imported)
@@ -1604,30 +1728,56 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
                 "draft_from": mine.get("from"), "draft_from_name": mine.get("from_name"),
                 "tunings": tunings, "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in fingered]}
     if source == "imported" and imported:
-        written = imported["tuning"]
-        if written == "custom":
-            tunings.append({"key": "custom", "label": imported["label"], "strings": imported["strings"], "open": imported.get("open")})
-        opens = imported.get("open") or (tab.TUNINGS[written][1] if written in tab.TUNINGS else None)
-        report = easiest_tunings(song_dir, imported, opens) if opens else None
-        base = {**about, "exists": True, "source": "imported", "suggested": written, "written": written,
-                "easiest": report and report["easiest"], "tuning_report": report and report["tunings"],
-                "bpm": imported.get("bpm"), "split": False, "maybe_half_down": False, "lines": imported["lines"],
-                "quality": imported["quality"], "track": imported.get("track"), "tunings": tunings}
-        # Dead (muted) notes, written "x", are left out: the user asked for no x's. A 5th
-        # value says the note is slid or hammered into (the game doesn't call it messy).
-        played = [n for n in unified_notes(imported) if not n[4]]
-        legato = lambda n: bool(n[5]) if len(n) > 5 else False
-        if tuning in (None, written) or tuning not in tab.TUNINGS or not opens:
-            return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3], legato(n)] for n in played]}
-        # In another tuning: the tab's pitches fingered again (learned fingering), the
-        # way the automatic and recorded tabs are.
-        notes = [(n[0], n[1], opens[n[2]] + n[3], 1.0) for n in played]
-        fingered = tab.fingering(notes, tuning, learned_style()[0])
-        return {**base, "tuning": tuning, "dropped": len(notes) - len(fingered),
-                "notes": [[notes[i][0], notes[i][1], s, f, legato(played[i])] for i, s, f in fingered]}
+        return imported_view(song_dir, imported, tuning, about, tunings)
     data = read_tab(song_dir)
     if data is None or data.get("notes_rules") != NOTES_RULES:   # none yet, or made the old way
         return {**about, "exists": False, "outdated": data is not None}
+    return auto_view(song_dir, data, tuning, split, about, tunings)
+
+
+def get_guitar_tab(song_dir, tuning):
+    imported = read_import(song_dir, "guitar")
+    if imported and imported.get("rules") != IMPORT_RULES:
+        imported = resync_import(song_dir, imported)
+    about = {"instrument": "guitar", "has_import": imported is not None, "import_name": imported and imported["name"],
+             "has_mine": False, "can_make": False, "can_import": bool(original_file(song_dir) or guitar_track(song_dir))}
+    if not imported:
+        return {**about, "exists": False}
+    tunings = [{"key": k, "label": label, "strings": names, "open": opens}
+               for k, (label, opens, names) in tab.GUITAR_TUNINGS.items()]
+    return imported_view(song_dir, imported, tuning, about, tunings)
+
+
+def imported_view(song_dir, imported, tuning, about, tunings):
+    """An imported tab as the page shows it: as written, or fingered again in another tuning."""
+    instrument = instrument_of(imported)
+    known = tab.tunings_for(instrument)
+    written = imported["tuning"]
+    if written == "custom":
+        tunings.append({"key": "custom", "label": imported["label"], "strings": imported["strings"], "open": imported.get("open")})
+    opens = import_opens(imported)
+    report = easiest_tunings(song_dir, imported, opens) if opens else None
+    base = {**about, "exists": True, "source": "imported", "suggested": written, "written": written,
+            "easiest": report and report["easiest"], "tuning_report": report and report["tunings"],
+            "bpm": imported.get("bpm"), "split": False, "maybe_half_down": False, "lines": imported["lines"],
+            "quality": imported["quality"], "track": imported.get("track"), "capo": imported.get("capo", 0),
+            "tunings": tunings}
+    # Dead (muted) notes, written "x", are left out: the user asked for no x's. A 5th
+    # value says the note is slid or hammered into (the game doesn't call it messy).
+    played = [n for n in unified_notes(imported) if not n[4]]
+    legato = lambda n: bool(n[5]) if len(n) > 5 else False
+    if tuning in (None, written) or tuning not in known or not opens:
+        return {**base, "tuning": written, "dropped": 0, "notes": [[n[0], n[1], n[2], n[3], legato(n)] for n in played]}
+    # In another tuning: the tab's pitches fingered again (learned fingering; a
+    # guitar's as hand shapes), the way the automatic and recorded tabs are.
+    notes = [(n[0], n[1], opens[n[2]] + n[3], 1.0) for n in played]
+    fingered = finger_notes(notes, tuning, instrument, learned_style()[0] if instrument == "bass" else None)
+    return {**base, "tuning": tuning, "dropped": len(notes) - len(fingered),
+            "notes": [[notes[i][0], notes[i][1], s, f, legato(played[i])] for i, s, f in fingered]}
+
+
+def auto_view(song_dir, data, tuning, split, about, tunings):
+    """The automatic bass tab as the page shows it, in a tuning, split or as heard."""
     # Made before (or with other) note settings learned from imported tabs: still shown,
     # with a suggestion to redo it.
     relearned = data.get("note_settings", tab.NOTES) != note_settings()
@@ -1664,13 +1814,44 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
             "notes": [[notes[i][0], notes[i][1], s, f] for i, s, f in data["fingering"][key]]}
 
 
+@api.post("/api/tab/tracks")
+async def tab_tracks(file: UploadFile = File(...), instrument: str = Form("bass")):
+    """The tracks in a tab file, so the page can ask which one to import: in the file's
+    order, each with its kind (bass / guitar / other), strings, capo and note count; and
+    the one picked by default for this instrument."""
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in TAB_EXTENSIONS or ext == ".txt":
+        return {"tracks": [], "default": None}
+    STAGE_DIR.mkdir(parents=True, exist_ok=True)
+    trial = STAGE_DIR / f"{uuid.uuid4().hex}{ext}"
+    trial.write_bytes(await file.read())
+    try:
+        tracks = tabimport.read_tracks(trial)
+    except Exception as e:
+        raise HTTPException(400, f"Couldn't read that tab: {e}")
+    finally:
+        trial.unlink(missing_ok=True)
+    order = tabimport.rank_tracks(tracks, instrument)
+    return {"default": tracks.index(order[0]) if order else None,
+            "tracks": [{"index": i, "name": t.name or f"Track {i + 1}", "kind": track_kind(t), "strings": len(t.strings),
+                        "tuning": " ".join(note_name(p) for p in t.strings), "capo": t.capo,
+                        "notes": tabimport.note_count(t)} for i, t in enumerate(tracks)]}
+
+
 @api.post("/api/tab/import")
-async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(None), text: str = Form("")):
-    """Bring in a tab file or pasted text tab and queue syncing it to the recording."""
+async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(None), text: str = Form(""),
+                       instrument: str = Form("bass"), track: Optional[int] = Form(None)):
+    """Bring in a tab file or pasted text tab and queue syncing it to the recording.
+    instrument: bass or guitar (each song can have one of each); track: which of the
+    file's tracks (its place in the file), by default the first that looks like one."""
+    if instrument not in INSTRUMENTS_WITH_TABS:
+        raise HTTPException(400, "Tabs are for bass or guitar.")
     song_dir = library_path(song, 2)
     if not song_dir.is_dir():
         raise HTTPException(404, "That song doesn't exist.")
-    if not (original_file(song_dir) or bass_track(song_dir)):
+    if instrument == "guitar" and not (original_file(song_dir) or guitar_track(song_dir)):
+        raise HTTPException(400, "This song has no saved original or guitar track to line the tab up with.")
+    if instrument == "bass" and not (original_file(song_dir) or bass_track(song_dir)):
         raise HTTPException(400, "This song has no saved original or bass track to line the tab up with.")
     if file is not None and file.filename:
         ext = Path(file.filename).suffix.lower()
@@ -1679,27 +1860,32 @@ async def start_import(song: str = Form(...), file: Optional[UploadFile] = File(
         content = await file.read()
         name = file.filename
     elif text.strip():
-        ext, content, name = ".txt", text.encode("utf-8"), "imported-tab.txt"
+        ext, content, name = ".txt", text.encode("utf-8"), "pasted.txt"
     else:
         raise HTTPException(400, "Choose a tab file or paste a tab.")
-    final = f"imported-tab{ext}" if ext == ".txt" else f"imported-tab - {clean_name(Path(name).stem) or 'tab'}{ext}"
+    prefix = import_prefix(instrument)
+    final = f"{prefix}{ext}" if ext == ".txt" else f"{prefix} - {clean_name(Path(name).stem) or 'tab'}{ext}"
     trial = STAGE_DIR / f"{uuid.uuid4().hex}-{final}"
     STAGE_DIR.mkdir(parents=True, exist_ok=True)
     trial.write_bytes(content)
     try:   # read it first: a file the app can't read is reported at once, the old import kept
-        if not tabimport.read_file(trial):
+        tracks = tabimport.read_tracks(trial)
+        if not tracks:
             raise ValueError("No tab notes found in it.")
+        if track is not None and not 0 <= track < len(tracks):
+            raise ValueError("That track isn't in the file.")
     except Exception as e:
         trial.unlink(missing_ok=True)
         raise HTTPException(400, f"Couldn't read that tab: {e}")
-    for old in song_dir.glob("imported-tab*"):   # replacing an earlier import: to the Trash
+    for old in import_sources(song_dir, instrument):   # replacing an earlier import: to the Trash
         send2trash(str(old))
     path = song_dir / final
     shutil.move(str(trial), str(path))
     job_id = uuid.uuid4().hex
     jobs[job_id] = {"status": "queued", "total": 1, "index": 0, "song": song_dir.name,
                     "fraction": 0.0, "done": [], "failed": [], "finished": []}
-    job_queue.put((job_id, {"kind": "import", "items": [{"song_dir": song_dir, "title": song_dir.name, "path": path}]}))
+    job_queue.put((job_id, {"kind": "import", "items": [{"song_dir": song_dir, "title": song_dir.name, "path": path,
+                                                         "instrument": instrument, "track": track}]}))
     return {"job": job_id}
 
 
@@ -2153,23 +2339,29 @@ def remove_mine(req: IdRequest):
     return {"ok": True}
 
 
+class TabIdRequest(BaseModel):
+    id: str
+    instrument: str = "bass"
+
+
 @api.post("/api/tab/import/remove")
-def remove_import(req: IdRequest):
+def remove_import(req: TabIdRequest):
     """Move a song's imported tab (file and synced copy) to the Trash."""
     song_dir = library_path(req.id, 2)
-    for f in [song_dir / IMPORT_FILE, *song_dir.glob("imported-tab*")]:
+    for f in [song_dir / import_file(req.instrument), *import_sources(song_dir, req.instrument)]:
         if f.exists():
             send2trash(str(f))
-    queue_learning()
+    if req.instrument == "bass":
+        queue_learning()
     return {"ok": True}
 
 
 @api.get("/api/tab/repeats")
-def tab_repeats(song: str):
+def tab_repeats(song: str, instrument: str = "bass"):
     """Repeated parts of the imported tab played in different places: per group each way
     (where it plays each pitch, its bars, and its first bar's notes to draw) and the one
     chosen, if any."""
-    imported = read_import(library_path(song, 2))
+    imported = read_import(library_path(song, 2), instrument)
     if not imported:
         raise HTTPException(404, "This song has no imported tab.")
     groups = repeat_groups(imported)
@@ -2209,6 +2401,7 @@ class UnifyRequest(BaseModel):
     key: Optional[str] = None     # a group's key; none (with no map) = put all back
     map: Optional[dict] = None    # {pitch: [string, fret]}: play these pitches there in all its bars; none = as written
     easiest: bool = False         # instead: each bar the way that fits it best between its neighbours
+    instrument: str = "bass"
 
 
 @api.post("/api/tab/repeats")
@@ -2216,7 +2409,7 @@ def set_repeats(req: UnifyRequest):
     """Make every bar of a repeated part play its pitches in one place (or put it back as
     written). Kept in the import as "unify", apart from its notes, so it survives re-syncs."""
     song_dir = library_path(req.song, 2)
-    imported = read_import(song_dir)
+    imported = read_import(song_dir, req.instrument)
     if not imported:
         raise HTTPException(404, "This song has no imported tab.")
     groups = repeat_groups(imported)
@@ -2235,8 +2428,9 @@ def set_repeats(req: UnifyRequest):
             raise HTTPException(400, "That way of playing it isn't in the tab.")
         rules[req.key] = chosen
     imported["unify"] = {k: m if m == "easiest" else {str(p): list(m[p]) for p in sorted(m)} for k, m in rules.items()}
-    (song_dir / IMPORT_FILE).write_text(json.dumps(imported), encoding="utf-8")
-    queue_learning()   # the choices are learned from too
+    write_import(song_dir, imported)
+    if req.instrument == "bass":
+        queue_learning()   # the choices are learned from too
     return {"ok": True, "chosen": len(rules)}
 
 

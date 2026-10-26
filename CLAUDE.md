@@ -874,6 +874,48 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   tabs"; Amsterdam's .gp had 223 of 868), so they're not in the views or the game;
   the saved import still has them (`notes[i][4]`).
 
+## Guitar tabs (imported)
+
+The user asked for guitar tabs "similar to how we have tabs working for bass" (design:
+imported first, then playing along, then automatic). Step 1, imported guitar tabs:
+- A Bass | Guitar switch in the tab view header (`#tab-instrument`, per song in
+  `track-splitter-tab-instrument`); tuning choices for guitar are kept as `song|guitar`.
+  Guitar shows imported tabs only (no Automatic/Draft, no Redo, no Game section yet);
+  Lines, Highway, Whole tab, Scroll, tunings, raise ½ step and Make repeats match work
+  with 6 strings (`LANE_COLORS` got a 6th, purple).
+- Files: `imported-guitar-tab - <name>.<ext>` / `imported-guitar-tab.txt` and
+  `.guitar-tab-imported.json` (same shape as the bass import plus `instrument`, `capo`,
+  `track_index`), so a song has both. API: `instrument=guitar` on `GET /api/tab`,
+  `POST /api/tab/import` (+ `track`), `/api/tab/import/remove`, `/api/tab/repeats`.
+  Learning from imported tabs stays bass only.
+- Import dialog: Tab for Bass | Guitar, and a Track picker when a file has several
+  (`POST /api/tab/tracks`; `tabimport.rank_tracks`: guitar = 6+ strings, not named
+  vocal/sax/keys..., named guitar first, then the busiest). The user's American Idiot .gp
+  (Guitar Pro 8; the first real .gp the GP7/8 reader saw: read fine) has a "Vocals -
+  Baritone Sax" track with guitar strings, and Rhythm (picked), Lead, Lead 2, Overdub.
+- Capo (GP3-5 `track.offset`, GP7/8 `CapoFret`): the tab's own tuning is "custom", open
+  strings + capo, frets as written. 6-line text tabs are guitar (lowest string E2 = 40);
+  notes in one column are a chord and stay together when synced. Notation-only MusicXML
+  guitar parts are fingered as chords.
+- Syncing needs notes heard in the recording: `guitar_heard()` transcribes the guitar
+  track ("(guitar only)" version, else htdemucs_6s separation, ~a minute) with Basic Pitch
+  polyphonic, 70-1400 Hz (`tab.transcribe_guitar`), cached in `.guitar-heard.json`
+  (`GUITAR_HEARD_RULES`). Text tabs need a beat: the guitar's, else the bass tab's.
+- Fingering (`tab.guitar_fingering`): notes starting within 30 ms are one shape (a repeated
+  pitch starts the next one: two strums squeezed together), each note on its own string,
+  fretted ones within the hand's 4 frets (5 with a stretch); Viterbi over (hand position,
+  shape) with `GUITAR_STYLE` (an open C beats it barred at the 8th; unplayed strings inside
+  a chord and >4 fingers without a barre cost), then rounds pulling each chord to its usual
+  shape. On the American Idiot file it matches the tab's own fingering 87% (lead) / 90%
+  (rhythm); the overdub's B9 riff comes out on e4. `guitar_difficulty` counts a chord as one
+  move. Tunings: standard, drop D, half step down, whole step down (D standard).
+- Tested on a synthetic recording rendered from that file (played 2.3 s in, 2% slower,
+  +-0.12 s drift): rhythm guitar 100% of notes within 50 ms (99% before the steady-bar
+  fitting), no chord split apart; the same
+  bars pasted as a text tab 84% (100 s, no drift); the bass import of the same song still
+  99%. Not yet tried on a real recording. (The beat tracker found no tempo on the drifting
+  synthetic song, bass or guitar, so text tabs there have no beat to go on.)
+
 ## My tab: recording your own playing
 
 The user plays along through a Focusrite Scarlett (bass in an instrument input, Inst on,
