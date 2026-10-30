@@ -197,7 +197,8 @@ The user brings a file (Guitar Pro .gp3/4/5 via PyGuitarPro, .gp 7/8, MusicXML) 
 pasted text (incl. Ultimate Guitar count lines); never fetched from tab sites. Every
 format -> TabTrack -> `timeline()` (repeats written out), then synced to the automatic
 tab's heard notes (`_tempo_fit`, `_sync_timed` Viterbi placing/skipping bars,
-`_place_in_bars`; text via `_sync_text`). Stored as `imported-tab - <name>.<ext>` /
+`_place_in_bars`; text via `_sync_text`; text without count lines: rhythm from the
+spacing, `spaced`, unless order-only finds more, `SPACING_TRUST`). Stored as `imported-tab - <name>.<ext>` /
 `imported-tab.txt` + `.bass-tab-imported.json`; `POST /api/tab/import`,
 `GET /api/tab?source=imported`, `POST /api/tab/import/remove`. Bump `IMPORT_RULES` when
 syncing changes (`get_tab` re-syncs via `resync_import`).
@@ -208,6 +209,37 @@ syncing changes (`get_tab` re-syncs via `resync_import`).
 - Slides and hammer-ons/pull-offs: a code per note (6th value; /api/tab's 5th),
   `legatoMarks` draws them; the game's `legatoIn` / `onSlide` handle them. Dead notes
   are hidden when shown.
+
+## Guitar tabs (imported)
+
+The user's brother works on guitar (a Bass | Guitar switch in the tab view header,
+`#tab-instrument`, per song `track-splitter-tab-instrument`; guitar tuning choices kept as
+`song|guitar`). Guitar shows imported tabs only; the tab views, tunings, raise ½ step and
+Make repeats match work with 6 strings. Files `imported-guitar-tab - <name>.<ext>` /
+`.guitar-tab-imported.json` (+ `instrument`, `capo`, `track_index`); `instrument=guitar`
+on the tab APIs; Track picker (`POST /api/tab/tracks`, `tabimport.rank_tracks`); capo;
+6-line text tabs are guitar. Syncing uses `guitar_heard()` (`.guitar-heard.json`,
+`GUITAR_HEARD_RULES`); fingering `tab.guitar_fingering` (`GUITAR_STYLE`). Learning from
+imported tabs stays bass only.
+
+## Guitar game (step 2)
+
+The game works for guitar tabs: plays a version without the guitar and switches the input
+to Guitar; chords (notes within 30 ms) are judged and scored as one note (`strumByChange`,
+`readChord`, `chordPluck`, `CHORD_WAIT`); chord cards and bars on the board
+(`drawChordCards`, `drawChordBars`). Show my timing doesn't judge chords yet.
+
+## Guitar calibration
+
+Timing and string calibration follow the input's Bass / Guitar switch: guitar has its own
+keys (+ `-guitar`, `calKey`, `CALIBRATION_KEYS` in app.py), loaded by `loadCalibrations()`.
+Strings dialog: Open strings · 1 min (default) | Full (`strcalMode`, `strcalPlan()`).
+
+## Guitar game feel
+
+`tab.strum_times` / `tab.snap_to_strums` move heard guitar notes onto strums
+(`GUITAR_HEARD_RULES` 2); looser strum and chord rules in the game. Not yet tried on a
+real guitar.
 
 ## My tab: recording your own playing
 
@@ -226,7 +258,9 @@ Tuner, Record. Stays on between songs; reopens on dropouts (`reopenInput`).
 - Playback: the player's "My bass" mode (`my_bass()`, `/api/audio?part=mine`).
 - Match the song's tone (`tone.py`, `GET /api/tone`, `applyTone`): EQ from the song's
   stem vs the user's instrument captures (`<library>/.instrument-tones.json`,
-  `#inst-dlg`); per song `track-splitter-tone`.
+  `#inst-dlg`); per song `track-splitter-tone`. Guitar: follows the song's clean /
+  distorted parts (`tone.sections`, drive table, `CHAIN`, noise gate `GATE`) and adds a
+  stereo room on clean parts (`tone.room`, `ROOM_MAX`).
 
 ## Guitar chords (input drawer)
 
@@ -243,7 +277,7 @@ user's real guitar.
   Original / Only / My bass (`#hear-mode`); `matchOriginal()`, `headroom()`. Skip silence
   (`soundBounds`, `track-splitter-skip-silence`) and hand trim (`#trim-dlg`,
   `POST /api/song/trim`, `playRange()`). Volumes: master / song / instrument (`#mixer`).
-  Instrument picker (`#player-kind`, `#player-inst`; Guitar disabled for now).
+  Instrument picker (`#player-kind`, `#player-inst`; Bass | Guitar).
 - Add songs dialog and Import tab share the `.fancy-dlg` look. Dark theme, violet
   accent; fits down to ~1024x768.
 

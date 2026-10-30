@@ -289,6 +289,7 @@
   .calib-body p { margin: 0; text-align: center; color: rgba(255,255,255,.75); font-size: 14px; line-height: 1.45; }
   #strcal-canvas { width: 100%; height: 190px; display: block; border-radius: 14px; background: #0b0816; }
   #strcal-intro { font-size: 13.5px; }
+  .strcal-mode { align-self: center; }
   .input-note.other b { color: #fbbf24; }
   #calib-canvas { width: 100%; height: 230px; display: block; border-radius: 14px; background: #0b0816; }
   .calib-status { min-height: 1.45em; font-weight: 700; color: #fff !important; }
@@ -843,6 +844,11 @@
   .import-chosen .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .import-chosen .what { color: var(--muted); font-size: 12px; }
   .import-intro { font-size: 13px; line-height: 1.5; }
+  .sec-label { font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .import-for { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .import-track { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .import-track.hidden { display: none; }
+  .import-track select { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -911,6 +917,10 @@
       <div class="tab-head">
         <div class="tab-titles"><h2 id="tab-title">Bass tab</h2><p id="tab-sub"></p></div>
         <div class="tab-head-right">
+          <div class="segmented" id="tab-instrument" role="group" aria-label="Instrument" title="Which part's tab: the bass, or the guitar (guitar tabs are imported)">
+            <button type="button" data-instrument="bass" class="active">Bass</button>
+            <button type="button" data-instrument="guitar">Guitar</button>
+          </div>
           <div class="segmented" id="tab-section" role="group" aria-label="Section">
             <button type="button" data-section="tab" class="active">Tab</button>
             <button type="button" data-section="game">Game</button>
@@ -1138,7 +1148,7 @@
       <div class="player-inst" title="What you're playing: Bass or Guitar (what the input listens for, and what Match the song's tone matches), and which of your saved instruments">
         <div class="segmented" id="player-kind" role="group" aria-label="Instrument type">
           <button type="button" data-instrument="bass">Bass</button>
-          <button type="button" data-instrument="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
+          <button type="button" data-instrument="guitar">Guitar</button>
         </div>
         <select id="player-inst" aria-label="Which of your instruments"></select>
         <button type="button" class="btn sm hidden" id="player-input" title="Bass input is on (it stays on between songs): click to turn it off" aria-label="Bass input is on: turn it off"><span class="in-dot"></span><span class="in-label">Input on</span></button>
@@ -1235,7 +1245,14 @@
       </button>
     </div>
     <div class="dlg-body">
-      <p class="import-intro">Bring in a bass tab you trust; the app lines it up with this recording.</p>
+      <div class="import-for">
+        <span class="sec-label">Tab for</span>
+        <div class="segmented" id="import-instrument" role="group" aria-label="Instrument">
+          <button type="button" data-instrument="bass">Bass</button>
+          <button type="button" data-instrument="guitar">Guitar</button>
+        </div>
+      </div>
+      <p class="import-intro" id="import-intro">Bring in a bass tab you trust; the app lines it up with this recording.</p>
       <div class="field">
         <div class="dropzone" id="import-drop" tabindex="0" role="button" aria-label="Choose a tab file">
           <span class="dz-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
@@ -1248,6 +1265,8 @@
           <button type="button" class="icon-btn sm" id="import-clear" aria-label="Choose another file"></button>
         </div>
         <input type="file" id="import-file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl,.txt" hidden>
+        <div class="import-track hidden" id="import-track-row"><span class="sec-label">Track</span>
+          <select id="import-track" aria-label="Which track of the file" title="Which of the file's tracks to import"></select></div>
       </div>
       <div class="import-or">or paste a text tab</div>
       <div class="field">
@@ -1366,7 +1385,7 @@
         <input type="text" id="inst-name" maxlength="40" placeholder="Name, e.g. Fender P" aria-label="Instrument name">
         <div class="segmented" id="inst-kind" role="group" aria-label="Type" title="Bass is matched with the song's bass, Guitar with its guitar">
           <button type="button" data-kind="bass">Bass</button>
-          <button type="button" data-kind="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
+          <button type="button" data-kind="guitar">Guitar</button>
         </div>
         <button type="button" class="btn sm primary" id="inst-add-go">Capture 45 s</button>
       </div>
@@ -1440,9 +1459,11 @@
   <form method="dialog">
     <div class="dlg-head"><h2 id="strcal-title">Calibrate strings</h2></div>
     <div class="dlg-body calib-body">
-      <p id="strcal-intro">So the app can tell which string you play a note on (D on A5 or the open D). Tune to standard
-        (E A D G). For each spot, play the note 8 times the way you'd play it in a song, some quick, some held; it moves on
-        by itself. About 4 minutes; Save works part way too.</p>
+      <p id="strcal-intro"></p>
+      <div class="segmented strcal-mode" id="strcal-mode" role="group" aria-label="How thorough">
+        <button type="button" data-mode="quick" class="active" title="Each open string, 8 times: about a minute. Fretted notes are worked out from those">Open strings · 1 min</button>
+        <button type="button" data-mode="full" title="Open strings and 7 fretted spots on every string: more accurate">Full · <span id="strcal-full-min">4</span> min</button>
+      </div>
       <canvas id="strcal-canvas"></canvas>
       <p class="calib-status" id="strcal-status"></p>
     </div>
@@ -2335,7 +2356,7 @@
     { label: song.has_original ? 'New version…' : 'New version… (no saved original)', icon: icons.layers, disabled: !song.has_original, action: () => openUpload(song) },
     { label: 'Edit song & versions…', icon: icons.edit, action: () => openEdit(song) },
     { label: song.trim ? 'Trim start and end… (trimmed)' : 'Trim start and end…', icon: icons.scissors, disabled: !song.versions.length, action: () => openTrim(song) },
-    { label: 'Import bass tab…', icon: icons.music, disabled: !song.has_original && !song.versions.some((v) => v.removed === 'bass'),
+    { label: 'Import tab…', icon: icons.music, disabled: !song.has_original && !song.versions.some((v) => v.removed === 'bass'),
       action: () => importFromMenu(song) },
     '-',
     { label: 'Delete song', icon: icons.trash, danger: true, action: () => deleteSong(song) },
@@ -2886,12 +2907,21 @@
   const GRID_KEY = 'track-splitter-edit-grid';
   let editGrid = '16';
   try { if (GRIDS[localStorage.getItem(GRID_KEY)]) editGrid = localStorage.getItem(GRID_KEY); } catch { /* the default */ }
-  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1, selected: null, undo: [], section: 'tab' };
+  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1, selected: null, undo: [], section: 'tab', instrument: 'bass' };
   const TAB_PREFS = 'track-splitter-tab-tuning';
+  // Bass or guitar tab, per song (bass until switched). Guitar tabs are imported only so far.
+  const INSTRUMENT_PREFS = 'track-splitter-tab-instrument';
+  const tabInstruments = () => { try { return JSON.parse(localStorage.getItem(INSTRUMENT_PREFS)) || {}; } catch { return {}; } };
+  const tabInstrument = (song) => (tabInstruments()[song] === 'guitar' ? 'guitar' : 'bass');
+  function setTabInstrument(song, which) {
+    try { localStorage.setItem(INSTRUMENT_PREFS, JSON.stringify({ ...tabInstruments(), [song]: which })); } catch { /* not kept */ }
+  }
+  const isGuitarTab = () => tabView.instrument === 'guitar';
   const tabPrefs = () => { try { return JSON.parse(localStorage.getItem(TAB_PREFS)) || {}; } catch { return {}; } };
   // Kept per song, and per tab for imported/recorded ones ("song|imported"), so a tuning
   // picked for one tab doesn't re-finger another.
-  const tuningPrefKey = (song, source) => (source && source !== 'auto' ? `${song}|${source}` : song);
+  const tuningPrefKey = (song, source, which = tabView.instrument) => (which === 'guitar' ? `${song}|guitar`
+    : source && source !== 'auto' ? `${song}|${source}` : song);
   function saveTabPref(song, tuning) {
     try { localStorage.setItem(TAB_PREFS, JSON.stringify({ ...tabPrefs(), [song]: tuning })); } catch { /* not kept */ }
   }
@@ -2959,16 +2989,18 @@
       $('#tab-body').replaceChildren(el('div', { className: 'tab-empty tab-loading' }, el('p', { textContent: `Loading the tab for “${song.title}”…` })));
     }
     tabView.song = song.id;
-    $('#tab-title').textContent = `${song.title} · bass tab`;
+    const which = tabView.instrument = tabInstrument(song.id);
+    document.querySelectorAll('#tab-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === which));
+    $('#tab-title').textContent = `${song.title} · ${which} tab`;
     // "standard~original" / "standard~mine": an imported tab's tuning and which version
     // (the original or the user's, from Other ways to play / Make repeats match).
     const [pick, version] = (tuning || tabPrefs()[tuningPrefKey(song.id, sourcePrefs()[song.id] || 'imported')] || '').split('~');
     try {
       const data = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${version ? `&version=${version}` : ''}${splitParam(song.id)}`
-        + `&source=${sourcePrefs()[song.id] || 'imported'}`);   // an imported tab wins when there is one
-      if (tabView.song !== song.id) return;               // another song was picked meanwhile
+        + `&source=${sourcePrefs()[song.id] || 'imported'}&instrument=${which}`);   // an imported tab wins when there is one
+      if (tabView.song !== song.id || tabView.instrument !== which) return;   // another song (or part) was picked meanwhile
       tabView.data = data.exists ? data : null;
-      tabView.canMake = !!data.can_make;
+      tabView.canMake = !!(data.can_make || data.can_import);
       tabView.hasImport = !!data.has_import;
       tabView.hasMine = !!data.has_mine;
       tabView.selected = null;
@@ -2985,7 +3017,10 @@
   function renderTabHead() {
     const d = tabView.data;
     const imported = d?.source === 'imported', mine = d?.source === 'mine';
-    $('#tab-source').classList.toggle('hidden', !tabView.hasImport && !tabView.hasMine);
+    const guitar = isGuitarTab(), part = guitar ? 'guitar' : 'bass';
+    $('#tab-source').classList.toggle('hidden', guitar || (!tabView.hasImport && !tabView.hasMine));
+    $('#tab-raise-row span:last-child').textContent = `Standard ${part}: raise ½ step`;
+    $('#tab-game').title = `Plays from the top and scores you: needs your ${part} input`;
     $('#tab-source button[data-source="imported"]').classList.toggle('hidden', !tabView.hasImport);
     $('#tab-source button[data-source="mine"]').classList.toggle('hidden', !tabView.hasMine);
     document.querySelectorAll('#tab-source button').forEach((b) => b.classList.toggle('active', b.dataset.source === (d?.source || 'auto')));
@@ -2994,7 +3029,7 @@
     $('#tab-added').checked = showAdded;
     $('#tab-takes').classList.toggle('hidden', !mine || !d?.take_list?.length);
     showReview(mine ? d.pending : null);
-    $('#tab-draft').classList.toggle('hidden', !d || mine);
+    $('#tab-draft').classList.toggle('hidden', !d || mine || guitar);
     const picked = mine && tabView.selected !== null ? d.notes[tabView.selected] : null;
     $('#tab-delete-note').classList.toggle('hidden', !picked);
     if (picked) $('#tab-delete-note').textContent = `Delete ${d.tunings.find((x) => x.key === d.tuning).strings[picked[2]]}${picked[3]} at ${fmtTime(picked[0])}`;
@@ -3012,7 +3047,7 @@
       $('#tab-bars-row').title = `Move the bar lines a beat at a time so each bar starts on beat 1 (kept with the song). Now: ${!n ? 'where the app found it' : `${Math.abs(n)} beat${Math.abs(n) === 1 ? '' : 's'} ${n > 0 ? 'later' : 'earlier'} than found`}`;
     }
     $('#tab-grid').value = editGrid;
-    $('#tab-input').classList.toggle('hidden', !tabView.canMake);
+    $('#tab-input').classList.toggle('hidden', !tabView.canMake && !d);
     $('#tab-tuning').classList.toggle('hidden', !d);
     $('#tab-mode').classList.toggle('hidden', !d);
     $('#tab-game').classList.toggle('hidden', !d);
@@ -3031,7 +3066,7 @@
     const best = d ? bests[bestKey(tabView.song, d.source)] : null;   // per song, tab, timing and difficulty
     $('#game-best-now').textContent = !d ? '' : best ? `Your best: ${best.toLocaleString()}` : 'No score yet for this tab';
     document.querySelectorAll('#tab-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === tabMode));
-    $('#tab-remake').classList.toggle('hidden', !d || d.source !== 'auto');
+    $('#tab-remake').classList.toggle('hidden', !d || d.source !== 'auto' || guitar);
     $('#tab-remove-import').classList.toggle('hidden', !imported);
     // Shown in any tuning (user: "I don't see other ways to play": Amsterdam's .gp is in
     // E♭ B♭ E♭ A♭ and was shown in another tuning); each tuning keeps its own choices
@@ -3060,11 +3095,12 @@
       'Click a line to jump there',
     ].filter(Boolean).join(' · ') : imported ? [
       `Imported: ${d.import_name}${d.track && d.track !== d.import_name && d.track !== 'Pasted tab' ? ` (${d.track})` : ''}`,
+      d.capo && d.tuning === d.written ? `capo on fret ${d.capo}` : '',
       d.tuning !== d.written ? `fingered for ${d.tunings.find((x) => x.key === d.tuning).label} (written for ${d.tunings.find((x) => x.key === d.written)?.label || 'another tuning'})` : '',
       d.dropped ? `${d.dropped} notes too low for this tuning` : '',
       d.easiest && d.easiest !== d.tuning ? `easiest to play in ${d.tunings.find((x) => x.key === d.easiest).label}` : '',
       d.quality < 0.35 ? `only ${Math.round(d.quality * 100)}% of its notes matched the recording: it may be for another version or tuning` : '',
-      showRaised() ? 'Song raised a half step: play these shapes on a standard-tuned bass' : '',
+      showRaised() ? `Song raised a half step: play these shapes on a standard-tuned ${part}` : '',
       'Click a line to jump there',
     ].filter(Boolean).join(' · ') : !d.notes.length ? 'No bass found in this song (only other instruments leaking into the bass track).' : [
       d.bpm ? `${Math.round(d.bpm)} bpm · lines follow the bars` : 'No steady tempo found · 4-second lines',
@@ -3080,6 +3116,17 @@
 
   function renderTabEmpty() {
     const wrap = el('div', { className: 'tab-empty' });
+    if (isGuitarTab()) {   // guitar tabs come from a file or a pasted tab (no automatic ones yet)
+      wrap.append(el('h3', { textContent: 'No guitar tab for this song yet' }));
+      wrap.append(el('p', { textContent: tabView.canMake
+        ? 'Import one (Guitar Pro, MusicXML, or a pasted text tab) and the app lines it up with this recording. The first time, it isolates the guitar to listen to it, which takes about a minute.'
+        : 'This song has no saved original or guitar track to line a tab up with. Attach the original first (+ Version).' }));
+      const imp = el('button', { type: 'button', className: 'btn primary', textContent: 'Import a guitar tab', disabled: !tabView.canMake });
+      imp.addEventListener('click', () => openImport(undefined, 'guitar'));
+      wrap.append(el('div', { className: 'tab-empty-actions' }, imp));
+      $('#tab-body').replaceChildren(wrap);
+      return;
+    }
     wrap.append(el('h3', { textContent: tabView.outdated ? 'This tab can be made better now' : 'No bass tab for this song yet' }));
     wrap.append(el('p', { textContent: tabView.outdated === 'bars'
       ? 'It was made before the app could find this song\'s beat, so it has no bar lines (and adding notes on 16ths or 32nds can\'t line up). Making it again takes a few seconds.'
@@ -3496,7 +3543,7 @@
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const b of game.bursts) {
       const age = (ms - b.at) / 1000;
-      if (age > 0.7 || b.messy) continue;
+      if (age > 0.7 || b.messy || b.label === false) continue;
       const box = noteBox(b.k, cv);
       if (!box) continue;
       g.globalAlpha = 1 - age / 0.7; g.font = '900 italic 20px system-ui, sans-serif';
@@ -3808,7 +3855,7 @@
   });
   document.querySelectorAll('#tab-mode button').forEach((b) => b.addEventListener('click', () => setTabMode(b.dataset.mode)));
 
-  const LANE_COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa', '#fb923c'];   // low string first, like the game's
+  const LANE_COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa', '#fb923c', '#c084fc'];   // low string first, like the game's; the 6th for guitar
   const AHEAD = 3, BEHIND = 0.4;   // seconds of notes shown ahead of / past the hit line
 
   function drawHighway(t, force) {
@@ -4193,6 +4240,8 @@
       }
     }
 
+    // Guitar: repeat strums of a chord are bars (drawChordBars), their gems left out below.
+    const chordRepeats = game.members ? (drawChordBars(g, t, d, { sx, depth, Z, zPast, laneY, gemW, gemH, laneColor }), d.chordRuns.repeats) : null;
     // Notes, far ones first so near ones are drawn on top.
     g.textAlign = 'center'; g.textBaseline = 'middle';
     let lo = 0, hi = notes.length;
@@ -4215,7 +4264,7 @@
         quad([[sx(z), laneY(s, z) - w0 / 2], [sx(zEnd), laneY(s, zEnd) - w1 / 2], [sx(zEnd), laneY(s, zEnd) + w1 / 2], [sx(z), laneY(s, z) + w0 / 2]], colour);
         g.shadowBlur = 0; g.globalAlpha = 1;
       }
-      if (holding) continue;                                          // the button glows instead (effects below)
+      if (holding || chordRepeats?.has(k)) continue;                  // the button glows instead (effects below); or a chord bar
       const k2 = depth(z), w = gemW * k2, h = gemH * k2, x = sx(z), y = laneY(s, z), r = Math.min(12, w / 3) * k2 + 2;
       g.globalAlpha = res === 'miss' ? 0.45 : z < 0 ? Math.max(0, 1 + z / -zPast) : 1;
       // Far notes fade in over the last 15% of the board instead of popping in.
@@ -4260,6 +4309,8 @@
       g.globalAlpha = 1;
     }
 
+    if (game.members) drawChordCards(g, t, d, { sx, depth, Z, nearX, W, laneColor, top: (z) => edgeY(-1, z) });   // guitar: chord names and shapes
+
     // Effects: per hit a flash and sparks from the strike button (gold too on a Perfect),
     // "Perfect!"/"Good" rising; while a long note is held, sparks stream and it glows.
     const spray = (s, count, speed, colour, life) => {
@@ -4298,7 +4349,7 @@
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.lineCap = 'butt';
     for (const b of game.bursts) {
       const age = (ms - b.at) / 1000;
-      if (age > 0.7 || b.messy) continue;              // a messy hit says MESSY instead
+      if (age > 0.7 || b.messy || b.label === false) continue;   // a messy hit says MESSY instead; a chord says it once
       g.globalAlpha = Math.max(0, 1 - age / 0.7);
       g.font = `900 italic ${Math.round(gemH * 0.42)}px system-ui, sans-serif`;
       g.fillStyle = b.perfect ? '#facc15' : '#e5e7eb'; g.shadowColor = b.perfect ? '#facc15' : 'transparent'; g.shadowBlur = b.perfect ? 14 : 0;
@@ -4421,17 +4472,56 @@
     setSource(tabView.song, b.dataset.source);
     loadTab();
   }));
+  document.querySelectorAll('#tab-instrument button').forEach((b) => b.addEventListener('click', () => {
+    if (!tabView.song || b.dataset.instrument === tabView.instrument) return;
+    if (isRaised(tabView.song)) { setRaised(tabView.song, false); reloadAudio(); }   // raised for the other part's tuning
+    setTabInstrument(tabView.song, b.dataset.instrument);
+    tabView.data = null;
+    loadTab();
+  }));
   const importDlg = $('#import-dlg');
-  let importSong = null;
-  function openImport(song = state.current?.song) {
+  let importSong = null, importFor = 'bass', importTracks = 0;
+  function openImport(song = state.current?.song, which = song && tabView.song === song.id ? tabView.instrument : tabInstrument(song?.id)) {
     if (!song) return;
     importSong = song;
     $('#import-file').value = '';
     $('#import-text').value = '';
     $('#import-error').classList.add('hidden');
     $('#import-sub').textContent = `For “${song.title}”${song.artist ? ` by ${song.artist}` : ''}`;
+    setImportFor(which);
     showImportFile();
     importDlg.showModal();
+  }
+  // Bass or guitar: which tab of the song this replaces, and which of a file's tracks fit.
+  function setImportFor(which) {
+    importFor = which === 'guitar' ? 'guitar' : 'bass';
+    document.querySelectorAll('#import-instrument button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === importFor));
+    $('#import-intro').textContent = `Bring in a ${importFor} tab you trust; the app lines it up with this recording.`
+      + (importFor === 'guitar' ? ' Chords are fine. The first time, it isolates the guitar to listen to it (about a minute).' : '');
+    $('#import-text').placeholder = importFor === 'guitar'
+      ? 'e|-----0-----|\nB|---1---1---|\nG|-0-------0-|\nD|-2---2-----|\nA|-3---------|\nE|-----------|'
+      : 'G|------------------|\nD|------------------|\nA|------2--4--------|\nE|--0--3-----5--3---|';
+    listTracks();
+  }
+  document.querySelectorAll('#import-instrument button').forEach((b) => b.addEventListener('click', () => setImportFor(b.dataset.instrument)));
+  // A file with several tracks (a band's Guitar Pro file): which one, the likeliest first.
+  async function listTracks() {
+    const file = $('#import-file').files[0], row = $('#import-track-row');
+    importTracks = 0;
+    row.classList.add('hidden');
+    if (!file || /\.txt$/i.test(file.name)) return;
+    const form = new FormData();
+    form.append('file', file);
+    form.append('instrument', importFor);
+    let r;
+    try { r = await api('/api/tab/tracks', { method: 'POST', body: form }); } catch { return; }   // reported on Import
+    if (file !== $('#import-file').files[0]) return;   // another file meanwhile
+    importTracks = r.tracks.length;
+    const kinds = { bass: 'bass', guitar: 'guitar', other: 'other' };
+    $('#import-track').replaceChildren(...r.tracks.map((t) => el('option', {
+      value: t.index, selected: t.index === r.default,
+      textContent: `${t.name} · ${t.strings} strings${t.capo ? `, capo ${t.capo}` : ''} · ${t.notes} notes${t.kind !== importFor ? ` (${kinds[t.kind]})` : ''}` })));
+    row.classList.toggle('hidden', r.tracks.length < 2);
   }
   // The chosen file replaces the drop zone (× to pick another).
   function showImportFile() {
@@ -4442,8 +4532,8 @@
   }
   $('#import-chosen .ui-ico').innerHTML = icons.note;
   $('#import-clear').innerHTML = icons.x;
-  $('#import-clear').addEventListener('click', () => { $('#import-file').value = ''; showImportFile(); });
-  $('#import-file').addEventListener('change', () => { $('#import-error').classList.add('hidden'); showImportFile(); });
+  $('#import-clear').addEventListener('click', () => { $('#import-file').value = ''; showImportFile(); listTracks(); });
+  $('#import-file').addEventListener('change', () => { $('#import-error').classList.add('hidden'); showImportFile(); listTracks(); });
   $('#import-drop').addEventListener('click', () => $('#import-file').click());
   $('#import-drop').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#import-file').click(); } });
   ['dragenter', 'dragover'].forEach((ev) => $('#import-drop').addEventListener(ev, (e) => { e.preventDefault(); $('#import-drop').classList.add('over'); }));
@@ -4455,6 +4545,7 @@
     $('#import-file').files = dt.files;
     $('#import-error').classList.add('hidden');
     showImportFile();
+    listTracks();
   });
   // From a song's ... menu: load the song (if it has a version to play) and open its tab
   // view behind the import box, so the imported tab shows as soon as it's lined up.
@@ -4474,11 +4565,14 @@
     if (busy()) return fail('Wait for the current processing to finish, or stop it first.');
     const form = new FormData();
     form.append('song', song.id);
+    form.append('instrument', importFor);
     if (file) form.append('file', file); else form.append('text', text);
+    if (file && importTracks > 1) form.append('track', $('#import-track').value);
     try {
       const { job } = await api('/api/tab/import', { method: 'POST', body: form });
       importDlg.close();
-      setSource(song.id, 'imported');
+      if (importFor === 'bass') setSource(song.id, 'imported');
+      setTabInstrument(song.id, importFor);   // shows the part just imported
       state.job = { status: 'queued', total: 1, index: 0, song: song.title, fraction: 0 };
       renderJob(); updateUploadButton();
       pollJob(job, [], 'import');
@@ -4513,7 +4607,7 @@
     $('#repeats-intro').textContent = intro;
     let r;
     const tuning = tabView.data?.tuning || '';
-    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}&tuning=${encodeURIComponent(tuning)}${patterns ? '&patterns=true' : ''}`); } catch (err) { toast(err.message, 'error'); return; }
+    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}&instrument=${tabView.instrument}&tuning=${encodeURIComponent(tuning)}${patterns ? '&patterns=true' : ''}`); } catch (err) { toast(err.message, 'error'); return; }
     if (song !== tabView.song) return;
     const names = r.strings, box = $('#repeat-groups');
     // In another tuning the tab is the app's fingering of it there, not the file's.
@@ -4608,7 +4702,8 @@
   async function setRepeat(key, map, easiest = false, lower = false) {
     try {
       const tuning = tabView.data?.tuning || null;   // other tunings keep their own choices
-      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, lower, tuning } : { song: tabView.song, key, map, easiest, tuning });
+      const which = { instrument: tabView.instrument, tuning };
+      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, lower, ...which } : { song: tabView.song, key, map, easiest, ...which });
       // A choice made is seen: the tab switches to the user's version of this tuning.
       if (tuning) saveTabPref(tuningPrefKey(tabView.song, tabView.data.source), `${tuning}~mine`);
       await loadTab();
@@ -4621,8 +4716,8 @@
   $('#repeats-clear').addEventListener('click', () => setRepeat(undefined));
   $('#tab-remove-import').addEventListener('click', async () => {
     try {
-      await postJSON('/api/tab/import/remove', { id: tabView.song });
-      setSource(tabView.song, 'auto');
+      await postJSON('/api/tab/import/remove', { id: tabView.song, instrument: tabView.instrument });
+      if (!isGuitarTab()) setSource(tabView.song, 'auto');
       toast('Moved the imported tab to the Trash.');
       loadTab();
     } catch (err) { toast(err.message, 'error'); }
@@ -4810,8 +4905,12 @@
   // Record captures a take (an AudioWorklet posts each block with its frame number) and
   // sends it as a float WAV with the song time it starts at; the server lines it up.
   const RECORDER = `class Rec extends AudioWorkletProcessor {
-    constructor() { super(); this.channel = 0; this.port.onmessage = (e) => { this.channel = e.data.channel; }; }
+    constructor() {
+      super(); this.channel = 0; this.done = false;
+      this.port.onmessage = (e) => { if (e.data.stop) this.done = true; else this.channel = e.data.channel; };
+    }
     process(inputs) {
+      if (this.done) return false;
       const ch = inputs[0];
       if (ch && ch.length) {
         let data;
@@ -4826,6 +4925,16 @@
   }
   registerProcessor('track-splitter-recorder', Rec);`;
   let recorderLoaded = null;
+  // A recorder that's done: disconnecting only its output left the input feeding it, so it
+  // kept running and its old handler pushed every block into the next capture / take /
+  // game check as well (a 45 s capture came out 90 s, two copies interleaved block by block).
+  function dropRecorder(node) {
+    if (!node) return;
+    node.port.onmessage = null;
+    node.port.postMessage({ stop: true });
+    try { input.source?.disconnect(node); } catch { /* already gone */ }
+    node.disconnect();
+  }
   const input = { stream: null, source: null, analyser: null, mon: null, monIn: null, monTone: [], monOut: null, timer: 0, recent: [], note: null, lane: null, match: false };
   const rec = { node: null, sink: null, chunks: [], startedAt: null, songStart: 0, active: false, timer: 0 };
   // Game check (user: "inconsistencies with the game and picking up random notes, can we
@@ -4854,8 +4963,7 @@
   }
   async function finishCheck(played, finished) {
     check.on = false;
-    try { input.source?.disconnect(check.node); } catch { /* already gone */ }
-    check.node?.disconnect(); check.sink?.disconnect();
+    dropRecorder(check.node); check.node = null; check.sink?.disconnect();
     if (!check.chunks.length || !played) return;
     const total = check.chunks.reduce((a, c) => a + c.length, 0), samples = new Float32Array(total);
     let o = 0;
@@ -4921,7 +5029,7 @@
     input.stream?.getTracks().forEach((t) => t.stop());
     input.source?.disconnect();
     input.mon?.close();
-    Object.assign(input, { stream: null, source: null, analyser: null, chordAn: null, mon: null, monIn: null, monTone: [], monOut: null, recent: [], note: null, lane: null });
+    Object.assign(input, { stream: null, source: null, analyser: null, chordAn: null, fluxAn: null, fluxPrev: null, mon: null, monIn: null, monTone: [], monOut: null, recent: [], note: null, lane: null });
   }
   async function openInput(deviceId) {
     closeInput();
@@ -4942,6 +5050,12 @@
     input.chordAn.fftSize = ctx.sampleRate > 50000 ? 16384 : 8192;
     input.chordBuf = new Float32Array(input.chordAn.fftSize);
     connectChannel(split, input.chordAn);
+    // Strums (guitar game): how much the spectrum rose since the reading before (~43 ms slices).
+    input.fluxAn = ctx.createAnalyser();
+    input.fluxAn.fftSize = ctx.sampleRate > 50000 ? 4096 : 2048;
+    input.fluxAn.smoothingTimeConstant = 0;
+    input.fluxSpec = new Float32Array(input.fluxAn.frequencyBinCount);
+    connectChannel(split, input.fluxAn);
     await setMonitor($('#input-monitor').checked);
     const buf = new Float32Array(input.analyser.fftSize);
     input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly
@@ -5020,47 +5134,201 @@
     showToneSwitch();
     const m = input.mon, token = ++toneToken;
     const note = $('#input-tone-note');
-    if (!toneOn()) { note.textContent = ''; wireTone(m, null); return; }
+    if (!toneOn()) { note.textContent = ''; note.title = ''; wireTone(m, null); return; }
     if (!m) { note.textContent = 'Turn on Hear myself to hear it.'; return; }
     const kind = toneKind(), key = `${state.current.song.id}|${m.sampleRate}|${kind}|${insts.current[kind]}`;
     if (!toneCache.has(key)) {
       note.textContent = `Measuring the song’s ${kind}…`;
       toneCache.set(key, await api(`/api/tone?song=${encodeURIComponent(state.current.song.id)}&rate=${m.sampleRate}&kind=${kind}`).catch((err) => ({ error: err.message })));
     }
-    if (token !== toneToken || m !== input.mon) return;   // changed meanwhile
     const t = toneCache.get(key);
+    if (t.groups && !m.gateLoaded) {                   // the noise gate in front of the drive
+      m.gateLoaded = m.audioWorklet.addModule(URL.createObjectURL(new Blob([GATE], { type: 'application/javascript' })))
+        .then(() => true, (err) => { console.warn('Noise gate unavailable:', err); return false; });
+    }
+    const gate = t.groups ? await m.gateLoaded : false;
+    if (token !== toneToken || m !== input.mon) return;   // changed meanwhile
     if (t.error) { toneCache.delete(key); note.textContent = t.error; wireTone(m, null); return; }
-    wireTone(m, t);
-    // Low / mid / high: what the EQ does on average there (dB).
+    wireTone(m, t, gate);
+    showToneNote();
+  }
+  // Low / mid / high: what an EQ does on average there (dB).
+  function toneSummary(t, g) {
     const avg = (lo, hi) => {
-      const v = t.bands.map((b, i) => [b, t.fit[i]]).filter(([b]) => b >= lo && b <= hi).map(([, g]) => g + t.trim_db);
+      const v = t.bands.map((b, i) => [b, g.fit[i]]).filter(([b]) => b >= lo && b <= hi).map(([, x]) => x + g.trim_db);
       return Math.round(v.reduce((a, b) => a + b, 0) / v.length);
     };
     const sign = (v) => (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0');
-    const vs = yourName(t.instrument.name);
-    note.textContent = `Low ${sign(avg(40, 160))} · Mid ${sign(avg(200, 1000))} · High ${sign(avg(1250, 6400))} dB`;
-    note.title = `The song's ${kind} (${t.track}) compared with ${vs}. ${t.filters.length} filters, within ${t.fit_error_db} dB of the measured difference.`;
+    return `Low ${sign(avg(40, 160))} · Mid ${sign(avg(200, 1000))} · High ${sign(avg(1250, 6400))} dB`;
   }
-  function wireTone(m, t) {
+  // What a part of the song sounds like: by how noise-like its guitar is (tone.py).
+  const toneName = (g) => (!g.drive && g.flat < 0.03 ? 'Clean' : g.flat < 0.1 ? 'Crunch' : 'Distorted');
+  function showToneNote() {
+    const live = input.toneLive, note = $('#input-tone-note');
+    if (!live) return;
+    const t = live.t, vs = yourName(t.instrument.name);
+    if (!t.groups) {
+      note.textContent = toneSummary(t, t);
+      note.title = `The song's ${t.instrument.kind} (${t.track}) compared with ${vs}. ${t.filters.length} filters, within ${t.fit_error_db} dB of the measured difference.`;
+      return;
+    }
+    const g = t.groups[live.group ?? 0];
+    const names = [...new Set(t.groups.map(toneName))];
+    note.textContent = `Now: ${toneName(g)}${g.drive ? ` (drive ${Math.round(20 * Math.log10(g.drive))} dB)` : ''}`
+      + `${g.room?.wet ? ` + room ${Math.round(100 * g.room.wet ** 2)}%` : ''} · ${toneSummary(t, g)}`
+      + (t.needs_capture ? ' · Capture your guitar again (Instruments…) to hear the distortion'
+        : ' · Turn the interface\'s Direct Monitor off: its plain guitar covers this');
+    note.title = `Follows the song's guitar (${t.track}): ${t.sections.length} parts, ${t.groups.length} tones (${names.join(', ').toLowerCase()}), `
+      + `each matched with ${vs}${t.needs_capture ? ' (EQ only: this capture was made before drive was measured)' : ''}.`;
+  }
+  // Guitar parts change tone (user: "So Far So Fake starts with a clean tone and then
+  // changes to a distorted tone. I want my guitar to sound pretty close to the album"):
+  // the server splits the song into parts and sends each tone (`groups`: drive, make-up
+  // and EQ) and when each plays (`sections`). Built once:
+  //   in → clean ─────────────────────────────────────────────┐
+  //   in → gate → pre (high-pass, mid hump) → drive → tanh → low-pass → dirty ┴→ EQ → trim → out
+  // and moved between tones as the song plays (`followTone`, ramps of ~15 ms). The
+  // WaveShaper oversamples 2x against the harsh aliasing of high drive: that adds 128
+  // samples (2.7 ms at 48 kHz) to the distorted path only; 4x would add 192.
+  const SHAPE_RANGE = 8;                                // the curve covers tanh(-8..8)
+  let shapeCurve = null;
+  function tanhCurve() {
+    if (shapeCurve) return shapeCurve;
+    shapeCurve = new Float32Array(4097);
+    for (let i = 0; i < shapeCurve.length; i++) shapeCurve[i] = Math.tanh(SHAPE_RANGE * (i / 2048 - 1));
+    return shapeCurve;
+  }
+  function wireTone(m, t, gateOk) {
     if (!m || !input.monIn) return;
+    clearInterval(input.toneTimer);
+    input.toneLive = null;
     input.monIn.disconnect();
     input.monTone.forEach((n) => n.disconnect());
     input.monTone = [];
-    if (t) {
-      for (const f of t.filters) {
-        const b = m.createBiquadFilter();
-        b.type = f.type; b.frequency.value = f.freq; b.gain.value = f.gain;
-        if (f.q) b.Q.value = f.q;
-        input.monTone.push(b);
-      }
-      const trim = m.createGain();
-      trim.gain.value = 10 ** (t.trim_db / 20);         // same loudness as without
-      input.monTone.push(trim);
+    const biquad = (f) => {
+      const b = m.createBiquadFilter();
+      b.type = f.type; b.frequency.value = f.freq; b.gain.value = f.gain;
+      if (f.q !== undefined) b.Q.value = f.q;
+      return b;
+    };
+    const chain = (from, nodes) => nodes.reduce((a, n) => a.connect(n), from);
+    if (!t) { input.monIn.connect(input.monOut); return; }
+    if (!t.groups) {
+      input.monTone = [...t.filters.map(biquad), m.createGain()];
+      input.monTone.at(-1).gain.value = 10 ** (t.trim_db / 20);   // same loudness as without
+      chain(input.monIn, input.monTone).connect(input.monOut);
+      input.toneLive = { t };
+      return;
     }
-    let node = input.monIn;
-    for (const n of input.monTone) { node.connect(n); node = n; }
-    node.connect(input.monOut);
+    const sum = m.createGain(), clean = m.createGain(), dirty = m.createGain(), drive = m.createGain(), trim = m.createGain();
+    const dry = m.createGain(), wet = m.createGain(), room = m.createConvolver();
+    const shaper = m.createWaveShaper();
+    shaper.curve = tanhCurve();
+    shaper.oversample = '2x';
+    const gate = gateOk ? new AudioWorkletNode(m, 'track-splitter-gate') : null;
+    const pre = t.chain.pre.map(biquad), post = t.chain.post.map(biquad), eq = t.groups[0].filters.map(biquad);
+    clean.gain.value = 0; dirty.gain.value = 0; drive.gain.value = 0;
+    input.monIn.connect(clean).connect(sum);
+    chain(gate ? input.monIn.connect(gate) : input.monIn, [...pre, drive, shaper, ...post, dirty]).connect(sum);
+    chain(sum, [...eq, trim, dry]).connect(input.monOut);
+    room.normalize = false;
+    room.buffer = roomImpulse(m, t.bands, t.song_db.map((v) => 10 ** (v / 10)));
+    wet.gain.value = 0;
+    trim.connect(room).connect(wet).connect(input.monOut);   // the room, in parallel (tone.room)
+    input.monTone = [sum, clean, dirty, drive, trim, dry, wet, room, shaper, ...pre, ...post, ...eq, ...(gate ? [gate] : [])];
+    input.toneLive = { t, m, clean, dirty, drive, trim, dry, wet, eq, gate, group: null };
+    followTone(true);
+    input.toneTimer = setInterval(followTone, 50);
   }
+  // The room for clean parts (tone.room): a stereo impulse response, independent noise
+  // left and right (so the room is wide, as a record's clean guitar is and a DI isn't)
+  // after 12 ms, dying away over ROOM_SECONDS (to -60 dB), highs fading faster than mids
+  // (a one-pole low-pass sliding from 7 kHz to 1.5 kHz) and no lows under ~150 Hz (they
+  // muddy it). Scaled so that, on average over the song's guitar spectrum (`weights`, per
+  // tone.py band), the room is as loud as what goes in; scaling it to unit energy instead
+  // made it ~2.4 dB louder than meant (its energy sits where a guitar's is).
+  const ROOM_SECONDS = 1.2;
+  function roomImpulse(m, bands, weights) {
+    const sr = m.sampleRate, len = Math.round(sr * ROOM_SECONDS), pre = Math.round(sr * 0.012);
+    const buf = m.createBuffer(2, len, sr);
+    let seed = 12345;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32) * 2 - 1;
+    const hp = Math.exp(-2 * Math.PI * 150 / sr);
+    const cutoff = (t) => 7000 * (1500 / 7000) ** (t / ROOM_SECONDS), env = (t) => Math.exp(-6.91 * t / ROOM_SECONDS);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      let lp = 0, last = 0, hpOut = 0;
+      for (let i = pre; i < len; i++) {
+        const t = (i - pre) / sr, a = Math.exp(-2 * Math.PI * cutoff(t) / sr);
+        lp = (1 - a) * rand() + a * lp;
+        hpOut = hp * (hpOut + lp - last); last = lp;
+        d[i] = hpOut * env(t);
+      }
+    }
+    // Expected power gain at each band (the noise's variance 1/3 through both filters,
+    // summed over the decay), weighted by the guitar's power there.
+    let num = 0, den = 0;
+    bands.forEach((f, b) => {
+      if (f < 60 || f > 12000) return;
+      const w = Math.cos(2 * Math.PI * f / sr), hpG = hp * hp * (2 - 2 * w) / (1 - 2 * hp * w + hp * hp);
+      let g = 0;
+      for (let i = pre; i < len; i += 32) {
+        const t = (i - pre) / sr, a = Math.exp(-2 * Math.PI * cutoff(t) / sr);
+        g += 32 * env(t) ** 2 * (1 - a) ** 2 / (1 - 2 * a * w + a * a);
+      }
+      num += weights[b] * g * hpG / 3; den += weights[b];
+    });
+    const k = 1 / Math.sqrt(num / den);
+    for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] *= k; }
+    return buf;
+  }
+  // Which part of the song is playing (what you hear: minus the output delay), and its tone.
+  function followTone(now) {
+    const live = input.toneLive;
+    if (!live?.t.groups || live.m !== input.mon) { clearInterval(input.toneTimer); return; }
+    const at = currentTime() - (player.playing ? (ctx.outputLatency || 0) + (ctx.baseLatency || 0) : 0);
+    const sec = live.t.sections.find(([a, b]) => at >= a && at < b) || live.t.sections.at(at < 0 ? 0 : -1);
+    if (sec[2] === live.group) return;
+    live.group = sec[2];
+    const g = live.t.groups[sec[2]], when = live.m.currentTime, tau = now === true ? 0.001 : 0.015;
+    const set = (param, v) => param.setTargetAtTime(v, when, tau);
+    const on = g.drive > 0;
+    set(live.clean.gain, on ? 0 : 1);
+    set(live.dirty.gain, on ? 10 ** (g.makeup_db / 20) : 0);
+    set(live.drive.gain, on ? g.drive / SHAPE_RANGE : 0);
+    g.filters.forEach((f, i) => set(live.eq[i].gain, f.gain));
+    set(live.trim.gain, 10 ** (g.trim_db / 20));
+    set(live.dry.gain, g.room?.dry ?? 1);
+    set(live.wet.gain, g.room?.wet ?? 0);
+    // The gate shuts the drive between notes, else it brings up the input's hiss and hum
+    // (at 40-60 dB of drive): opens 12 dB over the input's own quiet level (`floorDb`),
+    // but always at least 25 dB under the guitar's playing level when it was captured
+    // (`play_db`; with nothing but playing to go on, floorDb is the playing level).
+    const playDb = live.t.play_db ?? -20;
+    const gateDb = Math.min(Math.max(-80, input.floorDb ?? playDb - 35) + 12, playDb - 25);
+    if (live.gate) set(live.gate.parameters.get('threshold'), on ? 10 ** (gateDb / 20) : 0);
+    showToneNote();
+  }
+  const GATE = `class Gate extends AudioWorkletProcessor {
+    static get parameterDescriptors() { return [{ name: 'threshold', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' }]; }
+    constructor() { super(); this.env = 0; this.g = 1; }
+    process(inputs, outputs, params) {
+      const x = inputs[0][0], out = outputs[0];
+      if (!x) return true;
+      const th = params.threshold[0];
+      const rel = Math.exp(-1 / (0.08 * sampleRate)), open = Math.exp(-1 / (0.001 * sampleRate)), close = Math.exp(-1 / (0.04 * sampleRate));
+      for (let i = 0; i < x.length; i++) {
+        const a = Math.abs(x[i]);
+        this.env = a > this.env ? a : this.env * rel;     // peak, held ~80 ms
+        const want = this.env >= th ? 1 : 0;
+        this.g = want + (this.g - want) * (want > this.g ? open : close);
+        const y = x[i] * this.g;
+        for (const ch of out) ch[i] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('track-splitter-gate', Gate);`;
   function setToneOn(on) {
     if (!state.current) return;
     const songs = toneSongs();
@@ -5137,9 +5405,12 @@
     $('#inst-add-go').textContent = capture.active && !capture.target?.id ? capture.label : 'Capture 45 s';
   }
   let newKind = 'bass';
-  function showNewKind() { document.querySelectorAll('#inst-kind button').forEach((b) => b.classList.toggle('active', b.dataset.kind === newKind)); }
+  function showNewKind() {
+    document.querySelectorAll('#inst-kind button').forEach((b) => b.classList.toggle('active', b.dataset.kind === newKind));
+    $('#inst-name').placeholder = newKind === 'guitar' ? 'Name, e.g. Strat' : 'Name, e.g. Fender P';
+  }
   function openInstruments() {
-    newKind = 'bass'; showNewKind();                    // guitar is off for now (#inst-kind)
+    newKind = toneKind(); showNewKind();                // what you're playing now
     $('#inst-name').value = '';
     $('#inst-status').textContent = input.stream ? '' : `The ${inputName().toLowerCase()} is off: captures turn it on.`;
     renderInstDialog();
@@ -5181,7 +5452,7 @@
     if (!capture.active) return;
     capture.active = false;
     clearInterval(capture.timer);
-    capture.node?.disconnect(); capture.sink?.disconnect();
+    dropRecorder(capture.node); capture.node = null; capture.sink?.disconnect();
     const length = capture.chunks.reduce((n, c) => n + c.length, 0);
     const samples = new Float32Array(length);
     let at = 0;
@@ -5318,14 +5589,24 @@
   }
   const STRING_CAL_KEY = 'track-splitter-string-calibration';
   const CAL_OPEN = [28, 33, 38, 43];               // calibrated in standard tuning (E A D G)
+  // Guitar (user: "timing and string calibration for guitar similar to how bass works"): its
+  // own calibrations, under these keys + '-guitar', calibrated in standard tuning too.
+  const calOpen = () => (isGuitar() ? GUITAR.open : CAL_OPEN);
+  const calNames = () => (isGuitar() ? GUITAR.strings : ['E', 'A', 'D', 'G']);
+  const calKey = (key) => (isGuitar() ? `${key}-guitar` : key);
   // Fit: per string, open notes' mean and a line in the fret for fretted notes; one spread
   // per feature from everything's leftovers. samples: [{ s, f, v }].
-  function fitStrings(samples) {
+  function fitStrings(samples, strings = 4) {
     const m = { strings: [] };
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < strings; s++) {
       const op = samples.filter((x) => x.s === s && x.f === 0), fr = samples.filter((x) => x.s === s && x.f > 0);
       const d = { open: op.length ? op[0].v.map((_, j) => op.reduce((a, x) => a + x.v[j], 0) / op.length) : null, line: null };
-      if (new Set(fr.map((x) => x.f)).size > 1) {
+      // Open strings only (the quick calibration): a fretted note is the same string made
+      // shorter by 2^(-f/12), so its inharmonicity B grows 2^(f/6) (B ~ 1/length^2: log B +
+      // 0.1155 a fret); the harmonic levels are taken as the open string's (how they move
+      // with the fret is the player's and the pickup's, not knowable from open notes).
+      if (d.open && new Set(fr.map((x) => x.f)).size < 2) { d.line = d.open.map((v, j) => [v, j === 0 ? Math.LN2 / 6 : 0]); d.guessed = true; }
+      else if (new Set(fr.map((x) => x.f)).size > 1) {
         const mf = fr.reduce((a, x) => a + x.f, 0) / fr.length, vf = fr.reduce((a, x) => a + (x.f - mf) ** 2, 0);
         d.line = fr[0].v.map((_, j) => {
           const mv = fr.reduce((a, x) => a + x.v[j], 0) / fr.length;
@@ -5337,6 +5618,8 @@
     }
     const res = samples.map((x) => { const p = predictString(m, x.s, x.f); return p && x.v.map((v, j) => v - p[j]); }).filter(Boolean);
     m.sd = res.length ? res[0].map((_, j) => Math.sqrt(res.reduce((a, r) => a + r[j] ** 2, 0) / res.length - (res.reduce((a, r) => a + r[j], 0) / res.length) ** 2) + 1e-6) : null;
+    // Spreads from open notes alone are tighter than fretted notes will be: allow 1.5x.
+    if (m.sd && m.strings.some((d) => d.guessed)) m.sd = m.sd.map((x) => x * 1.5);
     return m;
   }
   function predictString(m, s, f) {
@@ -5347,10 +5630,10 @@
   // Scores for every place the pitch can be played (calibrated strings only): [{ s, f, score }],
   // best first. `opens`: the open strings of the bass as it's tuned now (4 or 5 strings).
   function stringScores(m, v, midi, opens = CAL_OPEN) {
-    const first = opens.length - 4, out = [];  // a 5-string's low B isn't calibrated
+    const first = opens.length - m.strings.length, out = [];  // a 5-string's low B isn't calibrated
     for (let s = first; s < opens.length; s++) {
       const f = midi - opens[s];
-      if (f < 0 || f > 20) continue;
+      if (f < 0 || f > 20 || s < first) continue;
       const p = predictString(m, s - first, f);
       if (!p) continue;
       out.push({ s, f, score: -0.5 * v.reduce((a, x, j) => a + ((x - p[j]) / m.sd[j]) ** 2, 0) });
@@ -5360,16 +5643,16 @@
   // Check a calibration on itself: fit on every other note of each position, test the rest
   // (both ways). Returns how often it was right and the margin that makes it right 95% of
   // the time when it speaks up.
-  function checkStrings(samples) {
+  function checkStrings(samples, opens = CAL_OPEN) {
     const by = new Map();
     samples.forEach((x) => { const k = `${x.s}/${x.f}`; by.set(k, [...(by.get(k) || []), x]); });
     const results = [];
     for (const half of [0, 1]) {
       const train = [], test = [];
       for (const list of by.values()) list.forEach((x, k) => (k % 2 === half ? train : test).push(x));
-      const m = fitStrings(train);
+      const m = fitStrings(train, opens.length);
       for (const x of test) {
-        const sc = stringScores(m, x.v, CAL_OPEN[x.s] + x.f);
+        const sc = stringScores(m, x.v, opens[x.s] + x.f, opens);
         if (sc.length) results.push({ ok: sc[0].s === x.s, gap: sc.length > 1 ? sc[0].score - sc[1].score : 99 });
       }
     }
@@ -5433,7 +5716,7 @@
     const prevRaw = input.recent[input.recent.length - 2];
     const newPitch = raw !== null && prevRaw === raw && raw !== input.rawNote;
     if (raw !== null && prevRaw === raw) input.rawNote = raw;
-    if (isGuitar()) listenChords(freshDb, hist);
+    if (isGuitar() && !game.members) listenChords(freshDb, hist);   // a guitar game reads chords its own way (readChord)
     input.freshHist = [...hist.slice(-2), freshDb];
     // A pick's click (user: detection "way better using my fingers than a pick"): picking a
     // ringing note again barely changes its level (+1.4-3.8 dB, under the 4 above) or its
@@ -5450,7 +5733,7 @@
     input.hfHist = [...hfHist.slice(-1), hfDb];
     input.clicked = clicked && !plucked;
     input.freshDb = freshDb;                            // the game's pluck loudness
-    if (input.stringDue && performance.now() >= input.stringDue && !isGuitar()) { input.stringDue = 0; readString(buf, raw); }
+    if (input.stringDue && performance.now() >= input.stringDue) { input.stringDue = 0; readString(buf, raw); }
     // The note shown (and checked for wrong notes) needs 5 readings in a row (~100 ms)
     // to agree: a played note rings that long, a thud from a hand on the strings dies
     // away sooner. Hits are judged sooner: a pluck plus one clear reading (`raw`).
@@ -5759,8 +6042,11 @@
       if (strong.length && strong.every((n) => pcOf(n.midi) === pcOf(strong[0].midi))) {
         const m = Math.min(...strong.map((n) => n.midi));
         big = noteName(m);
-        small = GUITAR.open.map((o, s) => [s, m - o]).filter(([, f]) => f >= 0 && f <= 22).sort((a, b) => a[1] - b[1])
-          .slice(0, 3).map(([s, f]) => `${GUITAR.strings[s]}${f}`).join(' · ');
+        // The string heard first ("on B5") when the guitar's string calibration is sure.
+        const det = input.string && input.string.midi === m && input.string.s < GUITAR.open.length ? input.string : null;
+        const places = GUITAR.open.map((o, s) => [s, m - o]).filter(([s, f]) => f >= 0 && f <= 22 && s !== det?.s).sort((a, b) => a[1] - b[1]);
+        small = [...(det ? [[det.s, det.f]] : []), ...places]
+          .slice(0, 3).map(([s, f], k) => `${det && k === 0 ? 'on ' : ''}${GUITAR.strings[s]}${f}`).join(' · ');
       } else if (notes.length) return;
     }
     $('#input-note').textContent = big;
@@ -5775,7 +6061,8 @@
     document.querySelectorAll('#input-instrument button, #player-kind button').forEach((b) => b.classList.toggle('active', b.dataset.instrument === inst));
     if (isGuitar() && rec.active) stopRecording();
     $('#input-record-col').classList.toggle('hidden', isGuitar());
-    $('#input-strings').classList.toggle('hidden', isGuitar());
+    $('#input-strings').title = `Which string you play a note on: calibrate it for your ${toneKind()}`;
+    $('#strcal-more').title = `Teach the app your ${toneKind()}'s strings, so it can show which string you play a note on`;
     $('#input-title').textContent = inputName();
     $('.input-note').classList.toggle('guitar', isGuitar());
     $('#tab-input').title = isGuitar() ? 'Your guitar through an audio interface: see the chords you play, hear yourself'
@@ -5785,6 +6072,7 @@
     if (isGuitar()) showChord(null, []); else showNote(null);
     $('#tab-input-text').textContent = input.stream ? 'Listening' : inputName();
     if (tunerOn) showTuner(0);
+    if (input.calibReady) loadCalibrations();           // bass and guitar are calibrated apart
     showInstruments();                                  // bass and guitar tones are picked apart
     applyTone();
   }
@@ -6088,7 +6376,7 @@
     if (!rec.active) return;
     rec.active = false;
     clearInterval(rec.timer);
-    rec.node?.disconnect(); rec.sink?.disconnect();
+    dropRecorder(rec.node); rec.node = null; rec.sink?.disconnect();
     $('#input-bar').classList.remove('recording');
     $('#tab-input').classList.remove('recording');
     $('#input-record-text').textContent = 'Record';
@@ -6205,6 +6493,7 @@
     for (let k = Math.max(0, game.next - 6); k < notes.length && notes[k][0] <= t + early; k++) {
       const [ns, ne, s, f] = notes[k];
       if (f === 'x' || Math.max(ne, ns + 0.2) < t - late) continue;
+      if (game.members?.[game.lead[k]]) return;          // a chord: one pitch read from it says little (scored by `judgeChord`)
       near.push({ s, pitch: open[s] + f, label: `${noteName(open[s] + f)}` });
     }
     if (!near.length || near.some((x) => samePitch(heard, x.pitch)) || performance.now() - game.wrongAt < 250) return;
@@ -6277,6 +6566,7 @@
       checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'same note back after a blink' });
     }
     game.prevDb2 = game.prevDb; game.prevDb = db;
+    if (game.members) { strumByChange(now, fix); readChord(now); }
     if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
     tuneCheck(now - 0.05 - fix);
     // A wrong note needs a real attack just before it: lifting a finger lets the open
@@ -6286,6 +6576,86 @@
     judge(now, raw === null ? null : raw - player.shift);
     game.plucks = game.plucks.filter((p) => p.t > now - 2);
     game.heard = game.heard.filter(([t]) => t > now - 2);
+    game.poly = game.poly.filter((r) => r.at > now - 2);
+  }
+
+  // Chords in a guitar game. One pitch reading (YIN) hears one note of a strum at best, so
+  // after each attack the chord analyser is read every 40 ms from 90 ms to 0.45 s (the
+  // sound since the attack only, 85-170 ms, as the chord readout does) and the pitch
+  // classes heard (`heardNotes`, 0.25 of the strongest) are kept with when they were read.
+  // A strum that barely raises the level (distorted guitar is compressed, and a chord
+  // change over ringing strings swaps notes at the same loudness) still changes the
+  // spectrum: spectral flux, the average rise in dB of the bins 80 Hz-5 kHz within 60 dB
+  // of the loudest, since the reading before. A strum when it is 1.3x its median of the
+  // last 2 s and at least 0.3 dB, at a peak (the reading after is lower), 90 ms from the
+  // last pluck found. (It was 2x and 1.5 dB: on the real American Idiot guitar track, played
+  // in through the replay harness, that found 8 strums a minute where there are ~370.)
+  function strumByChange(now, fix) {
+    if (!input.fluxAn) return;
+    const spec = input.fluxSpec;
+    input.fluxAn.getFloatFrequencyData(spec);
+    const df = ctx.sampleRate / input.fluxAn.fftSize, k0 = Math.ceil(80 / df), k1 = Math.min(spec.length - 1, Math.floor(5000 / df));
+    let top = -Infinity;
+    for (let k = k0; k <= k1; k++) top = Math.max(top, spec[k]);
+    const prev = input.fluxPrev;
+    let flux = 0;
+    if (prev) for (let k = k0; k <= k1; k++) flux += Math.max(0, Math.max(spec[k], top - 60) - Math.max(prev[k], top - 60));
+    flux /= k1 - k0 + 1;
+    input.fluxPrev = Float32Array.from(spec);
+    const h = game.flux = [...(game.flux || []).slice(-99), flux];
+    if (h.length < 3) return;
+    const peak = h[h.length - 2], med = [...h].sort((a, b) => a - b)[h.length >> 1];
+    if (peak >= 0.3 && peak >= 1.3 * med && peak > h[h.length - 3] && peak >= flux && now - (game.lastAttack ?? -9) > 0.09) {
+      game.plucks.push({ t: now - 0.04 - fix, used: null, db: input.freshDb ?? -60, at: now - 0.02, strum: true });
+      game.lastAttack = now - 0.02;
+      checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'the sound changed (strum)' });
+    }
+  }
+  const CHORD_WAIT = 0.4;                               // how long after a strum its notes may be read
+  function readChord(now) {
+    const hard = game.plucks.filter((p) => !p.soft).pop();
+    if (!hard || !input.chordAn || (input.freshDb ?? -100) < -60) return;   // quiet: nothing to read (noise made up chords)
+    const since = now - hard.at + 0.02;                  // the attack was found in the newest 20 ms
+    if (since < 0.09 || since > 0.45 || now - (game.polyAt || -9) < 0.04) return;
+    game.polyAt = now;
+    input.chordAn.getFloatTimeDomainData(input.chordBuf);
+    const rate = ctx.sampleRate, L = Math.min(input.chordBuf.length, Math.round(Math.max(4096, Math.min(8192, since * 48000)) * rate / 48000));
+    const notes = heardNotes(input.chordBuf.subarray(input.chordBuf.length - L), rate);
+    game.poly.push({ at: now, notes: notes.filter((n) => n.s >= 0.15).map((n) => [pcOf(n.midi - player.shift), n.s, n.midi - player.shift]) });
+  }
+  // A chord is hit by one pluck in its window whose readings (before the next pluck) hold
+  // enough of its pitch classes: both of a 2-note chord, 2 of 3, 3 of 4 or more. Octaves
+  // count (pitch classes), so a power chord played an octave up still does. And in one
+  // reading at least 40% of what's heard (by salience) has to be the chord's notes, so
+  // strumming the wrong chord or the open strings doesn't score. Real distorted guitar (the
+  // American Idiot guitar track, replayed offline) is heard with extra notes from the
+  // distortion and the other guitars: the first rules (at most 1 extra note, the chord's
+  // lowest note lowest) scored 1% of its chords; this scores 53% there and 91% of the
+  // synthetic test (was 88%), with the tab moved 2 semitones 1% and a bass line 2%. It
+  // scores and counts as one note (a 6-string strum isn't six notes of streak).
+  function chordPluck(k, quietBelow) {
+    const d = tabView.data, notes = d.notes, open = d.tunings.find((x) => x.key === d.tuning).open;
+    const [early, late] = TIMINGS[gameTiming], ns = notes[k][0];
+    const played = game.members[k].filter((j) => notes[j][3] !== 'x').map((j) => open[notes[j][2]] + notes[j][3]);
+    const pcs = [...new Set(played.map(pcOf))];
+    const need = pcs.length <= 2 ? pcs.length : pcs.length === 3 ? 2 : Math.ceil(pcs.length * 0.67);
+    for (const p of game.plucks) {
+      if (p.t < ns - early || p.t > ns + late || (p.used !== null && Math.abs(p.used - ns) >= 0.03) || p.db < quietBelow) continue;
+      const next = game.plucks.find((q) => !q.soft && q.at > p.at + 0.05);
+      const got = new Set();
+      let clean = false;
+      for (const r of game.poly) {
+        if (r.at < p.at + 0.05 || r.at > p.at + CHORD_WAIT || (next && r.at > next.at)) continue;
+        const strong = r.notes.filter(([, sal]) => sal >= 0.25);
+        if (!strong.length) continue;
+        const heard = new Set(strong.map(([pc]) => pc)), m = [...heard].filter((pc) => pcs.includes(pc)).length;
+        heard.forEach((pc) => { if (pcs.includes(pc)) got.add(pc); });
+        const share = strong.filter(([pc]) => pcs.includes(pc)).reduce((a, [, sal]) => a + sal, 0) / strong.reduce((a, [, sal]) => a + sal, 0);
+        if (m >= Math.min(need, 2) && share >= 0.4) clean = true;
+      }
+      if (got.size >= need && clean) return p;
+    }
+    return null;
   }
 
   function judge(now, heardNow) {
@@ -6297,6 +6667,28 @@
     const quietBelow = lv.length >= 8 ? [...lv].sort((a, b) => a - b)[lv.length >> 1] - 15 : -Infinity;
     for (let k = game.next; k < notes.length && notes[k][0] - early <= now; k++) {
       if (game.result[k]) continue;
+      if (game.members && game.lead[k] !== k) continue;   // judged with its chord
+      if (game.members?.[k]) {
+        const pluck = chordPluck(k, quietBelow);
+        if (pluck) {
+          pluck.used = notes[k][0];
+          const grade = Math.abs(pluck.t - notes[k][0]) < perfect ? 'Perfect' : 'Good', at = performance.now(), before = multiplier();
+          const top = Math.max(...game.members[k].map((j) => notes[j][2]));   // PERFECT!/GOOD once, over the chord
+          for (const j of game.members[k]) {
+            game.result[j] = 'hit'; game.hitAt[j] = now; game.grade[j] = grade;
+            game.laneHit[notes[j][2]] = now; game.laneHitMs[notes[j][2]] = at;
+            game.bursts.push({ s: notes[j][2], at, perfect: grade === 'Perfect', messy: false, k: j, label: notes[j][2] === top });
+          }
+          checkEvent({ e: 'hit', k, at: now, pluck: pluck.t, chord: game.members[k].length, grade });
+          game.hits++; game.judged++; game.streak++;
+          game.recent = [...game.recent.slice(-23), 1];
+          game.best = Math.max(game.best, game.streak);
+          if (multiplier() > before) game.multAt = at;
+          if (game.streak % 50 === 0) game.milestone = { n: game.streak, at };
+          game.score += 100 * multiplier();
+        }
+        continue;
+      }
       const ns = notes[k][0], pitch = pitchOfNote(k);
       // A pluck much quieter than the player's usual (15 dB below the median of the last 40,
       // once there are 8) doesn't count: a brushed or barely touched string registered as a
@@ -6379,11 +6771,12 @@
     }
     // ... misses once their window has passed.
     // Plucked in its window but its pitch not read yet: not a miss yet.
-    const waiting = (k) => game.plucks.some((p) => p.used === null && p.db >= quietBelow && now - p.at < PITCH_WAIT
+    const waiting = (k) => game.plucks.some((p) => p.used === null && p.db >= quietBelow && now - p.at < (game.members?.[k] ? CHORD_WAIT : PITCH_WAIT)
                                                   && p.t >= notes[k][0] - early && p.t <= notes[k][0] + late);
     while (game.next < notes.length && (game.result[game.next] || (notes[game.next][0] + late + MISS_AFTER < now && !waiting(game.next)))) {
       if (!game.result[game.next]) {
         game.result[game.next] = 'miss'; game.judged++; game.recent = [...game.recent.slice(-23), 0];
+        for (const j of game.members?.[game.next] || []) game.result[j] = 'miss';   // the whole chord
         const ns = notes[game.next][0];
         const soft = game.plucks.some((p) => p.db < quietBelow && p.t >= ns - early && p.t <= ns + late);
         mistake(notes[game.next][2], 'MISS', soft ? 'too soft' : '', game.next);
@@ -6418,17 +6811,27 @@
     if (!tabView.data || !state.current) return;
     if (!input.stream) await openInputBar();
     $('#input-bar').classList.add('hidden');            // the game shows what you play on the highway
-    if (!input.analyser) { toast('The game listens to your bass: connect your bass input first.', 'error'); return; }
+    const guitar = isGuitarTab(), part = guitar ? 'guitar' : 'bass';
+    if (!input.analyser) { toast(`The game listens to your ${part}: connect your ${part} input first.`, 'error'); return; }
     if (rec.active) stopRecording();
     if (tabView.section !== 'game') setSection('game');
     pause();
     // The game plays the song without the bass (user: "when you go to game mode, always do
     // no bass"): this song's "no bass" version (HQ first) if the one loaded takes out
     // something else, in Without mode; the mode before comes back when the game ends.
-    const cur = state.current, bassless = [...cur.song.versions].sort((a, b) => b.hq - a.hq).find((v) => /bass/.test(v.removed));
-    if (bassless && !/bass/.test(cur.version.removed)) await loadVersion(cur.song, bassless);
+    // A guitar tab plays the song without its guitar: a version taking out all the guitar
+    // first (then lead or rhythm), HQ first; with none, the whole song.
+    const cur = state.current, takesOut = (v) => (guitar ? /guitar/ : /bass/).test(v.removed);
+    const whole = (v) => !guitar || /(^|& )guitar/.test(v.removed);
+    const partless = [...cur.song.versions].filter(takesOut).sort((a, b) => whole(b) - whole(a) || b.hq - a.hq)[0];
+    if (partless && !takesOut(cur.version)) await loadVersion(cur.song, partless);
     game.modeBefore = state.mode;
-    if (state.mode !== 'without') { state.mode = 'without'; applyMode(); }
+    const mode = partless || !guitar ? 'without' : 'original';
+    if (!partless && guitar) toast('No "no guitar" version of this song yet, so you play over the whole song (+ Version makes one).');
+    if (state.mode !== mode) { state.mode = mode; applyMode(); }
+    // Listens as a guitar for a guitar tab (wider pitch range, octaves count), and goes back after.
+    game.instrumentBefore = guitar && !isGuitar() ? instrument : null;
+    if (game.instrumentBefore) setInstrument('guitar');
     // Starts at the top; for testing, localStorage 'track-splitter-game-start' (seconds,
     // set in the browser's console) starts it later in the song.
     const startAt = Number(pref('track-splitter-game-start')) || 0;
@@ -6436,6 +6839,16 @@
     game.fullData = tabView.data;                        // the whole tab comes back when the game ends
     tabView.data = gameNotesFor(tabView.data);
     const firstNote = Math.max(0, tabView.data.notes.findIndex((n) => n[0] >= startAt - 0.05));   // a later start skips what's before it
+    // Guitar chords: notes starting within 30 ms are one chord (`lead`: each note's first
+    // note; `members`: a chord's notes, by its first), judged and scored as one.
+    const gn = tabView.data.notes, lead = [], members = {};
+    let units = 0;
+    gn.forEach((n, k) => {
+      const l = k && n[0] - gn[lead[k - 1]][0] < 0.03 ? lead[k - 1] : k;
+      lead.push(l);
+      if (l === k) units++;
+      else (members[l] ||= [l]).push(k);
+    });
     document.body.classList.toggle('game-tab', gameView === 'tab');
     Object.assign(tabFx, { sparks: [], seen: performance.now() });
     $('#tg-song').innerHTML = '';
@@ -6445,7 +6858,9 @@
                           result: new Array(tabView.data.notes.length).fill(null), hitAt: [], grade: [], laneHit: {}, plucks: [], heard: [],
                           bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
                           laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, tuneLog: {},
-                          prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false });
+                          prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false,
+                          lead: guitar ? lead : null, members: guitar ? members : null, poly: [], polyAt: -9, flux: [], units: guitar ? units : null });
+    input.fluxPrev = null;
     document.body.classList.add('game-on');
     $('#tab-game').textContent = 'Pause';
     if (gameView === 'tab') { layoutLines(tabView.data); tabView.line = -1; tabFrame(true); }   // lines as wide as the game's window
@@ -6475,10 +6890,11 @@
     $('#tab-game').textContent = 'Start';
     if (tabView.data) { layoutLines(tabView.data); tabView.line = -1; tabFrame(true); }   // the whole tab's lines again
     if (game.modeBefore && game.modeBefore !== state.mode) { state.mode = game.modeBefore; applyMode(); }
+    if (game.instrumentBefore) { setInstrument(game.instrumentBefore); game.instrumentBefore = null; }
     if (player.playing) pause();
     if (check.on) finishCheck(game.started ? played : null, finished);
     if (!game.started || !results) return;              // stopped during the countdown, or left
-    const total = played?.notes.length || 0;
+    const total = game.units || played?.notes.length || 0;   // a guitar chord counts once
     const key = bestKey(game.song, game.source);
     let bests = {};
     try { bests = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* none */ }
@@ -6607,7 +7023,7 @@
     const gap = (60 / (d.bpm || 120)) * beats * 0.9, notes = [];
     let last = -1e9;
     for (const n of d.notes) {
-      if (n[0] - last < 0.03) { if (gameDiff !== 'easy') notes.push(n); continue; }   // double stops stay together
+      if (n[0] - last < 0.03) { if (gameDiff !== 'easy' || isGuitarTab()) notes.push(n); continue; }   // double stops stay together (guitar chords on Easy too: fewer strums, not single notes)
       if (n[0] - last >= gap) { notes.push(n); last = n[0]; }
     }
     return { ...d, notes, quickLaneGap: undefined, typicalLaneGap: undefined, lanes: undefined, barTimes: undefined };   // caches are per note list
@@ -6657,6 +7073,159 @@
   $('#gs-check').addEventListener('change', (e) => setPref(CHECK_KEY, e.target.checked ? '1' : '0'));
   $('#mistake-sound').addEventListener('change', (e) => { mistakeSound = e.target.checked; setPref(MISTAKE_SOUND_KEY, mistakeSound ? '1' : '0'); if (mistakeSound) thunk(); });
   // Rock Band score box and star medallions (top right), for the board and the tab game.
+  // Chord cards on the guitar game's board (user: "above the highway, show the name of
+  // the chord with the fingering below it; for chords repeated more than once, just some
+  // indicator to show it's the same chord"). Notes starting within 30 ms are one chord
+  // (as the game judges them); strums of one shape in a row are a run (single notes in
+  // between don't break it, 2.5 s without the chord does; a strum of fewer strings of
+  // the same shape, an upstroke, is the same chord). A run's card (name + chord box,
+  // strings low E on the left, dots in the lanes' colours) rides above the board with
+  // its first strum, then waits above the strike line until the run ends or the next
+  // card pushes it off; its repeat strums are bars with the name (drawChordBars).
+  function chordRuns(d) {
+    const open = d.tunings.find((x) => x.key === (showRaised() ? 'standard' : d.tuning)).open;
+    if (d.chordRuns?.open === open) return d.chordRuns.runs;
+    const notes = d.notes, runs = [], repeats = new Set();
+    for (let k = 0; k < notes.length;) {
+      const first = k;
+      let j = k + 1;
+      while (j < notes.length && notes[j][0] - notes[k][0] < 0.03) j++;
+      const group = notes.slice(k, j), t0 = notes[k][0], end = Math.max(...group.map((nt) => nt[1]));
+      k = j;
+      if (group.length < 2) continue;
+      const frets = new Array(open.length).fill(null);
+      for (const [, , s, f] of group) frets[s] = f;
+      const run = runs[runs.length - 1];
+      if (run && t0 - run.end < 2.5 && frets.every((f, s) => f === null || run.frets[s] === f)) {
+        run.times.push(t0); run.end = Math.max(run.end, end);
+        const strings = group.map((nt) => nt[2]);
+        run.reps.push({ t: t0, lead: first, lo: Math.min(...strings), hi: Math.max(...strings) });
+        for (let i = first; i < j; i++) repeats.add(i);
+        continue;
+      }
+      const midis = group.filter((nt) => nt[3] !== 'x').map(([, , s, f]) => open[s] + f).sort((a, b) => a - b);
+      const ch = midis.length ? chordOf(midis.map((midi) => ({ midi, s: 1 }))) : null;
+      runs.push({ frets, name: ch ? ch.name : midis.length ? NOTE_NAMES[pcOf(midis[0])] : '×', start: t0, end, times: [t0], reps: [] });
+    }
+    d.chordRuns = { open, runs, repeats };
+    return runs;
+  }
+  // Repeat strums of a run (user: "just show the chord name and have the fingering be a
+  // solid bar across all the frets"): one bar across the strings the strum plays, in their
+  // colours, with the chord's name above it, instead of a gem per string. Hit, it bursts
+  // like a gem (not drawn); missed, it greys.
+  function drawChordBars(g, t, d, v) {
+    const runs = chordRuns(d);
+    let lo = 0, hi = runs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (runs[mid].end < t - 1) lo = mid + 1; else hi = mid; }
+    const bars = [];
+    for (let i = lo; i < runs.length && runs[i].start - t < v.Z; i++) for (const r of runs[i].reps) bars.push([r, runs[i].name]);
+    for (let i = bars.length - 1; i >= 0; i--) {               // far ones first
+      const [r, name] = bars[i], z = r.t - t, res = game.result[r.lead];
+      if (z < v.zPast || z > v.Z || res === 'hit') continue;
+      const k = v.depth(z), x = v.sx(z), half = v.gemH * k * 0.44;
+      const top = v.laneY(r.hi, z) - half, bottom = v.laneY(r.lo, z) + half, w = Math.max(8, v.gemW * 0.42) * k;
+      g.globalAlpha = res === 'miss' ? 0.45 : z < 0 ? Math.max(0, 1 + z / -v.zPast) : 1;
+      if (z > v.Z * 0.85) g.globalAlpha *= Math.max(0, (v.Z - z) / (v.Z * 0.15));
+      const fill = g.createLinearGradient(0, top, 0, bottom);
+      if (res === 'miss') { fill.addColorStop(0, '#6b7280'); fill.addColorStop(1, '#4b5563'); }
+      else for (let s = r.hi; s >= r.lo; s--) fill.addColorStop(r.hi === r.lo ? 0 : (r.hi - s) / (r.hi - r.lo), v.laneColor(s));
+      g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.roundRect(x - w / 2 + 2 * k, top + 4 * k, w, bottom - top, w / 2); g.fill();   // shadow
+      g.fillStyle = fill; g.beginPath(); g.roundRect(x - w / 2, top, w, bottom - top, w / 2); g.fill();
+      const gloss = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+      gloss.addColorStop(0, 'rgba(255,255,255,0)'); gloss.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gloss.addColorStop(0.6, 'rgba(255,255,255,0)');
+      g.fillStyle = gloss; g.fill();
+      g.lineWidth = Math.max(1, 2 * k); g.strokeStyle = 'rgba(0,0,0,0.5)'; g.stroke();
+      const size = Math.round(Math.max(10, 16 * k));
+      g.font = `900 ${size}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+      g.lineWidth = Math.max(2, size * 0.2); g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,0.7)';
+      g.strokeText(name, x, top - 5 * k); g.fillStyle = '#ede9fe'; g.fillText(name, x, top - 5 * k);
+      g.globalAlpha = 1;
+    }
+  }
+  // One card: its bottom centre at (cx, bottom), `h` tall; `shape` false draws the name only.
+  function chordCard(g, run, cx, bottom, h, shape, alpha, glow, laneColor) {
+    const n = run.frets.length;
+    g.save();
+    g.globalAlpha = alpha;
+    g.font = `900 ${Math.round(shape ? h * 0.19 : h * 0.62)}px system-ui, sans-serif`;
+    const nameW = g.measureText(run.name).width, w = shape ? Math.max(h * 0.8, nameW + h * 0.16) : nameW + h * 0.7;
+    const x = cx - w / 2, y = bottom - h, r = Math.min(12, h * 0.12);
+    g.fillStyle = 'rgba(14,11,24,0.9)'; g.shadowColor = glow ? '#a78bfa' : 'rgba(0,0,0,0.6)'; g.shadowBlur = glow ? 10 + 18 * glow : 10;
+    g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); g.shadowBlur = 0;
+    g.lineWidth = glow ? 2.5 : 1.5; g.strokeStyle = glow ? '#c4b5fd' : 'rgba(255,255,255,0.32)'; g.stroke();
+    g.fillStyle = 'rgba(14,11,24,0.9)';                     // a pointer down to the board
+    g.beginPath(); g.moveTo(cx - h * 0.06, bottom - 1); g.lineTo(cx, bottom + h * 0.06); g.lineTo(cx + h * 0.06, bottom - 1); g.fill();
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff';
+    if (!shape) { g.fillText(run.name, cx, y + h * 0.53); g.restore(); return; }
+    g.fillText(run.name, cx, y + h * 0.15);
+    const fretted = run.frets.filter((f) => typeof f === 'number' && f > 0);
+    const hi = fretted.length ? Math.max(...fretted) : 1, lo = fretted.length ? Math.min(...fretted) : 1;
+    const base = hi <= 4 ? 1 : lo, rows = Math.max(4, hi - base + 1);
+    const label = base > 1 ? h * 0.15 : 0, pad = h * 0.09;
+    const gx0 = x + pad + label, gx1 = x + w - pad, sp = (gx1 - gx0) / (n - 1);
+    const gy0 = y + h * 0.38, gy1 = bottom - h * 0.07, fh = (gy1 - gy0) / rows;
+    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = Math.max(1, h * 0.008);
+    for (let s = 0; s < n; s++) { g.beginPath(); g.moveTo(gx0 + s * sp, gy0); g.lineTo(gx0 + s * sp, gy1); g.stroke(); }
+    for (let i = 0; i <= rows; i++) { g.beginPath(); g.moveTo(gx0, gy0 + i * fh); g.lineTo(gx1, gy0 + i * fh); g.stroke(); }
+    if (base === 1) { g.lineWidth = Math.max(2, h * 0.03); g.strokeStyle = '#f5f3ff'; g.beginPath(); g.moveTo(gx0 - 1, gy0); g.lineTo(gx1 + 1, gy0); g.stroke(); }
+    else {
+      g.font = `700 ${Math.round(h * 0.085)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,255,255,0.75)'; g.textAlign = 'right';
+      g.fillText(`${base}fr`, gx0 - h * 0.035, gy0 + fh / 2); g.textAlign = 'center';
+    }
+    const dot = Math.min(sp, fh) * 0.4, mark = h * 0.035, my = gy0 - h * 0.065;
+    for (let s = 0; s < n; s++) {
+      const f = run.frets[s], sxp = gx0 + s * sp;
+      g.lineWidth = Math.max(1.2, h * 0.014); g.strokeStyle = 'rgba(255,255,255,0.7)';
+      if (f === null || f === 'x') {                   // not played: ×
+        g.beginPath(); g.moveTo(sxp - mark, my - mark); g.lineTo(sxp + mark, my + mark); g.moveTo(sxp + mark, my - mark); g.lineTo(sxp - mark, my + mark); g.stroke();
+      } else if (f === 0) {                            // open: ○
+        g.strokeStyle = laneColor(s); g.beginPath(); g.arc(sxp, my, mark * 1.1, 0, Math.PI * 2); g.stroke();
+      } else {
+        g.fillStyle = laneColor(s); g.beginPath(); g.arc(sxp, gy0 + (f - base + 0.5) * fh, dot, 0, Math.PI * 2); g.fill();
+        g.lineWidth = Math.max(1, h * 0.01); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
+      }
+    }
+    g.restore();
+  }
+  // All the cards and repeat marks for this frame. `v`: the board's geometry from drawGame.
+  function drawChordCards(g, t, d, v) {
+    const runs = chordRuns(d);
+    if (!runs.length) return;
+    const room = v.top(0) - 70;                             // under the song title, over the board
+    if (room < 34) return;
+    const full = Math.min(150, room), shapes = full >= 64;
+    let lo = 0, hi = runs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (runs[mid].end < t - 1) lo = mid + 1; else hi = mid; }
+    const shown = [];
+    for (let i = lo; i < runs.length && runs[i].start - t < v.Z; i++) shown.push(runs[i]);
+    // Cards, far ones first; each card's x, then the one waiting at the strike line is
+    // pushed left by the next one coming in.
+    const place = shown.map((run) => {
+      const z = Math.max(0, run.start - t), k = v.depth(z);
+      return { run, z, k, x: v.sx(z), h: full * k };
+    });
+    for (let i = place.length - 1; i >= 0; i--) {
+      const p = place[i], next = place[i + 1];
+      const wOf = (q) => (shapes ? q.h * 0.8 : q.h * 2);
+      p.compact = !shapes || (next && next.z > 0 && next.x - p.x < (wOf(p) + wOf(next)) / 2 + 6 && p.z > 0);
+      if (p.z === 0 && next) p.x = Math.min(p.x, next.x - (wOf(p) + wOf(next)) / 2 - 8);
+    }
+    for (let i = place.length - 1; i >= 0; i--) {
+      const p = place[i], { run } = p;
+      let alpha = p.z > v.Z * 0.85 ? Math.max(0, (v.Z - p.z) / (v.Z * 0.15)) : 1;
+      if (t > run.end) alpha *= Math.max(0, 1 - (t - run.end) / 0.4);                   // the run is over
+      if (p.x < v.nearX) alpha *= Math.max(0, 1 - (v.nearX - p.x) / (p.h * 0.8));       // pushed off
+      if (alpha <= 0.01) continue;
+      const waiting = p.z === 0, since = Math.min(...run.times.map((tm) => (t >= tm ? t - tm : 9)));
+      // Under the score box and stars at the top right (the flat board's far end reaches them).
+      const bottom = v.top(p.z) - 8 * p.k, roomHere = p.x + p.h * 0.5 > v.W - 290 ? bottom - 132 : Infinity;
+      if (roomHere < 20) continue;
+      const shape = !p.compact && Math.min(p.h, roomHere) >= 64;
+      const h = shape ? Math.min(p.h, roomHere) : Math.min(34 * p.k, full * 0.3 * p.k, roomHere);
+      chordCard(g, run, p.x, bottom, h, shape, alpha, waiting ? 0.4 + 0.6 * Math.max(0, 1 - since / 0.2) : 0, v.laneColor);
+    }
+  }
   function rbScore(g, W, notesLen) {
     const boxW = 250, boxH = 54, boxX = W - boxW - 20, boxY = 20;
     g.fillStyle = 'rgba(0,0,0,0.88)'; g.beginPath(); g.roundRect(boxX, boxY, boxW, boxH, 7); g.fill();
@@ -6666,7 +7235,7 @@
     if ('letterSpacing' in g) g.letterSpacing = '3px';
     g.fillText(game.score.toLocaleString(), boxX + boxW - 16, boxY + boxH / 2 + 2);
     if ('letterSpacing' in g) g.letterSpacing = '0px';
-    const starValue = starsFor(game.score, notesLen), medal = 18;
+    const starValue = starsFor(game.score, game.units || notesLen), medal = 18;
     const star = (x0, y0, r) => {
       g.beginPath();
       for (let i = 0; i < 10; i++) {
@@ -6788,8 +7357,8 @@
   // right, so on the user's setup every note read early. Calibrate takes the current
   // average (Show my timing, last 16 notes) as on time: seconds subtracted from every
   // pluck time from then on, in Show my timing and the game. Kept per computer.
-  const CALIBRATION_KEY = 'track-splitter-input-calibration';
-  let inputCalibration = Number(pref(CALIBRATION_KEY)) || 0;
+  const CALIBRATION_KEY = 'track-splitter-input-calibration';   // + '-guitar' for the guitar (`calKey`)
+  let inputCalibration = Number(pref(calKey(CALIBRATION_KEY))) || 0;
   // The calibration screen (user: "a calibrate page where it does it for you with a
   // made-up set of notes"): clicks at 96 bpm, 4 to count in, then 16 quarter notes on a
   // small highway. Plucks are found exactly as in the game (attack rule, same nudge,
@@ -6804,7 +7373,8 @@
     calibReturn = back;
     if (player.playing || player.wantPlay) pause();
     if (!input.stream) { await openInputBar(); if (!input.stream) return; }
-    Object.assign(calib, { on: false, notes: [], labels: [], result: null });
+    Object.assign(calib, { on: false, notes: [], labels: [], result: null, names: calNames() });
+    $('#calib-title').textContent = `Calibrate ${toneKind()} timing`;
     $('#calib-status').textContent = inputCalibration ? `Set now: your notes reach the app ${Math.round(Math.abs(inputCalibration) * 1000)} ms ${inputCalibration > 0 ? 'late' : 'early'}.` : 'Not calibrated yet.';
     $('#calib-start').textContent = 'Start'; $('#calib-start').classList.remove('hidden'); $('#calib-save').classList.add('hidden');
     $('#calib-dlg').showModal();
@@ -6829,7 +7399,7 @@
     const frets = [0, 0, 2, 3, 5];
     let last = -1;
     calib.notes = Array.from({ length: CALIB_N }, (_, k) => {
-      let s; do { s = Math.floor(Math.random() * 4); } while (s === last);
+      let s; do { s = Math.floor(Math.random() * calib.names.length); } while (s === last);
       last = s;
       return { t: t0 + (CALIB_IN + k) * CALIB_BEAT, s, f: frets[Math.floor(Math.random() * frets.length)], off: null };
     });
@@ -6861,7 +7431,7 @@
     $('#calib-start').textContent = 'Try again'; $('#calib-start').classList.remove('hidden');
     if (done.length < 8) {
       calib.result = null;
-      $('#calib-status').textContent = `Only ${done.length} of ${CALIB_N} notes were heard. Check the bass input level and try again.`;
+      $('#calib-status').textContent = `Only ${done.length} of ${CALIB_N} notes were heard. Check the ${toneKind()} input level and try again.`;
       return;
     }
     const offs = done.map((x) => x.off).sort((a, b) => a - b);
@@ -6881,9 +7451,9 @@
     const g = cv.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
-    const lane = H / 4, hitX = 70, pps = 260, now = calibNow(), names = ['E', 'A', 'D', 'G'];
+    const names = calib.names || calNames(), lane = H / names.length, hitX = 70, pps = 260, now = calibNow();
     const y = (s) => H - (s + 0.5) * lane;           // low E at the bottom, like the highway
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < names.length; s++) {
       g.fillStyle = LANE_COLORS[s] + '14'; g.fillRect(0, H - (s + 1) * lane, W, lane);
       g.strokeStyle = LANE_COLORS[s] + '66'; g.lineWidth = 1 + s * 0.4;
       g.beginPath(); g.moveTo(hitX, y(s)); g.lineTo(W, y(s)); g.stroke();
@@ -6932,21 +7502,45 @@
   // per computer (it's this bass and this player); a self-check gives how often it's right.
   // Shown only when the best string beats the next by `margin` (at least 2: on the user's
   // takes, positions left out entirely were then right 95% of the time, 73% of notes shown).
-  const STRCAL_FRETS = [0, 2, 3, 5, 7, 8, 10, 12], STRCAL_N = 8;
-  const STRCAL_PLAN = [0, 1, 2, 3].flatMap((s) => STRCAL_FRETS.map((f) => ({ s, f })));
-  const strcal = { on: false, idx: 0, samples: [], heard: '', at: 0 };
+  // A guitar has 6 strings, so 6 plucks a spot (48 spots: ~6 minutes) instead of 8.
+  const STRCAL_FRETS = [0, 2, 3, 5, 7, 8, 10, 12];
+  let STRCAL_N = 8, STRCAL_PLAN = [], strcalMode = 'quick';
+  // Quick (user: "can you make the calibration simpler? Maybe just open strings?"): each open
+  // string; Full: the 8 spots a string as before.
+  function strcalPlan() {
+    const guitar = isGuitar();
+    STRCAL_N = strcalMode === 'quick' ? 8 : guitar ? 6 : 8;
+    STRCAL_PLAN = strcal.names.flatMap((_, s) => (strcalMode === 'quick' ? [0] : STRCAL_FRETS).map((f) => ({ s, f })));
+    const mins = strcalMode === 'quick' ? 1 : guitar ? 6 : 4;
+    $('#strcal-full-min').textContent = guitar ? '6' : '4';
+    document.querySelectorAll('#strcal-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === strcalMode));
+    $('#strcal-intro').textContent = `So the app can tell which string you play a note on (${guitar ? 'E on B5 or the open e' : 'D on A5 or the open D'}). Tune to standard`
+      + ` (${strcal.names.join(' ')}). ${strcalMode === 'quick' ? `Play each open string ${STRCAL_N} times` : `For each spot, play the note ${STRCAL_N} times`} the way you'd play it in a song, some quick, some held; it moves on`
+      + ` by itself. About ${mins} minute${mins > 1 ? 's' : ''}${strcalMode === 'quick' ? '' : '; Save works part way too'}.`;
+  }
+  const strcal = { on: false, idx: 0, samples: [], heard: '', at: 0, opens: CAL_OPEN, names: ['E', 'A', 'D', 'G'] };
   let stringCal = null, stringModel = null;
-  try { stringCal = JSON.parse(pref(STRING_CAL_KEY) || 'null'); } catch { stringCal = null; }
-  if (stringCal?.samples?.length) stringModel = fitStrings(stringCal.samples);
+  // The input's instrument's calibrations (string and timing), from this browser's storage.
+  function loadCalibrations() {
+    try { stringCal = JSON.parse(pref(calKey(STRING_CAL_KEY)) || 'null'); } catch { stringCal = null; }
+    stringModel = stringCal?.samples?.length ? fitStrings(stringCal.samples, calOpen().length) : null;
+    input.string = null;
+    $('#strcal-reset').classList.toggle('hidden', !stringModel);
+    inputCalibration = Number(pref(calKey(CALIBRATION_KEY))) || 0;
+    $('#timing-reset').classList.toggle('hidden', !inputCalibration);
+  }
+  input.calibReady = true;                              // from here on the Bass / Guitar switch reloads them
+  loadCalibrations();
   function readString(buf, raw) {
     if (strcal.on) { strcalHeard(buf, raw); return; }
-    if (instrument !== 'bass') return;                  // the calibration is the user's bass
     raw ??= input.recent.findLast((m) => m !== null) ?? null;   // low notes: YIN may not be sure yet
     if (raw === null) return;
     if (!stringModel) return;
     const v = stringFeatures(buf, ctx.sampleRate, raw);
     if (!v) return;
-    const sc = stringScores(stringModel, v, raw, shownTuning().open);
+    // The strings as tuned now: the tab's when it's for this instrument, else standard.
+    const opens = isGuitar() ? (isGuitarTab() && tabView.data ? shownTuning().open : GUITAR.open) : isGuitarTab() ? CAL_OPEN : shownTuning().open;
+    const sc = stringScores(stringModel, v, raw, opens);
     if (!sc.length) return;
     const sure = sc.length === 1 || sc[0].score - sc[1].score >= stringCal.margin;
     input.string = sure ? { midi: raw, s: sc[0].s, f: sc[0].f } : null;
@@ -6954,7 +7548,7 @@
   function strcalHeard(buf, raw) {
     const pos = STRCAL_PLAN[strcal.idx];
     if (!pos) return;
-    const want = CAL_OPEN[pos.s] + pos.f;
+    const want = strcal.opens[pos.s] + pos.f;
     if (strcalCount(strcal.idx) >= STRCAL_N) return;          // full: moving on (ringing notes don't count twice)
     if (raw !== null && raw !== want) { strcal.heard = `Heard ${noteName(raw)}: this spot is ${noteName(want)}`; strcalStatus(); return; }
     const v = stringFeatures(buf, ctx.sampleRate, want);   // also checks the pitch (within half a semitone)
@@ -6974,28 +7568,34 @@
     if (strcal.idx >= STRCAL_PLAN.length) { strcal.on = false; strcalResult(); return; }
     strcalStatus();
   }
-  // Enough to fit: every string's open note and two fretted spots.
-  const strcalEnough = () => [0, 1, 2, 3].every((s) => strcal.samples.some((x) => x.s === s && x.f === 0) && new Set(strcal.samples.filter((x) => x.s === s && x.f > 0).map((x) => x.f)).size >= 2);
+  // Enough to fit: every string's open note (fretted notes are then worked out from it).
+  const strcalEnough = () => strcal.opens.every((_, s) => strcal.samples.some((x) => x.s === s && x.f === 0));
   function strcalStatus() {
     const pos = STRCAL_PLAN[strcal.idx];
     $('#strcal-save').classList.toggle('hidden', !strcalEnough());
     if (!strcal.on || !pos) return;
-    const name = 'EADG'[pos.s];
+    const name = strcal.names[pos.s];
     $('#strcal-status').textContent = strcal.heard ||
-      `${pos.f === 0 ? `Open ${name}` : `${name} string, fret ${pos.f}`} (${noteName(CAL_OPEN[pos.s] + pos.f)}): ${strcalCount(strcal.idx)} of ${STRCAL_N}` +
+      `${pos.f === 0 ? `Open ${name}` : `${name} string, fret ${pos.f}`} (${noteName(strcal.opens[pos.s] + pos.f)}): ${strcalCount(strcal.idx)} of ${STRCAL_N}` +
       ` · spot ${strcal.idx + 1} of ${STRCAL_PLAN.length}`;
   }
   function strcalResult() {
-    const c = strcalEnough() && checkStrings(strcal.samples);
+    const c = strcalEnough() && checkStrings(strcal.samples, strcal.opens);
     $('#strcal-start').textContent = 'Start over'; $('#strcal-start').classList.remove('hidden');
-    $('#strcal-status').textContent = !c ? 'Not enough yet: it needs each open string and two fretted spots on every string.'
+    $('#strcal-mode').classList.remove('hidden');
+    $('#strcal-status').textContent = !c ? 'Not enough yet: it needs every open string.'
       : `In a check on your own notes it picked the right string ${Math.round(c.right * 100)}% of the time. Save to use it.`;
     strcalStatus();
   }
   async function openStringCal() {
     if (player.playing || player.wantPlay) pause();
     if (!input.stream) { await openInputBar(); if (!input.stream) return; }
-    Object.assign(strcal, { on: false, idx: 0, samples: [], heard: '' });
+    // For the input's instrument (Bass / Guitar in the Bass input drawer).
+    const guitar = isGuitar(), names = calNames();
+    Object.assign(strcal, { on: false, idx: 0, samples: [], heard: '', opens: calOpen(), names });
+    $('#strcal-title').textContent = `Calibrate ${guitar ? 'guitar' : 'bass'} strings`;
+    strcalPlan();
+    $('#strcal-mode').classList.remove('hidden');
     $('#strcal-status').textContent = stringCal ? `Calibrated ${new Date(stringCal.at).toLocaleDateString()} · right ${Math.round(stringCal.right * 100)}% in its check.` : 'Not calibrated yet.';
     $('#strcal-start').textContent = 'Start'; $('#strcal-start').classList.remove('hidden');
     $('#strcal-save').classList.add('hidden');
@@ -7013,23 +7613,23 @@
     // A fretboard, frets 0-12 (the nut on the left), low E at the bottom like the highway.
     const x0 = 44, x1 = W - 16, wire = (f) => x0 + (x1 - x0) * (1 - 2 ** (-f / 12)) / (1 - 2 ** (-12.5 / 12));
     const spot = (f) => (f === 0 ? x0 - 18 : (wire(f) + wire(f - 1)) / 2);   // where a finger goes (open: left of the nut)
-    const top = 22, gap = (H - 44) / 3, y = (s) => H - 22 - s * gap;
+    const ns = strcal.names.length, top = 22, gap = (H - 44) / (ns - 1), y = (s) => H - 22 - s * gap;
     g.fillStyle = '#1a1220'; g.fillRect(x0, top - 12, x1 - x0, H - 2 * top + 24);
     g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1;
     for (let f = 1; f <= 12; f++) { g.beginPath(); g.moveTo(wire(f), top - 12); g.lineTo(wire(f), H - top + 12); g.stroke(); }
     g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(x0 - 3, top - 12, 4, H - 2 * top + 24);
     g.fillStyle = 'rgba(255,255,255,.12)';
     for (const f of [3, 5, 7, 9]) { g.beginPath(); g.arc(spot(f), H / 2, 4, 0, Math.PI * 2); g.fill(); }
-    for (let s = 0; s < 4; s++) {
-      g.strokeStyle = LANE_COLORS[s] + 'aa'; g.lineWidth = 1 + (3 - s) * 0.6 + 0.6;
+    for (let s = 0; s < ns; s++) {
+      g.strokeStyle = LANE_COLORS[s] + 'aa'; g.lineWidth = 1 + (ns - 1 - s) * 0.6 + 0.6;
       g.beginPath(); g.moveTo(x0, y(s)); g.lineTo(x1, y(s)); g.stroke();
       g.fillStyle = 'rgba(255,255,255,.6)'; g.font = '700 13px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText('EADG'[s], 12, y(s));
+      g.fillText(strcal.names[s], 12, y(s));
     }
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
     STRCAL_PLAN.forEach((p, k) => {
       const n = strcalCount(k), cur = strcal.on && k === strcal.idx;
-      const x = spot(p.f), yy = y(p.s), r = cur ? 11 + 2 * pulse : 9;
+      const x = spot(p.f), yy = y(p.s), r = Math.min(cur ? 11 + 2 * pulse : 9, gap * 0.48);
       g.beginPath(); g.arc(x, yy, r, 0, Math.PI * 2);
       g.fillStyle = n >= STRCAL_N ? '#4ade80' : cur ? '#8b5cf6' : n ? '#5b4a8a' : '#2a2433';
       if (cur) { g.shadowColor = '#a78bfa'; g.shadowBlur = 14; }
@@ -7039,7 +7639,14 @@
     });
     requestAnimationFrame(drawStringCal);
   }
+  document.querySelectorAll('#strcal-mode button').forEach((b) => b.addEventListener('click', () => {
+    if (strcal.on) return;
+    strcalMode = b.dataset.mode;
+    strcal.samples = [];
+    strcalPlan();
+  }));
   $('#strcal-start').addEventListener('click', () => {
+    $('#strcal-mode').classList.add('hidden');            // chosen; Start over shows it again
     Object.assign(strcal, { on: true, idx: 0, samples: [], heard: '' });
     $('#strcal-start').classList.add('hidden');
     strcalStatus();
@@ -7053,10 +7660,10 @@
     strcalStatus();
   });
   $('#strcal-save').addEventListener('click', () => {
-    const c = checkStrings(strcal.samples);
+    const c = checkStrings(strcal.samples, strcal.opens);
     stringCal = { at: Date.now(), samples: strcal.samples, right: c?.right ?? 0, margin: Math.max(2, c?.margin ?? 2) };
-    keepCalibration(STRING_CAL_KEY, JSON.stringify(stringCal));
-    stringModel = fitStrings(stringCal.samples);
+    keepCalibration(calKey(STRING_CAL_KEY), JSON.stringify(stringCal));
+    stringModel = fitStrings(stringCal.samples, strcal.opens.length);
     toast(`Strings calibrated: the note readout and the highway now show the string when it's sure.`);
     $('#strcal-reset').classList.remove('hidden');
     closeStringCal();
@@ -7066,27 +7673,22 @@
   $('#strcal-more').addEventListener('click', () => { closeMore(); openStringCal(); });
   $('#input-strings').addEventListener('click', openStringCal);
   $('#gs-strings').addEventListener('click', () => { $('#settings-dlg').close(); openStringCal(); });
-  $('#strcal-reset').classList.toggle('hidden', !stringModel);
   // At start: what the library folder has wins (it's the lasting copy); one only this
   // browser has (made before calibrations were kept there) is copied there.
   (async () => {
     let saved;
     try { saved = await api('/api/calibration'); } catch { return; }
-    for (const key of [STRING_CAL_KEY, CALIBRATION_KEY]) {
+    for (const key of [STRING_CAL_KEY, CALIBRATION_KEY].flatMap((k) => [k, `${k}-guitar`])) {
       const here = pref(key) || '';
       if (saved[key] !== undefined && saved[key] !== here) setPref(key, saved[key]);
       else if (saved[key] === undefined && here && here !== '0') postJSON('/api/calibration', { key, value: here }).catch(() => {});
     }
-    try { stringCal = JSON.parse(pref(STRING_CAL_KEY) || 'null'); } catch { stringCal = null; }
-    stringModel = stringCal?.samples?.length ? fitStrings(stringCal.samples) : null;
-    $('#strcal-reset').classList.toggle('hidden', !stringModel);
-    inputCalibration = Number(pref(CALIBRATION_KEY)) || 0;
-    $('#timing-reset').classList.toggle('hidden', !inputCalibration);
+    loadCalibrations();
   })();
   $('#strcal-reset').addEventListener('click', () => {
     closeMore();
     stringCal = stringModel = null; input.string = null;
-    keepCalibration(STRING_CAL_KEY, '');
+    keepCalibration(calKey(STRING_CAL_KEY), '');
     $('#strcal-reset').classList.add('hidden');
     toast('String calibration reset.');
   });
@@ -7098,7 +7700,7 @@
   $('#calib-dlg').addEventListener('cancel', (e) => { e.preventDefault(); closeCalibration(); });
   $('#calib-save').addEventListener('click', () => {
     inputCalibration = calib.result;
-    keepCalibration(CALIBRATION_KEY, String(inputCalibration));
+    keepCalibration(calKey(CALIBRATION_KEY), String(inputCalibration));
     Object.assign(practice, { labels: [], offsets: [] }); practice.marks.clear();
     toast(`Timing calibrated: your notes reach the app ${Math.round(Math.abs(calib.result) * 1000)} ms ${calib.result < 0 ? 'early' : 'late'}; that now counts as on time.`);
     renderTabHead();
@@ -7106,7 +7708,7 @@
   });
   $('#timing-reset').addEventListener('click', () => {
     inputCalibration = 0;
-    keepCalibration(CALIBRATION_KEY, '');
+    keepCalibration(calKey(CALIBRATION_KEY), '');
     Object.assign(practice, { labels: [], offsets: [] }); practice.marks.clear();
     toast('Timing calibration reset.');
     renderTabHead();
