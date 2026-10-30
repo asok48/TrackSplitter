@@ -84,8 +84,9 @@
   .tab-head h2 { margin: 0; font-size: 22px; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tab-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   .tab-head-right { display: flex; align-items: center; gap: 10px; }
-  .tab-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  #tab-tuning { width: 210px; flex: 0 0 auto; text-overflow: ellipsis; }
+  .tab-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tab-tools .segmented button { padding: 0 9px; }   /* tighter: Beat 1 and Edit fit on one row at ~1440 px */
+  #tab-tuning { width: 165px; flex: 0 0 auto; text-overflow: ellipsis; }   /* 210 until Beat 1 and Edit joined the row */
   .tab-viewopts { min-width: 260px; gap: 12px; padding: 14px; }
   .tab-viewopts .hw-speed { display: flex; align-items: center; gap: 8px; }
   .tab-viewopts .hw-speed input { flex: 1; }
@@ -94,6 +95,11 @@
   .tab-float { position: absolute; top: 8px; z-index: 3; display: flex; gap: 6px; pointer-events: none; }
   .tab-float > * { pointer-events: auto; }
   .tab-float-left { left: 8px; } .tab-float-right { right: 8px; }
+  .tab-bars:not(.hidden) { height: 30px; gap: 2px; padding: 0 2px 0 8px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); }
+  .tab-bars .btn.sm { height: 24px; min-width: 22px; padding: 0 4px; }
+  #tab-grid, #tab-edit { width: 72px; flex: 0 0 auto; }   /* one takes the other's place (draft / not): same width */
+  #tab-grid { padding: 0 6px; }
+  .tab-bars #tab-bars-value { min-width: 1.8em; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }   /* fixed width: the toolbar doesn't move */
   .tab-float .timing-avg:not(.hidden) { padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .08); }
   body.game-on .tab-stage { position: static; }
   body.game-on .tab-float { display: none; }
@@ -190,6 +196,9 @@
   #tab-input.listening .in-dot { display: inline-block; }
   #tab-input.listening.match .in-dot { background: #4ade80; }
   #tab-input.listening.off .in-dot { background: #f87171; }
+  #player-input { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #player-input:not(.hidden) .in-dot { display: inline-block; background: #4ade80; }
+  @media (max-width: 1400px) { #player-input { padding: 0 9px; } #player-input .in-label { display: none; } }
   #tab-input.recording .in-dot { display: inline-block; background: #ef4444; animation: rec-blink 1s infinite; }
   #tab-input-text { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .input-level { width: 100%; }
@@ -332,9 +341,10 @@
   .tab-line .note.playing rect { fill: var(--accent); }
   .tab-line .note.playing text { fill: white; }
   .tab-line .note.done text { fill: var(--muted); }
-  .tab-line .note.editable { cursor: pointer; }
+  .tab-line .note.editable { cursor: grab; touch-action: none; }   /* click to pick, drag to move */
   .tab-line .note.editable:hover rect { fill: var(--hover); }
   .tab-line .note.selected rect { fill: #ef4444; }
+  .tab-line .note.dragging { cursor: grabbing; opacity: .85; }
   .tab-line .lg { fill: #c4b5fd; font-weight: 800; pointer-events: none; }
   .tab-line .lg-line { stroke: #c4b5fd; stroke-width: 1.8; fill: none; stroke-linecap: round; pointer-events: none; }
   /* Draft: what a take waiting for review adds (green) or replaces (red, struck), and
@@ -711,8 +721,8 @@
   .segmented { padding: 3px; border-radius: 11px; background: #14141b; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .4); }
   .segmented button { border-radius: 8px; transition: background .15s, color .15s; }
   .segmented button.active { background: linear-gradient(180deg, #9a6dfa, #7c4ff0); box-shadow: 0 2px 8px rgba(124, 79, 240, .35), inset 0 1px 0 rgba(255, 255, 255, .18); }
-  .tab-tools select, .input-bar select { height: 30px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); padding: 0 10px; }
-  .tab-tools select:hover, .input-bar select:hover { border-color: #34343f; }
+  .tab-tools select, .input-bar select, .tab-float select { height: 30px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); padding: 0 10px; color: var(--text); font: inherit; font-size: 13px; }
+  .tab-tools select:hover, .input-bar select:hover, .tab-float select:hover { border-color: #34343f; }
 
   /* Song list and chips */
   .song-row { border-radius: 12px; }
@@ -953,6 +963,20 @@
             </div>
           </div>
         </div>
+        <!-- Beat 1: the automatic tab's bar lines a beat at a time (and a draft from it). -->
+        <div class="tab-sync tab-bars hidden only-tab" id="tab-bars-row" title="Move the bar lines a beat at a time so each bar starts on beat 1 (kept with the song)">
+          <span>Beat 1</span>
+          <button type="button" class="btn sm" id="tab-bars-earlier" title="Bar lines a beat earlier">◀</button>
+          <span id="tab-bars-value">0</span>
+          <button type="button" class="btn sm" id="tab-bars-later" title="Bar lines a beat later">▶</button>
+        </div>
+        <!-- Editing: Edit this tab on imported / automatic tabs, the note grid on the draft
+             (one or the other; they floated over the tab and covered it). -->
+        <button type="button" class="btn sm primary hidden only-tab" id="tab-edit" title="Edit this tab: copy it into your draft to add, move and delete notes (the tab itself stays as it is)">Edit</button>
+        <select class="hidden only-tab" id="tab-grid" title="Where added, copied, moved and filled notes snap to">
+          <option value="8">8ths</option><option value="16">16ths</option><option value="32">32nds</option>
+          <option value="12">8th triplets</option><option value="24">16th triplets</option>
+        </select>
         <span class="tools-gap"></span>
         <button type="button" class="btn sm only-game" id="game-settings-btn" title="Look, note speed, timing, sounds">Game settings</button>
         <span class="game-best-now only-game" id="game-best-now"></span>
@@ -1054,7 +1078,8 @@
         <!-- Things that come and go float over the tab instead of moving the toolbar. -->
         <div class="tab-float tab-float-left">
           <button type="button" class="btn sm danger hidden only-tab" id="tab-delete-note" title="Remove the selected note (Delete key)">Delete note</button>
-          <button type="button" class="btn sm hidden only-tab" id="tab-undo-note" title="Put the last removed note back">Undo</button>
+          <button type="button" class="btn sm hidden only-tab" id="tab-fill-note" title="Repeat the selected note on every step of the grid up to the next note (F)">Fill 16ths</button>
+          <button type="button" class="btn sm hidden only-tab" id="tab-undo-note" title="Take back the last change (adds, fills, moves, deletes; ⌘Z)">Undo</button>
         </div>
         <div class="take-review hidden only-tab" id="take-review" role="region" aria-label="New take">
           <div class="tr-text"><strong id="tr-title">New take</strong><span id="tr-sub"></span><span class="tr-warn hidden" id="tr-warn"></span></div>
@@ -1116,6 +1141,7 @@
           <button type="button" data-instrument="guitar" disabled title="Guitar tabs and guitar tones are being worked on separately; for now this picks bass only">Guitar</button>
         </div>
         <select id="player-inst" aria-label="Which of your instruments"></select>
+        <button type="button" class="btn sm hidden" id="player-input" title="Bass input is on (it stays on between songs): click to turn it off" aria-label="Bass input is on: turn it off"><span class="in-dot"></span><span class="in-label">Input on</span></button>
       </div>
       <div class="volume">
         <button type="button" class="icon-btn" id="mixer-btn" aria-label="Volumes" aria-expanded="false" title="Volumes: master, the song, your instrument">
@@ -2853,7 +2879,14 @@
   }
 
   // section: 'tab' (read and edit the tab) or 'game' (the Highway with scoring).
-  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1, selected: null, lastRemoved: null, section: 'tab' };
+  // The draft's editing grid (user: Brianstorm "should be 16/32 notes ... adding them will be
+  // a pain"): steps per bar (a bar taken as 4 beats, as recording's "add" does), kept per
+  // computer. Added, copied, moved and filled notes snap to it.
+  const GRIDS = { 8: '8ths', 16: '16ths', 32: '32nds', 12: '8th triplets', 24: '16th triplets' };
+  const GRID_KEY = 'track-splitter-edit-grid';
+  let editGrid = '16';
+  try { if (GRIDS[localStorage.getItem(GRID_KEY)]) editGrid = localStorage.getItem(GRID_KEY); } catch { /* the default */ }
+  const tabView = { open: false, song: null, data: null, canMake: false, line: -1, slots: [], scale: 1, selected: null, undo: [], section: 'tab' };
   const TAB_PREFS = 'track-splitter-tab-tuning';
   const tabPrefs = () => { try { return JSON.parse(localStorage.getItem(TAB_PREFS)) || {}; } catch { return {}; } };
   // Kept per song, and per tab for imported/recorded ones ("song|imported"), so a tuning
@@ -2901,7 +2934,13 @@
   function openTab(open = !tabView.open) {
     tabView.open = open && !!state.current;
     if (!tabView.open && game.on) endGame(false);           // leaving the tab leaves the game
-    if (!tabView.open && input.stream) closeInputBar();   // stop listening with the tab
+    // The bass input stays on when the tab closes (user: "keep the bass running between
+    // switching songs, I have to click listen every time"); only its drawer goes, and the
+    // player bar's "Input on" turns it off.
+    if (!tabView.open) {
+      if (rec.active) stopRecording();                    // a take belongs to the tab it's recorded into
+      $('#input-bar').classList.add('hidden');
+    }
     $('.main').classList.toggle('tab-open', tabView.open);
     $('#tab-view').classList.toggle('hidden', !tabView.open);
     $('#tab-btn').setAttribute('aria-pressed', tabView.open);
@@ -2921,9 +2960,11 @@
     }
     tabView.song = song.id;
     $('#tab-title').textContent = `${song.title} · bass tab`;
-    const pick = tuning || tabPrefs()[tuningPrefKey(song.id, sourcePrefs()[song.id] || 'imported')];
+    // "standard~original" / "standard~mine": an imported tab's tuning and which version
+    // (the original or the user's, from Other ways to play / Make repeats match).
+    const [pick, version] = (tuning || tabPrefs()[tuningPrefKey(song.id, sourcePrefs()[song.id] || 'imported')] || '').split('~');
     try {
-      const data = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${splitParam(song.id)}`
+      const data = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${version ? `&version=${version}` : ''}${splitParam(song.id)}`
         + `&source=${sourcePrefs()[song.id] || 'imported'}`);   // an imported tab wins when there is one
       if (tabView.song !== song.id) return;               // another song was picked meanwhile
       tabView.data = data.exists ? data : null;
@@ -2931,7 +2972,7 @@
       tabView.hasImport = !!data.has_import;
       tabView.hasMine = !!data.has_mine;
       tabView.selected = null;
-      tabView.outdated = !!data.outdated;
+      tabView.outdated = data.outdated || false;
       if (tabView.data) layoutLines(tabView.data);
       renderTabHead();
       tabView.line = -1;
@@ -2957,7 +2998,20 @@
     const picked = mine && tabView.selected !== null ? d.notes[tabView.selected] : null;
     $('#tab-delete-note').classList.toggle('hidden', !picked);
     if (picked) $('#tab-delete-note').textContent = `Delete ${d.tunings.find((x) => x.key === d.tuning).strings[picked[2]]}${picked[3]} at ${fmtTime(picked[0])}`;
-    $('#tab-undo-note').classList.toggle('hidden', !mine || tabView.lastRemoved?.song !== tabView.song);
+    $('#tab-fill-note').classList.toggle('hidden', !picked);
+    $('#tab-fill-note').textContent = `Fill ${GRIDS[editGrid]}`;
+    $('#tab-undo-note').classList.toggle('hidden', !mine || !tabView.undo.some((u) => u.song === tabView.song));
+    $('#tab-edit').classList.toggle('hidden', !d || mine || (d.source === 'auto' && !d.notes.length));
+    $('#tab-grid').classList.toggle('hidden', !mine);
+    // Beat 1 (the automatic tab's bars, also a draft started from it): imported tabs have their own.
+    const barsMovable = !!d?.bpm && d.bar_shift !== undefined && d.bar_shift !== null;
+    $('#tab-bars-row').classList.toggle('hidden', !barsMovable);
+    if (barsMovable) {   // short, so the toolbar fits; the words are in its tooltip
+      const n = d.bar_shift === 3 ? -1 : d.bar_shift;
+      $('#tab-bars-value').textContent = n > 0 ? `+${n}` : n < 0 ? '−1' : '0';
+      $('#tab-bars-row').title = `Move the bar lines a beat at a time so each bar starts on beat 1 (kept with the song). Now: ${!n ? 'where the app found it' : `${Math.abs(n)} beat${Math.abs(n) === 1 ? '' : 's'} ${n > 0 ? 'later' : 'earlier'} than found`}`;
+    }
+    $('#tab-grid').value = editGrid;
     $('#tab-input').classList.toggle('hidden', !tabView.canMake);
     $('#tab-tuning').classList.toggle('hidden', !d);
     $('#tab-mode').classList.toggle('hidden', !d);
@@ -2979,23 +3033,30 @@
     document.querySelectorAll('#tab-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === tabMode));
     $('#tab-remake').classList.toggle('hidden', !d || d.source !== 'auto');
     $('#tab-remove-import').classList.toggle('hidden', !imported);
-    $('#tab-repeats').classList.toggle('hidden', !imported || d.tuning !== d.written);
-    $('#tab-patterns').classList.toggle('hidden', !imported || d.tuning !== d.written);
+    // Shown in any tuning (user: "I don't see other ways to play": Amsterdam's .gp is in
+    // E♭ B♭ E♭ A♭ and was shown in another tuning); each tuning keeps its own choices
+    // ("I want to do other ways to play for standard tuning").
+    $('#tab-repeats').classList.toggle('hidden', !imported);
+    $('#tab-patterns').classList.toggle('hidden', !imported);
     $('#tab-raise-row').classList.toggle('hidden', !d || d.tuning !== 'half-down');
     $('#tab-split-row').classList.toggle('hidden', !d || d.source !== 'auto');
     $('#tab-split').checked = !!d?.split;
     $('#tab-hint').classList.toggle('hidden', !d || d.source !== 'auto' || !d.maybe_half_down || d.tuning !== 'standard');
     $('#tab-raise').checked = player.shift === 1;
     if (!d) { $('#tab-sub').textContent = ''; return; }
-    $('#tab-tuning').replaceChildren(...d.tunings.map((t) =>
-      el('option', { value: t.key, textContent: t.label + (imported ? [t.key === d.written ? ' (as written)' : '', t.key === d.easiest && t.key !== d.written ? ' (easiest)' : ''].join('') : t.key === d.suggested ? ' (suggested)' : ''),
-                     selected: t.key === d.tuning })));
+    // A tuning the user made their own version of is listed twice: the original and theirs.
+    $('#tab-tuning').replaceChildren(...d.tunings.flatMap((t) => {
+      const label = t.label + (imported ? [t.key === d.written ? ' (as written)' : '', t.key === d.easiest && t.key !== d.written ? ' (easiest)' : ''].join('') : t.key === d.suggested ? ' (suggested)' : '');
+      if (!d.versions?.includes(t.key)) return [el('option', { value: t.key, textContent: label, selected: t.key === d.tuning })];
+      return ['original', 'mine'].map((v) => el('option', { value: `${t.key}~${v}`, textContent: `${label} · ${v === 'mine' ? 'mine' : 'original'}`,
+                                                            selected: t.key === d.tuning && v === d.version }));
+    }));
     $('#tab-sub').textContent = mine ? [
       d.draft_from ? `Your draft, started from the ${d.draft_from === 'imported' ? `imported tab (${d.draft_from_name})` : 'automatic tab'}${d.takes ? ` · ${d.takes} take${d.takes === 1 ? '' : 's'} played over it` : ''}`
         : `Your playing: ${d.takes} take${d.takes === 1 ? '' : 's'}, lined up with the song`,
       d.dropped ? `${d.dropped} notes too low for this tuning` : '',
       'Bass input → Record to add notes or redo a part',
-      'Click a note to delete it',
+      `Click a note to delete it or Fill ${GRIDS[editGrid]} after it, drag it to move it (Option-drag: a copy), double-click a string to add one`,
       'Click a line to jump there',
     ].filter(Boolean).join(' · ') : imported ? [
       `Imported: ${d.import_name}${d.track && d.track !== d.import_name && d.track !== 'Pasted tab' ? ` (${d.track})` : ''}`,
@@ -3020,7 +3081,9 @@
   function renderTabEmpty() {
     const wrap = el('div', { className: 'tab-empty' });
     wrap.append(el('h3', { textContent: tabView.outdated ? 'This tab can be made better now' : 'No bass tab for this song yet' }));
-    wrap.append(el('p', { textContent: tabView.outdated
+    wrap.append(el('p', { textContent: tabView.outdated === 'bars'
+      ? 'It was made before the app could find this song\'s beat, so it has no bar lines (and adding notes on 16ths or 32nds can\'t line up). Making it again takes a few seconds.'
+      : tabView.outdated
       ? 'It was made before repeated notes and low notes were handled better. Making it again takes a few seconds.'
       : tabView.canMake
         ? 'It takes a few seconds if the song has a "no bass" version, or about a minute to isolate the bass first. Notes are worked out by ear, so expect some mistakes.'
@@ -3140,6 +3203,26 @@
     const x = (t) => left + 12 + ((t - start) / (end - start)) * (width - left - 24);
     const y = (s) => pad + gap * (n - 1 - s);                            // highest string on top
     const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, height });
+    if (d.source === 'mine') {
+      // Double-click a string where there's no note: a note there (the nearest fret on that
+      // string in this line), on the bar's 16ths (user: "an easier way to match the notes in
+      // the song", runs of 16th 6s).
+      svg.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.note')) return;
+        e.stopPropagation();
+        const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * width / r.width, sy = (e.clientY - r.top) * height / r.height;
+        const s = n - 1 - Math.round((sy - pad) / gap);
+        if (s < 0 || s >= n || Math.abs(sy - y(s)) > gap / 2) return;
+        const t = snapBeat([start, ...bars.filter((b) => b > start + 0.05), end], start, end, start + ((sx - left - 12) / (width - left - 24)) * (end - start));
+        if (d.notes.some((m) => m[2] === s && Math.abs(m[0] - t) < 0.03)) return;   // already a note on that step
+        const [from, to] = tabView.lineNotes[i];
+        const near = d.notes.slice(from, to).filter((m) => m[2] === s).sort((p, q) => Math.abs(p[0] - t) - Math.abs(q[0] - t))[0];
+        const sel = tabView.selected !== null ? d.notes[tabView.selected] : null;
+        const fret = near ? near[3] : sel && sel[2] === s ? sel[3] : 0;
+        const len = near ? Math.min(Math.max(0.08, near[1] - near[0]), 0.5) : 0.2;
+        addNote(t, len, d.tunings.find((x) => x.key === d.tuning).open[s] + fret);
+      });
+    } else svg.addEventListener('dblclick', (e) => { e.stopPropagation(); editThisTab(true); });   // editing is in the draft
     names.forEach((name, s) => {
       svg.append(svgEl('line', { class: 'string', x1: left, x2: width, y1: y(s), y2: y(s) }));
       svg.append(svgEl('text', { class: 'name', x: left - 8, y: y(s), 'text-anchor': 'end', 'dominant-baseline': 'central', 'font-size': font * 0.8 }, name));
@@ -3194,9 +3277,9 @@
       const [t, te, s, f] = d.notes[k];
       const size = Math.max(font * 0.55, Math.min(font, (room(k) - 2) / (String(f).length * 0.62 + 0.25)));
       const origin = d.notes[k][5];                     // the draft: where the note came from
-      const mark = origin === 'new' ? ' n-new' : showAdded && String(origin).startsWith('take:') ? ' n-added' : '';
+      const mark = origin === 'new' ? ' n-new' : showAdded && (String(origin).startsWith('take:') || origin === 'hand') ? ' n-added' : '';
       const g = svgEl('g', { class: `note${d.source === 'mine' ? ' editable' : ''}${k === tabView.selected ? ' selected' : ''}${mark}` });
-      if (d.source === 'mine') g.addEventListener('click', (e) => { e.stopPropagation(); selectNote(k); });   // your own tab: pick a note to remove
+      if (d.source === 'mine') dragNote(g, k, { svg, width, start, end, edges, secPer: (end - start) / (width - left - 24) });   // your own tab: pick a note to remove, or drag it (Option: a copy)
       const w = String(f).length * size * 0.62 + 4;
       g.append(svgEl('rect', { x: x(t) - w / 2, y: y(s) - size * 0.62, width: w, height: size * 1.24, rx: 3 }));
       g.append(svgEl('text', { x: x(t), y: y(s), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size }, f));
@@ -3306,7 +3389,7 @@
   const tabTime = () => Math.max(0, currentTime() - (player.playing ? outputDelay() - syncMs / 1000 : 0));
 
   function tabFrame(force = false) {
-    if (!tabView.open) return;
+    if (!tabView.open || (tabView.dragging && !force)) return;   // a note being dragged: hold still
     if (!tabView.data) { if (force) renderTabEmpty(); return; }
     const t = tabTime();
     const onTab = tabView.section === 'game' && gameView === 'tab';   // the game played on the tab's lines
@@ -3625,6 +3708,10 @@
   function wholeFrame(t, force) {
     const body = $('#tab-body');
     if (force || !body.classList.contains('whole') || !tabView.whole) {
+      // Drawn again over itself (an edit reloads the tab): stay where the user is looking.
+      // It used to jump back to the playing line, the top when paused at the start (user:
+      // "it keeps scrolling back to the top when editing").
+      const redraw = body.classList.contains('whole') && tabView.whole && tabView.wholeSong === tabView.song, keep = body.scrollTop;
       body.classList.add('whole'); body.classList.remove('scrolltab');
       tabView.whole = tabView.data.lines.map((_, i) => {
         const line = tabLineSvg(i, false), div = el('div', { className: 'tab-line' });
@@ -3632,13 +3719,16 @@
         div.addEventListener('click', (e) => {
           const r = line.svg.getBoundingClientRect(), px = ((e.clientX - r.left) / r.width) * line.width;
           seekTo(Math.max(line.start, Math.min(line.end, line.start + ((px - line.left - 12) / (line.width - line.left - 24)) * (line.end - line.start))));
+          tabView.followed = i;                            // it's in view already: don't scroll it to the middle
           tabFrame();
         });
         return { div, line };
       });
       body.replaceChildren(...tabView.whole.map((w) => w.div));
       tabView.wholeLine = -1;
-      tabView.followed = undefined;
+      tabView.followed = redraw ? lineAt(t) : undefined;   // follows again once the playing line changes
+      if (redraw) body.scrollTop = keep;
+      tabView.wholeSong = tabView.song;
       tabView.playhead = svgEl('line', { class: 'playhead', x1: 0, x2: 0, y1: 2, y2: 0 });
     }
     const i = lineAt(t), cur = tabView.whole[i];
@@ -3650,7 +3740,10 @@
       cur.line.svg.append(tabView.playhead);
       tabView.wholeLine = i;
     }
-    // Follow the playing line, except for 4 s after scrolling by hand; then back to it.
+    // Follow the playing line, except for 4 s after scrolling by hand; then back to it once
+    // the playing line moves on (so never while paused: editing far from where the song
+    // stopped, it snapped back there 4 s after the last scroll, user: "it keeps scrolling
+    // back to the top when editing").
     if (tabView.followed !== i && performance.now() - (tabView.scrolledAt || 0) > 4000) {
       const top = body.scrollTop + cur.div.getBoundingClientRect().top - body.getBoundingClientRect().top - (body.clientHeight - cur.div.offsetHeight) / 2;
       body.scrollTo({ top: Math.max(0, top), behavior: tabView.followed === undefined || force ? 'auto' : 'smooth' });
@@ -3666,8 +3759,9 @@
   }
   // Scrolling by hand pauses following for a few seconds. Told apart by the input, not
   // 'scroll' events: a smooth follow-scroll fires those too, and taking them for the
-  // user's paused following for good once lines came every couple of seconds.
-  const scrolledByHand = () => { tabView.scrolledAt = performance.now(); tabView.followed = null; };
+  // user's paused following for good once lines came every couple of seconds. It doesn't
+  // forget the line it followed: it returns when the playing line changes, not when paused.
+  const scrolledByHand = () => { tabView.scrolledAt = performance.now(); };
   for (const ev of ['wheel', 'touchmove']) $('#tab-body').addEventListener(ev, scrolledByHand, { passive: true });
   $('#tab-body').addEventListener('pointerdown', (e) => { if (e.offsetX > e.currentTarget.clientWidth) scrolledByHand(); });   // the scrollbar
   $('#tab-body').addEventListener('keydown', (e) => { if (/^(Arrow(Up|Down)|Page(Up|Down)|Home|End)$/.test(e.key)) scrolledByHand(); });
@@ -4320,7 +4414,7 @@
   $('#tab-remake').addEventListener('click', makeTab);
   $('#tab-tuning').addEventListener('change', (e) => {
     saveTabPref(tuningPrefKey(tabView.song, tabView.data?.source), e.target.value);
-    if (e.target.value !== 'half-down' && isRaised(tabView.song)) { setRaised(tabView.song, false); reloadAudio(); }   // raising only fits half step down
+    if (e.target.value.split('~')[0] !== 'half-down' && isRaised(tabView.song)) { setRaised(tabView.song, false); reloadAudio(); }   // raising only fits half step down
     loadTab(e.target.value);
   });
   document.querySelectorAll('#tab-source button').forEach((b) => b.addEventListener('click', () => {
@@ -4418,9 +4512,12 @@
     $('#repeats-title').textContent = title;
     $('#repeats-intro').textContent = intro;
     let r;
-    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}${patterns ? '&patterns=true' : ''}`); } catch (err) { toast(err.message, 'error'); return; }
+    const tuning = tabView.data?.tuning || '';
+    try { r = await api(`/api/tab/repeats?song=${encodeURIComponent(song)}&tuning=${encodeURIComponent(tuning)}${patterns ? '&patterns=true' : ''}`); } catch (err) { toast(err.message, 'error'); return; }
     if (song !== tabView.song) return;
     const names = r.strings, box = $('#repeat-groups');
+    // In another tuning the tab is the app's fingering of it there, not the file's.
+    const asIs = r.written ? 'as written' : 'as shown';
     box.replaceChildren(...r.groups.map((g) => {
       const common = g.variants[0].map, perPlace = g.chosen === 'easiest', chosen = !perPlace && g.chosen && JSON.stringify(g.chosen);
       const head = el('div', { className: 'rg-head' }, ...[
@@ -4436,7 +4533,7 @@
         head.append(each);
       }
       if (g.chosen) {
-        const back = el('button', { type: 'button', className: 'btn sm', textContent: 'Back to as written' });
+        const back = el('button', { type: 'button', className: 'btn sm', textContent: `Back to ${asIs}` });
         back.addEventListener('click', () => setRepeat(g.key, null));
         head.append(back);
       }
@@ -4459,13 +4556,13 @@
         // A part the tab always plays one way: that way is "as written" (chosen when
         // nothing else is).
         if (patterns && g.variants.length === 1) {
-          when.firstChild.textContent = `As written · ${wayPlace(v.map, names)} · ${v.bars.length} bars · `;
-          action = !g.chosen ? el('span', { className: 'rw-badge', textContent: '✓ As written' }) : el('span');
+          when.firstChild.textContent = `${asIs[0].toUpperCase()}${asIs.slice(1)} · ${wayPlace(v.map, names)} · ${v.bars.length} bars · `;
+          action = !g.chosen ? el('span', { className: 'rw-badge', textContent: `✓ ${asIs[0].toUpperCase()}${asIs.slice(1)}` }) : el('span');
         }
         return el('div', { className: `repeat-way${isChosen || (patterns && !g.chosen && g.variants.length === 1) ? ' chosen' : ''}` }, ...[notes, action, when]);
       }), ...(!patterns ? [] : g.others.length ? [el('div', { className: 'rw-label', textContent: 'Other ways' }), ...g.others.map((o, k) => {
         const isChosen = chosen === JSON.stringify(o.map), d = g.written.cost ? (o.cost - g.written.cost) / g.written.cost : 0;
-        const ease = Math.abs(d) < 0.05 ? 'about as easy as written' : `${Math.round(Math.abs(d) * 100)}% ${d < 0 ? 'easier' : 'harder'} than as written`;
+        const ease = Math.abs(d) < 0.05 ? `about as easy as ${asIs.slice(3)}` : `${Math.round(Math.abs(d) * 100)}% ${d < 0 ? 'easier' : 'harder'} than ${asIs}`;
         const where = o.pos < g.written.pos - 1 ? 'lower' : o.pos > g.written.pos + 1 ? 'higher' : '';
         const when = el('div', { className: 'rw-when' }, ...[wayPlace(o.map, names), ` · ${ease}`,
           where ? el('span', { className: 'rw-easy rw-where', textContent: where === 'lower' ? 'Lower on the neck' : 'Higher on the neck' }) : '']);
@@ -4480,8 +4577,10 @@
     }));
     if (!r.groups.length) box.replaceChildren(el('div', { className: 'repeats-empty', textContent: none }));
     $('#repeats-clear').classList.toggle('hidden', !r.groups.some((g) => g.chosen));
+    $('#repeats-clear').textContent = `Put all back ${asIs}`;
     $('#repeats-lower').classList.toggle('hidden', !patterns || !r.groups.some((g) => g.others.some((o) => o.lower)));
-    $('#repeats-sub').textContent = r.groups.length ? `${r.groups.length} ${r.groups.length === 1 ? 'part' : 'parts'} found in “${tabView.data?.import_name || 'the imported tab'}”` : '';
+    const inTuning = r.written ? '' : ` · in ${(tabView.data?.tunings || []).find((t) => t.key === r.tuning)?.label || r.tuning}`;
+    $('#repeats-sub').textContent = r.groups.length ? `${r.groups.length} ${r.groups.length === 1 ? 'part' : 'parts'} found in “${tabView.data?.import_name || 'the imported tab'}”${inTuning}` : '';
     if (!repeatsDlg.open) repeatsDlg.showModal();
   }
   // One way of playing a repeated bar as a line of tab (highest string on top), the
@@ -4508,7 +4607,10 @@
   }
   async function setRepeat(key, map, easiest = false, lower = false) {
     try {
-      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, lower } : { song: tabView.song, key, map, easiest });
+      const tuning = tabView.data?.tuning || null;   // other tunings keep their own choices
+      await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, lower, tuning } : { song: tabView.song, key, map, easiest, tuning });
+      // A choice made is seen: the tab switches to the user's version of this tuning.
+      if (tuning) saveTabPref(tuningPrefKey(tabView.song, tabView.data.source), `${tuning}~mine`);
       await loadTab();
       showRepeats();
     } catch (err) { toast(err.message, 'error'); }
@@ -4525,12 +4627,112 @@
       loadTab();
     } catch (err) { toast(err.message, 'error'); }
   });
-  // Removing ghost notes from your own tab: click a note (Lines view), then Delete.
+  // Removing ghost notes from your own tab: click a note (Lines view), then Delete; or drag it.
   function selectNote(k) {
     tabView.selected = tabView.selected === k ? null : k;
     renderTabHead();
     tabView.line = -1;
     tabFrame();
+  }
+  // Dragging a note of your draft along its line moves it in time (user: "drag notes on the
+  // tab to other spots"; chose time only, in the draft), snapped to its bar's 16ths; a click
+  // without moving still selects it.
+  function dragNote(g, k, { svg, width, start, end, edges, secPer }) {
+    g.addEventListener('click', (e) => { e.stopPropagation(); if (!g.dragged) selectNote(k); });
+    // While dragging, nothing scrolls (user: "the page scrolls easily when dragging"): the
+    // tab body is locked, the wheel/trackpad does nothing, and tabFrame leaves the lines
+    // alone (Whole tab's follow-scroll, Lines changing line with the song).
+    const noWheel = (ev) => ev.preventDefault();
+    g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();                                  // no text selection (it drags the page along)
+      const body = $('#tab-body'), overflow = body.style.overflow;
+      body.style.overflow = 'hidden';
+      tabView.dragging = true;
+      window.addEventListener('wheel', noWheel, { passive: false });
+      const t0 = tabView.data.notes[k][0], x0 = e.clientX, perPx = secPer * width / svg.getBoundingClientRect().width;
+      // Option/Alt held: drag a copy, the note stays (a run of one note, quickly).
+      const copy = e.altKey, shown = copy ? g.parentNode.appendChild(g.cloneNode(true)) : g;
+      let to = t0;
+      g.dragged = false;
+      try { g.setPointerCapture(e.pointerId); } catch { /* the moves still reach the note under the pointer */ }
+      const move = (ev) => {
+        if (Math.abs(ev.clientX - x0) > 4) g.dragged = true;
+        if (!g.dragged) return;
+        to = snapBeat(edges, start, end, t0 + (ev.clientX - x0) * perPx);
+        shown.setAttribute('transform', `translate(${(to - t0) / secPer},0)`);
+        shown.classList.add('dragging');
+      };
+      const up = () => {
+        g.removeEventListener('pointermove', move);
+        g.removeEventListener('pointerup', up);
+        g.removeEventListener('pointercancel', up);
+        window.removeEventListener('wheel', noWheel);
+        body.style.overflow = overflow;
+        tabView.dragging = false;
+        if (copy) shown.remove();
+        const [, te, s, f] = tabView.data.notes[k];
+        if (g.dragged && Math.abs(to - t0) > 0.005) {
+          if (copy) addNote(to, te - t0, tabView.data.tunings.find((x) => x.key === tabView.data.tuning).open[s] + f);
+          else moveNote(k, to);
+        } else g.removeAttribute('transform');
+        setTimeout(() => { g.dragged = false; }, 0);   // after the click this pointerup makes
+      };
+      g.addEventListener('pointermove', move);
+      g.addEventListener('pointerup', up);
+      g.addEventListener('pointercancel', up);
+    });
+  }
+  // The editing grid (GRIDS, next to tabView).
+  $('#tab-grid').addEventListener('change', (e) => {
+    editGrid = e.target.value;
+    setPref(GRID_KEY, editGrid);
+    renderTabHead();
+  });
+  // The nearest grid step of its bar.
+  function snapBeat(edges, start, end, t) {
+    t = Math.min(Math.max(t, start), end - 0.01);
+    const i = Math.max(0, edges.findIndex((b, j) => j + 1 < edges.length && t < edges[j + 1]));
+    const a = edges[i], step = (edges[i + 1] - a) / Number(editGrid);
+    return Math.min(a + Math.round((t - a) / step) * step, end - 0.01);
+  }
+  async function addNote(at, len, pitch) {
+    try {
+      await postJSON('/api/tab/mine/add', { song: tabView.song, start: at, end: at + Math.max(0.05, len), pitch });
+      pushUndo({ kind: 'add', song: tabView.song, start: at, pitch });   // Undo takes it out
+      loadTab($('#tab-tuning').value);
+    } catch (err) { toast(err.message, 'error'); }
+  }
+  // Fill (user: "what I really need is just 16th notes ... trouble getting it to match the
+  // song"): the selected note again on every grid step of its bar after it (16ths, or the
+  // grid picked), up to the next note (any string) or a bar on; one Undo takes them all out.
+  async function fillSelected() {
+    const d = tabView.data, k = tabView.selected;
+    if (d?.source !== 'mine' || k === null) return;
+    const [t0, te, s, f] = d.notes[k], pitch = d.tunings.find((x) => x.key === d.tuning).open[s] + f;
+    const edges = [...new Set(d.lines.flatMap(([a, b, inner]) => [a, b, ...inner]))].sort((p, q) => p - q);
+    const i = edges.findIndex((b, j) => j + 1 < edges.length && t0 < edges[j + 1]);
+    if (i < 0) return;
+    const per = Number(editGrid), step = (edges[i + 1] - edges[i]) / per, until = Math.min(d.notes.find((m) => m[0] > t0 + 0.03)?.[0] ?? Infinity, t0 + per * step) - step * 0.5;
+    const len = Math.min(Math.max(0.05, te - t0), step * 0.95), notes = [];
+    for (let t = edges[i] + Math.round((t0 - edges[i]) / step + 1) * step; t <= until; t += step) notes.push([t, t + len, pitch]);
+    if (!notes.length) { toast(`No room after this note: the next note starts within one step (${GRIDS[editGrid]}). Try a finer grid.`); return; }
+    try {
+      const r = await postJSON('/api/tab/mine/add', { song: tabView.song, notes });
+      pushUndo({ kind: 'fill', song: tabView.song, notes: r.added });   // Undo takes them all out
+      loadTab($('#tab-tuning').value);
+    } catch (err) { toast(err.message, 'error'); }
+  }
+  $('#tab-fill-note').addEventListener('click', fillSelected);
+  async function moveNote(k, to) {
+    const d = tabView.data, [start, , s, f] = d.notes[k];
+    const pitch = d.tunings.find((x) => x.key === d.tuning).open[s] + f;
+    try {
+      await postJSON('/api/tab/mine/move', { song: tabView.song, start, pitch, to });
+      pushUndo({ kind: 'move', song: tabView.song, start, to, pitch });   // Undo moves it back
+      loadTab($('#tab-tuning').value);
+    } catch (err) { toast(err.message, 'error'); loadTab($('#tab-tuning').value); }
   }
   async function deleteSelected() {
     const d = tabView.data, k = tabView.selected;
@@ -4539,24 +4741,48 @@
     const pitch = d.tunings.find((x) => x.key === d.tuning).open[s] + f;
     try {
       await postJSON('/api/tab/mine/note', { song: tabView.song, start, pitch });
-      tabView.lastRemoved = { song: tabView.song, start, end, pitch };
+      pushUndo({ song: tabView.song, start, end, pitch });
       loadTab($('#tab-tuning').value);
     } catch (err) { toast(err.message, 'error'); }
   }
   $('#tab-delete-note').addEventListener('click', deleteSelected);
-  $('#tab-undo-note').addEventListener('click', async () => {
-    const r = tabView.lastRemoved;
-    if (!r) return;
+  // Undo goes back step by step (it used to remember only the last change), per song.
+  function pushUndo(u) {
+    tabView.undo.push(u);
+    if (tabView.undo.length > 100) tabView.undo.shift();
+  }
+  async function undoEdit() {
+    const at = tabView.undo.findLastIndex((u) => u.song === tabView.song);
+    if (at < 0 || tabView.data?.source !== 'mine') return;
+    const [r] = tabView.undo.splice(at, 1);
     try {
-      await postJSON('/api/tab/mine/note?restore=true', { song: r.song, start: r.start, end: r.end, pitch: r.pitch });
-      tabView.lastRemoved = null;
+      if (r.kind === 'move') await postJSON('/api/tab/mine/move', { song: r.song, start: r.to, pitch: r.pitch, to: r.start });
+      else if (r.kind === 'add') await postJSON('/api/tab/mine/note', { song: r.song, start: r.start, pitch: r.pitch });
+      else if (r.kind === 'fill') for (const [start, , pitch] of r.notes) await postJSON('/api/tab/mine/note', { song: r.song, start, pitch });
+      else await postJSON('/api/tab/mine/note?restore=true', { song: r.song, start: r.start, end: r.end, pitch: r.pitch });
       loadTab($('#tab-tuning').value);
+    } catch (err) { toast(err.message, 'error'); loadTab($('#tab-tuning').value); }
+  }
+  $('#tab-undo-note').addEventListener('click', undoEdit);
+  // Beat 1 (user: "fix the downbeat so bar lines start on beat 1"): the beat found from the
+  // audio is right on most songs but sometimes a beat or half a bar off; this moves the bar
+  // lines a beat at a time, kept with the song. The menu stays open to try again.
+  async function moveBars(beats) {
+    try {
+      await postJSON('/api/tab/bars', { song: tabView.song, beats });
+      tabView.line = -1;
+      await loadTab($('#tab-tuning').value);
     } catch (err) { toast(err.message, 'error'); }
-  });
+  }
+  $('#tab-bars-earlier').addEventListener('click', () => moveBars(-1));
+  $('#tab-bars-later').addEventListener('click', () => moveBars(1));
   document.addEventListener('keydown', (e) => {
-    if (!tabView.open || tabView.selected === null || (e.target instanceof Element && e.target.closest('input, textarea, select, dialog'))) return;
+    if (!tabView.open || (e.target instanceof Element && e.target.closest('input, textarea, select, dialog'))) return;
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && tabView.data?.source === 'mine') { e.preventDefault(); undoEdit(); return; }
+    if (tabView.selected === null) return;
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
     if (e.key === 'Escape') selectNote(tabView.selected);   // deselect
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fillSelected(); }
   });
 
   // Asks first: it sits in More next to the other actions and once took a draft and its
@@ -5567,6 +5793,7 @@
 
   async function openInputBar() {
     $('#input-bar').classList.remove('hidden');
+    $('#player-input').classList.remove('hidden');
     $('#tab-input').setAttribute('aria-pressed', 'true');
     $('#tab-input').classList.add('listening');
     $('#input-monitor').checked = pref(MONITOR_KEY) === '1';
@@ -5612,6 +5839,7 @@
     if (rec.active) stopRecording();
     stopCapture(false);
     closeInput();
+    $('#player-input').classList.add('hidden');
     $('#input-bar').classList.add('hidden');
     $('#tab-input').setAttribute('aria-pressed', 'false');
     $('#tab-input').classList.remove('listening', 'match', 'off');
@@ -5627,6 +5855,7 @@
   $('#input-bar').addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => $('#input-bar').classList.add('hidden'));
   $('#input-close').addEventListener('click', closeInputBar);
+  $('#player-input').addEventListener('click', closeInputBar);
   $('#input-device').addEventListener('change', (e) => {
     setPref(INPUT_KEY, e.target.value);
     openInput(e.target.value).then(() => navigator.mediaDevices.enumerateDevices())
@@ -5697,20 +5926,40 @@
 
   // Start a draft from the tab shown (imported or automatic): its notes become your
   // draft, to play over (Add notes) and clean up (click a note, Delete).
-  $('#tab-draft').addEventListener('click', () => {
+  function startDraft(edit) {
     const d = tabView.data;
     if (!d) return;
     const start = async () => {
       await postJSON('/api/tab/draft', { song: tabView.song, source: d.source, split: !!d.split });
       setSource(tabView.song, 'mine');
-      toast('Draft started. Open Bass input and Record (Add notes) to play over it.');
+      toast(edit ? `Editing a copy of this tab (your draft). Double-click a string to add a note, pick ${GRIDS[32]} in the grid for faster runs.`
+                 : 'Draft started. Open Bass input and Record (Add notes) to play over it.');
       await refreshLibrary();
       reloadAudio();
       loadTab();
     };
     if (!tabView.hasMine) { start().catch((err) => toast(err.message, 'error')); return; }
     ask({ title: 'Start a new draft?', text: 'Your current draft and its takes go to the Trash.', ok: 'Start new draft', danger: true, submit: start });
-  });
+  }
+  $('#tab-draft').addEventListener('click', () => startDraft(false));
+  // Editing an imported or automatic tab (user: "sort of a pain to change it to where I want
+  // it"): the changes go into the draft, so the tab stays as it was. With a draft already,
+  // Edit offers to open it (or start over from this tab); double-clicking the tab asks first.
+  function editThisTab(asked) {
+    const d = tabView.data;
+    if (!d || d.source === 'mine') return;
+    const name = d.source === 'imported' ? 'imported tab' : 'automatic tab';
+    if (tabView.hasMine) {
+      ask({ title: 'Edit your draft?', text: `This song already has a draft. Open it to keep editing, or start it again from this ${name} (the old draft and its takes go to the Trash).`,
+            ok: 'Open my draft', extra: { label: 'Start again from this tab', action: () => startDraft(true) },
+            submit: async () => { setSource(tabView.song, 'mine'); loadTab(); } });
+      return;
+    }
+    if (!asked) { startDraft(true); return; }
+    ask({ title: 'Edit this tab?', text: `Adding, moving and deleting notes happens in a copy (your draft); the ${name} stays as it is.`,
+          ok: 'Edit a copy', submit: async () => startDraft(true) });
+  }
+  $('#tab-edit').addEventListener('click', () => editThisTab(false));
 
   async function startRecording() {
     if (!input.source || !state.current) return;

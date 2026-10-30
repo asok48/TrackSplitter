@@ -341,6 +341,22 @@ def _beats(env, fps, period):
     return np.array(beats[::-1]) / fps
 
 
+def _pulse(env, fps, beats):
+    """How much harder the song hits on the tracked beats than elsewhere: the onset
+    envelope's peak within 30 ms of each beat over the same beats shifted by random
+    amounts (1 = no beat). Every song in the library measured 1.8-3.0 at its tempo."""
+    w = max(1, int(0.03 * fps))
+
+    def at(times):
+        idx = (np.asarray(times) * fps).astype(int)
+        idx = idx[(idx > w) & (idx < len(env) - w)]
+        return float(np.mean([env[i - w:i + w + 1].max() for i in idx])) if len(idx) else 0.0
+    step = float(np.median(np.diff(beats)))
+    rng = np.random.default_rng(0)
+    elsewhere = np.mean([at(beats + rng.uniform(0, step, len(beats))) for _ in range(8)])
+    return at(beats) / (elsewhere or 1)
+
+
 def lines_for(mix, notes, duration):
     """Split the song into lines: about 2 bars each when the bass sits on a steady beat
     grid, otherwise 4 s each. Returns ({"bpm", "lines": [[start, end, [bar starts]]]})."""
@@ -348,7 +364,7 @@ def lines_for(mix, notes, duration):
     # The tracker can lock onto half or double the real tempo, and swung or triplet parts
     # fall between straight 8ths. So try those, keep the grid the bass notes fit best,
     # scored above what chance alone would put on a grid that fine.
-    best = (0.0, np.array([]), None, 0.0, 2)       # (score, beats, bpm, fraction on grid, division)
+    best = (0.0, np.array([]), None, 0.0, 2, 0.0)  # (score, beats, bpm, fraction on grid, division, pulse)
     try:
         env, fps = _onset_envelope(mix)
         base = _tempo_period(env, fps)
@@ -372,9 +388,19 @@ def lines_for(mix, notes, duration):
             chance = min(0.95, 2 * 0.04 * division / step)
             score = (hit - chance) / (1 - chance)
             if score > best[0]:
-                best = (score, beats + shift, bpm, hit, division)   # grid lined up with the bass itself
-    score, beats, bpm, on_grid, division = best
-    if score < 0.4:   # no steady grid: fixed-length lines without bar lines
+                best = (score, beats + shift, bpm, hit, division, None)   # grid lined up with the bass itself
+    score, beats, bpm, on_grid, division, _ = best
+    # Steady enough for bars: the bass clearly on the grid, or a little on it while the
+    # song itself (drums) hits hard on the beats at a steady tempo. The bass test alone
+    # gave 8 of 24 library songs no bars (Brianstorm, Amsterdam, Save Yourself, Wow! Wow!
+    # Wow!, LoveCop...: 0.21-0.36 at the right tempo): on fast, busy parts the transcribed
+    # notes wobble, and a fine grid catches many notes by chance. The tempo was right on
+    # all of them (within 2% of their imported tabs); the songs' pulse was 1.8-3.0.
+    steady = score >= 0.4
+    if not steady and score >= 0.15 and len(beats) >= 8:
+        jitter = float(np.std(np.diff(beats)) / np.median(np.diff(beats)))   # library: 0.016-0.046
+        steady = jitter < 0.06 and _pulse(env, fps, beats) >= 1.5
+    if not steady:   # no steady grid: fixed-length lines without bar lines
         edges = np.arange(0, duration + 4, 4.0)
         return {"bpm": None, "on_grid": round(on_grid, 2), "grid": [],
                 "lines": [[float(a), float(min(b, duration)), []] for a, b in zip(edges, edges[1:]) if a < duration]}
@@ -384,7 +410,20 @@ def lines_for(mix, notes, duration):
         j = int(np.argmin(np.abs(beats - s)))
         if abs(beats[j] - s) < 0.06:
             weight[j % 4] += a * min(e - s, 0.5)
+    # Measured against the bar lines of 19 imported tabs: right on 14 of the 17 with a clear
+    # answer (wrong ones mostly half a bar off). Adding where the bass changes note, the
+    # harmony changes or the kick hits fit all 17 better, but left-one-out it was still 14:
+    # no real gain. The page can move the bars a beat at a time instead (`shift_bars`).
     bars = beats[int(np.argmax(weight))::4]
+    lines = _lines_from_bars(bars, duration)
+    step = float(np.median(np.diff(beats)))
+    grid = np.sort(np.concatenate([beats + k * step / division for k in range(division)]))
+    return {"bpm": round(float(bpm), 1), "on_grid": round(on_grid, 2), "grid": grid.tolist(), "lines": lines}
+
+
+def _lines_from_bars(bars, duration):
+    """Lines of tab from bar starts: 1-4 bars a line (about 5 s), from 0:00 to the end."""
+    bars = np.asarray(bars, dtype=float)
     bar_len = float(np.median(np.diff(bars)))
     per_line = int(np.clip(round(5.0 / bar_len), 1, 4))
     edges = list(bars[::per_line])
@@ -398,10 +437,32 @@ def lines_for(mix, notes, duration):
     for a, b in zip(edges, edges[1:]):
         inside = [float(x) for x in bars if a <= x < b]
         lines.append([float(a), float(min(b, duration)), inside])
-    step = float(np.median(np.diff(beats)))
-    grid = np.sort(np.concatenate([beats + k * step / division for k in range(division)]))
-    return {"bpm": round(float(bpm), 1), "on_grid": round(on_grid, 2), "grid": grid.tolist(),
-            "lines": [l for l in lines if l[0] < duration]}
+    return [l for l in lines if l[0] < duration]
+
+
+def shift_bars(lines, beats):
+    """The same lines with every bar line moved `beats` beats later (earlier if negative),
+    each beat a quarter of its bar (user: bar lines should start on beat 1; the downbeat
+    from the audio is often a beat or two off). Lines without bars stay as they are."""
+    bars = sorted({b for _, _, inside in lines for b in inside})
+    if len(bars) < 2 or not beats:
+        return lines
+    duration = lines[-1][1]
+    lens = np.diff(bars)
+    marks = [b + j * l / 4 for b, l in zip(bars, lens) for j in range(4)]
+    last = bars[-1]
+    while last < duration + 2 * lens[-1]:                     # past the last bar, at its length
+        marks += [last + j * lens[-1] / 4 for j in range(4)]
+        last += lens[-1]
+    first = bars[0]
+    while first > 0:                                          # before the first bar, at its length
+        first -= lens[0]
+        marks = [first + j * lens[0] / 4 for j in range(4)] + marks
+    marks = np.array(marks)
+    k = int(beats) % 4
+    moved = marks[k::4]
+    moved = moved[(moved >= 0) & (moved < duration)]
+    return _lines_from_bars(moved, duration) if len(moved) > 1 else lines
 
 
 def _attack_strength(bass, hop=256, n_fft=1024):
@@ -627,17 +688,29 @@ def _difficulty(times, positions):
     return total / max(1, len(positions))
 
 
-def fingering(notes, tuning, learned=None):
+def fingering(notes, tuning, learned=None, pinned=None):
     """[(note index, string, fret)] for the notes playable in this tuning. With costs
     learned from the user's imported tabs (`learned`), the fingering those costs find;
-    otherwise the easiest of fingerings centered on different hand positions."""
+    otherwise the easiest of fingerings centered on different hand positions.
+    `pinned` ({note index: (string, fret)}): notes that keep their place (a draft started
+    from an imported tab keeps the tab's); the others are placed around them, each pitch
+    leaning to where the pinned notes play it."""
     strings = TUNINGS[tuning][1]
     playable = [i for i, (_, _, p, _) in enumerate(notes) if strings[0] <= p <= strings[-1] + MAX_FRET]
     if not playable:
         return []
     pitches = [notes[i][2] for i in playable]
     times = [notes[i][0] for i in playable]
-    if learned:
+    pinned = {i: tuple(sf) for i, sf in (pinned or {}).items()
+              if 0 <= sf[0] < len(strings) and strings[sf[0]] + sf[1] == notes[i][2] and 0 <= sf[1] <= MAX_FRET}
+    if pinned:
+        counts = defaultdict(Counter)
+        for i, sf in pinned.items():
+            counts[notes[i][2]][sf] += 1
+        usual = {p: c.most_common(1)[0][0] for p, c in counts.items()}
+        best = _hand_position(pitches, strings, usual=usual, weight=1.0, style={**STYLE, **(learned or {})},
+                              forced=[pinned.get(i) for i in playable])
+    elif learned:
         best = _consistent(pitches, strings, style={**STYLE, **learned})
     else:
         options = [_consistent(pitches, strings)] + [_consistent(pitches, strings, target=t, pull=0.1) for t in (1, 5, 9)]

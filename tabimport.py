@@ -55,6 +55,7 @@ class TabTrack:
     tempo: float = 120.0
     timed: bool = True  # False for text tabs: positions are only the order of the notes
     tempo_known: bool = True   # False for text tabs with counts: rhythm but no tempo (sync guesses it)
+    rhythm: bool = True        # False: positions are a text tab's spacing (notes then go where they're heard)
 
 
 def is_bass(track):
@@ -296,7 +297,8 @@ def _open_strings(labels):
 
 
 COUNT = re.compile(r"^\s*1(\s+[1-9+&ea])+\s*$")   # a count line under a system: "1 + 2 + 3 + 4 + 1 + ..."
-REPEATS = re.compile(r"[x×]\s*(\d+)|(\d+)\s*[x×]")
+REPEATS = re.compile(r"[x×]\s*(\d+)|(\d+)\s*[x×]", re.I)
+REPEAT_LINE = re.compile(r"^\s*\(?\s*(?:[x×]\s*\d+|\d+\s*[x×])\s*\)?\s*$", re.I)   # "(x2)" on its own line
 
 
 def _row_notes(row, a, b):
@@ -335,8 +337,9 @@ def read_text(text):
         if m and "-" in line:
             block.append((m.group(1), line, m.end() - 1))
             continue
-        if 4 <= len(block) <= 6:   # a count line comes right under its system
-            systems.append({"rows": block, "count": line if COUNT.match(line) else None})
+        if 4 <= len(block) <= 6:   # a count line or "(x2)" comes right under its system
+            systems.append({"rows": block, "count": line if COUNT.match(line) else None,
+                            "tail": line if REPEAT_LINE.match(line) else ""})
         block = []
     if not systems:
         return []
@@ -347,7 +350,7 @@ def read_text(text):
     bars = []
     for sy in systems:
         off = sy["rows"][0][2]
-        rows, tail = [], ""
+        rows, tail = [], sy["tail"]
         for _, line, o in sy["rows"]:
             body = line[o:]
             last = body.rfind("|")
@@ -403,6 +406,11 @@ def read_text(text):
             hit = next((m for m in reversed(made) if m[1] <= c + 2), None)
             if hit:
                 hit[2].repeat_close = plays
+        if times and made and not opens and not closes:
+            # "(x4)" with no repeat signs (Ultimate Guitar's usual way): the whole system
+            # N times. Amsterdam's verse, chorus and post-chorus were played once each, so
+            # the tab covered half the song.
+            made[0][2].repeat_open, made[-1][2].repeat_close = True, plays
         bars += [m[2] for m in made]
     return [TabTrack("Pasted tab", strings, bars, 120.0, timed=timed, tempo_known=not timed)]
 
@@ -749,7 +757,8 @@ def sync(track, heard, beat=None):
         # notes within 50 ms end to end on a test song); placing notes inside each bar like
         # text tabs do (matched in order, guided by the exact rhythm) fixes that.
         out, matched = _place_in_bars(track, notes, playable, heard, list(bar_audio), bar_starts, ends,
-                                      lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=True, bar_audio_end=bar_audio_end)
+                                      lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=track.rhythm,
+                                      bar_audio_end=bar_audio_end)
         # Bars left out (not in this recording) drop their notes; the tab file keeps them.
         return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], notes[k][6] or ""] for k, n in enumerate(out)
                           if bar_audio[notes[k][5]] is not None],
@@ -759,7 +768,30 @@ def sync(track, heard, beat=None):
     # pitch sequence slips by a riff repetition (60% right on a test line). So bars are
     # placed by their notes' content (which pitches, not where), at the song's own bar
     # length, then notes are matched in order within each bar.
-    return _sync_text(track, notes, playable, tab_p, heard, beat)
+    text = _sync_text(track, notes, playable, tab_p, heard, beat)
+    # That follows the tab in order, but pasted tabs often don't follow the recording:
+    # Amsterdam's UG tab has an intro the song doesn't (the riff starts the verse) and
+    # leaves out part of the post-chorus (38% of notes matched). So also: every bar as
+    # one bar of the length found, notes spaced as written, synced like a file (bars may
+    # be left out or jumped past); the better fit wins.
+    if len(text["bars"]) > 1:
+        length = float(np.median(np.diff(text["bars"])))
+        # A segment with several times the notes of a typical one is several bars (tabs
+        # write runs of steady 8ths without bar lines: Amsterdam's post-chorus has 32 in one,
+        # crammed into one bar's time; 49% -> 55% of its notes on a heard note. Counting
+        # them more generously (x1.5) threw the tempo search off: bars 4.8 s, 49%).
+        typical = float(np.median([len(b.notes) for b in track.bars if b.notes] or [1]))
+        size = [max(1, round(len(b.notes) / max(typical, 1))) if len(b.notes) > 1.5 * typical else 1
+                for b in track.bars]
+        even = [replace(b, beats=4.0 * m, notes=[replace(n, pos=n.pos * 4 * m / b.beats, dur=min(n.dur, 1.0) * 4 * m / b.beats)
+                                                 for n in b.notes]) for b, m in zip(track.bars, size)]
+        # Spacing isn't rhythm (Amsterdam's notes came out squeezed to the start of each
+        # bar: "too fast and notes aren't lining up"), so notes still go where they're heard.
+        timed = sync(replace(track, bars=even, tempo=240 / max(length, 0.3), timed=True, tempo_known=True, rhythm=False),
+                     heard, beat)
+        if timed["quality"] > text["quality"]:
+            return timed
+    return text
 
 
 def _content(bar_pcs, heard_t, heard_pc, a, b):
@@ -813,16 +845,35 @@ def _sync_text(track, notes, playable, tab_p, heard, beat):
         m = _sync_order(seq, inside, expect(ks, a0), length / 4)
         return sum(1.0 if inside[j][2] == p else 0.5 for j, p in zip(m, seq) if j >= 0)
 
+    bar_ks = [[k for k in playable if notes[k][5] == b] for b in range(n_bars)]
+
+    def pair(b, x):   # bar b at x and the next bar after it, as matched notes
+        return ordered(bar_ks[b], x) + (ordered(bar_ks[b + 1], x + length) if b + 1 < n_bars and bar_ks[b + 1] else 0.0)
+
     bar_audio, prev = np.zeros(n_bars), None
     for b in range(n_bars):
         expected = start + b * length if prev is None else prev + length
-        ks = [k for k in playable if notes[k][5] == b]
+        ks = bar_ks[b]
         if ks:
             cands = np.arange(-0.3, 0.3001, 0.02)
             scores = [ordered(ks, expected + c) for c in cands]
             top = max(scores)
             if top > 0:   # ties: the smallest move
                 expected += min((c for c, sc in zip(cands, scores) if sc == top), key=abs)
+            # The recording has something the tab leaves out (Amsterdam's UG tab is ~30 s
+            # short after the post-chorus, so the last chorus landed 40 s early): when a
+            # bar fits badly here, it may jump ahead to the first place where it and the
+            # next bar both fit clearly (2 bars, so one bar played differently doesn't
+            # send it to the riff's next repeat).
+            want = len(ks) + (len(bar_ks[b + 1]) if b + 1 < n_bars else 0)
+            if prev is not None and top < 0.4 * len(ks):
+                here = pair(b, expected)
+                ahead = [(x, pair(b, x)) for x in np.arange(expected + 0.4, min(expected + 60, heard_t[-1]), 0.1)]
+                good = [x for x, sc in ahead if sc >= max(0.7 * want, here + 0.3 * want)]
+                if good:
+                    x0 = good[0]
+                    near = [(x, sc) for x, sc in ahead if x0 <= x <= x0 + 0.6]
+                    expected = max(near, key=lambda e: e[1])[0]
         bar_audio[b] = prev = expected
     out, matched = _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends,
                                   lambda b: length, keep_lengths=False)
