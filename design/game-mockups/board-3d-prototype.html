@@ -1,0 +1,255 @@
+<!doctype html><meta charset="utf-8"><title>3D board prototype</title>
+<style>
+html,body{margin:0;height:100%;background:#0b0806;overflow:hidden}
+canvas{display:block}
+/* Grit over everything: fine noise, like a printed gig poster */
+#grit{position:fixed;inset:0;pointer-events:none;opacity:.13;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+#vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,transparent 45%,rgba(0,0,0,.65) 100%)}
+.hud{position:fixed;top:20px;right:26px;display:flex;align-items:center;gap:14px;pointer-events:none;font-family:"Avenir Next Condensed",Impact,sans-serif}
+.plate{position:relative;padding:8px 22px 10px 26px;background:linear-gradient(180deg,#1b1714,#0c0a08);clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%);
+  box-shadow:inset 0 0 0 2px #6b6156}
+.plate::after{content:"";position:absolute;inset:0;clip-path:inherit;border-top:2px solid #b8aa96;pointer-events:none}
+.score{font-weight:900;font-size:44px;line-height:1;color:#fff;letter-spacing:.02em;text-align:right;text-shadow:0 2px 0 #000}
+.stars{margin-top:4px;text-align:right;font-size:18px;letter-spacing:3px;color:#3a332c}.stars b{color:#f5b70a;text-shadow:0 0 8px rgba(245,183,10,.6)}
+.mult{width:78px;height:78px;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:radial-gradient(circle at 35% 30%,#fff 0,#c9c2b8 25%,#6d665e 70%,#2a2622 100%);box-shadow:0 4px 14px rgba(0,0,0,.7),inset 0 0 0 3px #2a2622}
+.mult::before{content:"";position:absolute;inset:7px;border-radius:50%;background:conic-gradient(#f59e0b 0 70%,#1a1612 70% 100%)}
+.mult::after{content:"";position:absolute;inset:13px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#2b241e,#0d0b09)}
+.mult span{position:relative;z-index:1;font:900 32px "Avenir Next Condensed",Impact,sans-serif;color:#fbbf24;text-shadow:0 2px 0 #000}
+.pick{position:fixed;left:22px;top:44px;z-index:2;display:flex;gap:4px;align-items:center;padding:4px;border-radius:10px;background:rgba(20,16,12,.8);font:600 13px -apple-system,system-ui;color:rgba(255,236,210,.6)}
+.pick span{padding:0 8px}.pick button{border:0;border-radius:7px;padding:6px 12px;background:none;color:rgba(255,236,210,.7);font:inherit;cursor:pointer}.pick button.on{background:#f59e0b;color:#1a1208}
+.tag{position:fixed;left:22px;top:18px;color:rgba(255,236,210,.45);font:600 13px -apple-system,system-ui}
+</style>
+<div class="pick" id="pick"><span>Fretboard</span><button data-style="maple">Maple</button><button data-style="dark">Dark</button></div>
+<div class="tag">3D prototype · sideways board · rock-gig styling · auto-play demo</div>
+<div class="hud"><div class="plate"><div class="score" id="score">12,450</div><div class="stars"><b>★★★</b>★★</div></div><div class="mult"><span>3x</span></div></div>
+<div id="vig"></div><div id="grit"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const COL = ['#4ade80', '#f87171', '#facc15', '#60a5fa'], NAMES = ['E', 'A', 'D', 'G'];
+const PAINT = ['#15803d', '#b91c1c', '#ca8a04', '#1d4ed8'];   // note bodies: deeper, so light doesn't wash them out
+const NOTE_W = 0.56, GAP = 0.16;   // every note the same size, always this far apart
+let SPEED = 3.6, AHEAD = 4.9;
+const LANE = 1.5, BEAT = 0.5;
+const NUT = -0.62, HEAD = 4.3;   // where the strings start (the nut), and how far the headstock reaches past it
+const laneZ = (s) => (1.5 - s) * LANE;            // low E nearest the camera = bottom of the screen
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = true;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0b0806');
+scene.fog = new THREE.Fog('#0b0806', 15, 36);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.3;
+const world = new THREE.Group(); world.rotation.x = Math.PI / 4; world.scale.z = 1.2; scene.add(world);   // strings spread to fill the height   // the board leans back at 45 degrees (user: "like a 45 degree angle")
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100);
+// In front of the board and above it, turned a little to the right: strings stack top to bottom
+// like a tab (low E at the bottom), the strike line on the left, the far end receding.
+const nameSprites = [];
+function aim() {
+  // Nearly straight on, turned 5 degrees right ("don't make it so angled"). Then slid sideways until every
+  // string name sits inside the left edge, measured on screen, so a wide full-screen window doesn't cut
+  // them off (perspective pushes the bottom string's name further left than a simple angle says).
+  const aspect = innerWidth / innerHeight, z = 16, yaw = 5 * Math.PI / 180;
+  camera.fov = aspect < 1.2 ? 50 : 40; camera.aspect = aspect; camera.updateProjectionMatrix();
+  const half = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * aspect);
+  let x = (NUT - 1.2) + z * Math.tan(half - yaw);
+  const place = () => { camera.position.set(x, 1.0, z); camera.lookAt(x + z * Math.tan(yaw), -0.5, 0); camera.updateMatrixWorld(); };
+  place();
+  if (!nameSprites.length) return;
+  world.updateMatrixWorld();
+  for (let i = 0; i < 30; i++) {
+    const left = Math.min(...nameSprites.map((n) => n.getWorldPosition(new THREE.Vector3()).project(camera).x));
+    if (left >= -0.93) break;                            // ~3.5% margin from the left edge
+    x -= (-0.93 - left) * 3 + 0.05; place();
+  }
+}
+aim();
+
+// Stage light: warm and low, two coloured spots raking across the board.
+scene.add(new THREE.HemisphereLight('#ffd7a8', '#0b0806', 0.25));
+const key = new THREE.DirectionalLight('#fff1dc', 0.8); key.position.set(-2, 9, 12); key.castShadow = true; scene.add(key);
+for (const [x, c, i] of [[4, '#ff7a1a', 30], [16, '#e11d48', 25]]) {
+  const spot = new THREE.SpotLight(c, i, 30, 0.5, 0.6, 1.6); spot.position.set(x, 10, 6); spot.target.position.set(x + 2, 0, 0); scene.add(spot, spot.target);
+}
+
+// The board is a maple neck, like the user's bass (grain made on a canvas).
+// Wood: long, continuous grain lines running along the neck, each gently wavy, plus a few soft broad
+// streaks; low contrast, drawn large so it stays crisp (the scattered streaks before looked "sloppy").
+function woodTexture(base, light, dark, contrast) {
+  const W = 2048, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 6; i++) {                          // broad soft streaks
+    const y = Math.random() * H, h = 20 + Math.random() * 50, grad = g.createLinearGradient(0, y - h, 0, y + h);
+    grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(0.5, Math.random() < 0.5 ? light : dark); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.18 * contrast; g.fillStyle = grad; g.fillRect(0, y - h, W, h * 2);
+  }
+  g.lineWidth = 1.2;
+  for (let i = 0; i < 70; i++) {                         // the grain lines
+    // whole numbers of waves across the texture, so it repeats without a seam
+    const y0 = Math.random() * H, amp = 2 + Math.random() * 6, k1 = 1 + Math.floor(Math.random() * 3), k2 = 4 + Math.floor(Math.random() * 5), ph = Math.random() * 6;
+    g.globalAlpha = (0.12 + Math.random() * 0.22) * contrast; g.strokeStyle = Math.random() < 0.8 ? dark : light;
+    g.beginPath();
+    for (let x = 0; x <= W; x += 16) { const a = (2 * Math.PI * x) / W, y = y0 + Math.sin(k1 * a + ph) * amp + Math.sin(k2 * a + ph * 2) * amp * 0.25; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const darkTexture = () => woodTexture('#1b1512', 'rgba(120,95,70,1)', 'rgba(0,0,0,1)', 0.5);      // the earlier dark board
+const grainTexture = () => woodTexture('#6f4f2a', 'rgba(220,185,130,1)', 'rgba(60,36,12,1)', 0.9);    // honey maple, deep enough that the notes stand out
+// The board runs on past the left edge of the screen, so nothing is empty there (user: "fill in that space on the left").
+const boardStart = NUT - 8, boardEnd = SPEED * AHEAD + 4, boardLen = boardEnd - boardStart, boardW = LANE * 4 + 0.4, bx = boardStart + boardLen / 2;
+const BOARDS = { maple: { map: grainTexture(), roughness: 0.7, metalness: 0 }, dark: { map: darkTexture(), roughness: 0.55, metalness: 0.25 } };
+const board = new THREE.Mesh(new THREE.BoxGeometry(boardLen, 0.3, boardW), new THREE.MeshStandardMaterial(BOARDS.maple));
+board.position.set(bx, -0.15, 0); board.receiveShadow = true; world.add(board);
+const bands = [];
+// Strings: real round steel strings, thicker for the low ones, a faint colour band under each.
+for (let s = 0; s < 4; s++) {
+  const band = new THREE.Mesh(new THREE.PlaneGeometry(boardLen, LANE * 0.94), new THREE.MeshBasicMaterial({ color: COL[s], transparent: true, opacity: 0.1, depthWrite: false }));
+  band.rotation.x = -Math.PI / 2; band.position.set(bx, 0.002, laneZ(s)); world.add(band); bands.push(band);
+  const r = 0.045 - s * 0.008;
+  const str = new THREE.Mesh(new THREE.CylinderGeometry(r, r, boardLen, 10), new THREE.MeshStandardMaterial({ color: '#8a847c', metalness: 0.6, roughness: 0.6 }));
+  str.rotation.z = Math.PI / 2; str.position.set(bx, 0.05 + 0.0, laneZ(s)); str.castShadow = true; world.add(str);
+}
+
+
+function label(text, color, size = 128, outline = false, badge = false) {
+  const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
+  if (badge) {                                           // a dark rounded badge behind the number, for contrast on any board
+    const w = text.length > 1 ? size * 0.92 : size * 0.66, h = size * 0.66;
+    g.fillStyle = 'rgba(14,10,7,0.82)'; g.beginPath(); g.roundRect((size - w) / 2, (size - h) / 2 + size * 0.03, w, h, h * 0.3); g.fill();
+  }
+  g.font = `900 ${size * (badge ? 0.56 : 0.74)}px "Avenir Next Condensed", Impact, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (outline) { g.lineWidth = size * 0.12; g.lineJoin = 'round'; g.strokeStyle = 'rgba(10,7,5,.9)'; g.strokeText(text, size / 2, size / 2 + size * 0.05); }
+  g.fillStyle = color; g.fillText(text, size / 2, size / 2 + size * 0.05);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// Strike pads: low and note-shaped, a thin rim in the string's colour around a dark lens that lights up on a hit.
+const pads = [];
+for (let s = 0; s < 4; s++) {
+  const bezel = new THREE.Mesh(new RoundedBoxGeometry(NOTE_W + 0.16, 0.1, 0.9, 4, 0.08), new THREE.MeshStandardMaterial({ color: '#000', emissive: COL[s], emissiveIntensity: 0.55 })); bezel.position.set(0, 0.06, laneZ(s)); world.add(bezel);
+  const lens = new THREE.Mesh(new RoundedBoxGeometry(NOTE_W + 0.04, 0.12, 0.78, 4, 0.08),
+    new THREE.MeshPhysicalMaterial({ color: '#100c0a', roughness: 0.2, clearcoat: 1, emissive: COL[s], emissiveIntensity: 0.12 }));
+  lens.position.set(0, 0.13, laneZ(s)); world.add(lens);
+  const name = new THREE.Sprite(new THREE.SpriteMaterial({ map: label(NAMES[s], COL[s], 128, true), depthWrite: false }));
+  name.scale.set(0.45, 0.45, 1); name.position.set(NUT - 0.45, 0.35, laneZ(s)); world.add(name); nameSprites.push(name);
+  const light = new THREE.PointLight(COL[s], 0, 4, 2); light.position.set(0.3, 0.8, laneZ(s)); world.add(light);
+  pads.push({ lens, bezel, light, hitAt: -9 });
+}
+aim();                                                   // again, now the names exist
+
+// Notes: solid glossy blocks with a darker skirt, the fret in heavy type on top, tilted to the camera.
+const PATTERN = [[0, 1, 5], [0.5, 1, 7], [1, 0, 0], [1.5, 0, 0], [2, 2, 7], [2.5, 1, 5], [3, 3, 5], [3.5, 2, 7], [4, 1, 5], [4.25, 1, 5], [4.5, 0, 3], [5, 3, 5], [5.5, 2, 7], [6, 0, 0], [6.5, 1, 5], [7, 1, 7], [7.5, 2, 5], [8, 1, 10], [8.5, 2, 12], [9, 1, 10], [9.5, 2, 12], [10, 0, 0], [10.5, 0, 0], [11, 1, 5], [11.5, 1, 7]];
+const LOOP = 12, top = new RoundedBoxGeometry(0.86, 0.26, 0.78, 4, 0.12), skirt = new RoundedBoxGeometry(0.9, 0.14, 0.82, 3, 0.07), numGeo = new THREE.PlaneGeometry(0.66, 0.66);
+const tex = {};
+const prevOf = (i) => { const [b, s] = PATTERN[i]; let best = -1, bd = Infinity; PATTERN.forEach(([b2, s2], j) => { if (s2 !== s || j === i) return; const d = (b - b2 + LOOP) % LOOP; if (d > 0 && d < bd) { bd = d; best = j; } }); return [best, bd * BEAT]; };
+const gapAfter = PATTERN.map(([b, s], i) => {           // seconds to the next note on the same string
+  let best = Infinity;
+  for (const [b2, s2] of PATTERN) if (s2 === s) { let d = (b2 - b + LOOP) % LOOP; if (d > 0 && d < best) best = d; }
+  return best * BEAT;
+});
+// A quick repeat of the same fret on the same string is a slim tick behind its note (as in the 2D game), so the
+// speed only needs to keep distinct notes apart: the 10th-percentile gap, not the very quickest.
+const isTick = PATTERN.map((n, i) => { const [j, d] = prevOf(i); return j >= 0 && PATTERN[j][2] === n[2] && d * SPEED < NOTE_W + GAP; });
+const gaps = gapAfter.filter((g, i) => !isTick[(i + 1) % PATTERN.length]).sort((a, b) => a - b);
+SPEED = Math.max(SPEED, (NOTE_W + GAP) / gaps[Math.floor(gaps.length * 0.1)]);
+AHEAD = 17.5 / SPEED;
+const notes = PATTERN.map(([b, s, f], i) => {
+  const wide = NOTE_W / 0.86;
+  const open = f === 0, grp = new THREE.Group();
+  const shade = new THREE.Color(PAINT[s]).multiplyScalar(0.45);
+  const body = new THREE.Mesh(top, open
+    ? new THREE.MeshPhysicalMaterial({ color: '#120e0b', roughness: 0.25, clearcoat: 1, emissive: COL[s], emissiveIntensity: 0.06 })
+    : new THREE.MeshPhysicalMaterial({ color: PAINT[s], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.35 }));
+  body.position.y = 0.2; body.castShadow = true;
+  const base = new THREE.Mesh(skirt, new THREE.MeshStandardMaterial({ color: open ? COL[s] : '#0a0705', roughness: 0.6, emissive: open ? COL[s] : '#000', emissiveIntensity: open ? 0.8 : 0 }));
+  base.position.y = 0.07;                                   // a dark edge all round, so neighbours never merge
+  body.scale.x = wide; base.scale.x = wide;
+  if (isTick[i]) { body.scale.x = base.scale.x = 0.14 / 0.86; grp.userData.tick = true; }
+  // The number is printed on the note's top face: white on a coloured note, coloured on a dark open string
+  // (user: "not huge on the background on the notes" — the dark badges).
+  const k = `${f}|${open}|${s}`; tex[k] ||= label(String(f), open ? COL[s] : '#ffffff', 128, !open);   // white with a thin dark edge on coloured notes
+  const num = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), new THREE.MeshBasicMaterial({ map: tex[k], transparent: true, depthWrite: false, toneMapped: false }));
+  num.rotation.x = -Math.PI / 2; num.position.y = 0.335;
+  grp.add(base, body, ...(grp.userData.tick ? [] : [num])); world.add(grp);   // a tick has no number
+  for (const m of [body.material, base.material, num.material]) { m.transparent = true; m.userData.full = m.opacity; }   // for fading in
+  return { b, s, grp, hit: false };
+});
+// Bar lines are the neck's nickel fret wires; alternate bars carry a black dot inlay between them (two every 6th), like the maple neck.
+const fretMat = new THREE.MeshStandardMaterial({ color: '#c9c3b8', metalness: 1, roughness: 0.35 }), dotMat = new THREE.MeshStandardMaterial({ color: '#0a0908', roughness: 0.5 });
+const bars = Array.from({ length: 10 }, (_, i) => {
+  const l = new THREE.Group();
+  const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, boardW, 10), fretMat); wire.rotation.x = Math.PI / 2; wire.position.y = 0.01; l.add(wire);
+  const dots = i % 6 === 5 ? [-LANE, LANE] : i % 2 ? [0] : [];
+  for (const z of dots) { const d = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.01, 24), dotMat); d.position.set(4 * BEAT * SPEED / 2, 0.003, z); l.add(d); }
+  const line = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, boardW), new THREE.MeshBasicMaterial({ color: '#ffe9c9', transparent: true, opacity: 0.14 }));
+  line.position.y = 0.008; line.userData.dark = true; l.add(line);
+  world.add(l); return l;
+});
+// Fretboard style (a Game setting in the app): maple with frets and dots, or the dark board with light bar lines.
+function setBoard(style) {
+  Object.assign(board.material, BOARDS[style]); board.material.needsUpdate = true;
+  for (const l of bars) for (const c of l.children) c.visible = style === 'dark' ? !!c.userData.dark : !c.userData.dark;
+  bands.forEach((b, s) => { b.material.opacity = style === 'dark' ? (s % 2 ? 0.07 : 0.045) : 0.1; });
+  document.querySelectorAll('#pick button').forEach((b) => b.classList.toggle('on', b.dataset.style === style));
+  try { localStorage.setItem('track-splitter-fretboard', style); } catch {}
+}
+document.querySelectorAll('#pick button').forEach((b) => b.addEventListener('click', () => setBoard(b.dataset.style)));
+setBoard((() => { try { return localStorage.getItem('track-splitter-fretboard') === 'dark' ? 'dark' : 'maple'; } catch { return 'maple'; } })());
+
+// Hits: the pad's lens lights up, a ring spreads on the board, a few sparks.
+const rings = [], sparks = [], sparkGeo = new THREE.SphereGeometry(0.035, 6, 6);
+function hit(s) {
+  pads[s].hitAt = performance.now();
+  for (let i = 0; i < 4; i++) {
+    const sp = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: i % 3 ? COL[s] : '#ffe7a3', transparent: true, toneMapped: false }));
+    sp.position.set(0, 0.3, laneZ(s)); world.add(sp);
+    sp.scale.setScalar(0.7); sparks.push({ sp, z0: laneZ(s), v: [0.6 + Math.random() * 1.2, 2.2 + Math.random() * 1.4, (Math.random() - 0.5) * 1.2], born: performance.now() });
+  }
+}
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.4, 0.98));
+composer.addPass(new OutputPass());
+addEventListener('resize', () => { aim(); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); });
+
+const start = performance.now(); let score = 12450;
+(function frame() {
+  const now = performance.now(), beatT = ((now - start) / 1000 / BEAT) % LOOP;
+  for (const n of notes) {
+    let dt = (n.b - beatT) * BEAT; if (dt < -1) dt += LOOP * BEAT;
+    if (dt <= 0 && dt > -0.25 && !n.hit) { n.hit = true; n.hitAt = now; hit(n.s); score += 100; }
+    if (dt > 0.5) n.hit = false;
+    const x = dt * SPEED, sink = n.hit ? Math.min(1, (now - n.hitAt) / 90) : 0;
+    // Coming in: over the far 3.5 units a note fades from nothing to solid and settles onto the board
+    // (user: "not a big fan of how the notes pop in").
+    const far = SPEED * AHEAD, come = Math.max(0, Math.min(1, (far - x) / 3.5)), ease = come * come * (3 - 2 * come);
+    n.grp.visible = (!n.hit || sink < 1) && x > -0.45 && x < far;
+    n.grp.position.set(n.hit ? 0 : x, 0.35 * (1 - ease) - 0.25 * sink, laneZ(n.s)); n.grp.scale.setScalar((1 - 0.5 * sink) * (0.85 + 0.15 * ease));
+    n.grp.traverse((o) => { if (o.material) o.material.opacity = o.material.userData.full * ease; });
+  }
+  bars.forEach((l, i) => { const x = (((i * 4 - beatT) % 40) + 40) % 40 * BEAT * SPEED; l.position.x = x; l.visible = x < SPEED * AHEAD; });
+  for (const p of pads) {
+    const age = now - p.hitAt, k = Math.max(0, 1 - age / 220), dip = age < 60 ? age / 60 : Math.max(0, 1 - (age - 60) / 120);
+    p.lens.material.emissiveIntensity = 0.12 + 1.5 * k; p.light.intensity = 4 * k;
+    p.lens.position.y = 0.13 - 0.06 * dip; p.bezel.position.y = 0.06 - 0.04 * dip;
+  }
+    for (let i = sparks.length - 1; i >= 0; i--) { const s = sparks[i], a = (now - s.born) / 1000; if (a > 0.25) { world.remove(s.sp); sparks.splice(i, 1); continue; } s.sp.position.set(s.v[0] * a, 0.3 + s.v[1] * a - 6 * a * a, s.z0 + s.v[2] * a); s.sp.material.opacity = 1 - a / 0.25; }
+  document.getElementById('score').textContent = score.toLocaleString();
+  composer.render();
+  requestAnimationFrame(frame);
+})();
+</script>

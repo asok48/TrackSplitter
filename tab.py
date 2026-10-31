@@ -266,10 +266,12 @@ def _fix_octaves(notes, bass, level=0.25, lowest=23, half_level=None, memo=None)
 
 
 def transcribe(bass, on_progress=lambda fraction: None, mix=None, min_amp=0.0, melodia="gaps", split=None,
-               keep=None, octaves=0.25, half_level=0.08, **options):
+               keep=None, octaves=0.25, half_level=0.08, split_below=None, split_gap=6, **options):
     """Notes (start s, end s, MIDI pitch, amplitude) of a mono 22.05 kHz bass track
     (mix: the whole song at the same rate, if available, to spot leakage). keep: a dict
-    that receives the model's onset activations and frame times, for split_on_grid."""
+    that receives the model's onset activations and frame times, for split_on_grid.
+    split: re-plucks split at this onset level (_split_replucks), only notes up to MIDI
+    split_below if given, split_gap frames apart at least."""
     frames, onsets = _model_output(bass, on_progress)
     times = _frames_to_time(frames.shape[0])
     if keep is not None:
@@ -278,7 +280,8 @@ def transcribe(bass, on_progress=lambda fraction: None, mix=None, min_amp=0.0, m
     if melodia == "gaps":
         events = _gap_fillers(events)
     if split:
-        events = _split_replucks(events, onsets, split)
+        low = [ev for ev in events if split_below is None or ev[2] <= split_below]
+        events = [ev for ev in events if not (split_below is None or ev[2] <= split_below)] + _split_replucks(low, onsets, split, split_gap)
     notes = sorted((float(times[s]), float(times[e]), int(p), a) for s, e, p, a, _ in events
                    if 23 <= p <= 67 and a >= min_amp)
     notes = _one_at_a_time(_audible(notes, bass, mix))

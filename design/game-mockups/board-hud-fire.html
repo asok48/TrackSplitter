@@ -1,0 +1,110 @@
+<!doctype html><meta charset="utf-8"><title>Legibility · before / after</title>
+<style>
+body{margin:0;background:#111;color:#ddd;font:15px -apple-system,system-ui;padding:20px}
+h2{font:600 19px -apple-system;margin:22px 0 6px} p{margin:0 0 10px;color:#999;max-width:900px}
+canvas{display:block;width:100%;max-width:1200px;height:auto;aspect-ratio:1200/560;border-radius:12px}
+</style>
+<h2>Score and multiplier at each level (×1 → ×4)</h2><p>The ring fills as your streak builds toward the next multiplier; at ×4 it's full, glows blue, and it's on fire: blue-white flames licking up around the ring. Under the score, the stars: earned ones gold, the next one filling as you score.</p><canvas id="m" style="aspect-ratio:1200/230"></canvas>
+<h2>Close-up: ×4 on fire</h2><canvas id="big" style="aspect-ratio:1200/380"></canvas>
+<h2>Before (look A as mocked up)</h2><p>Strong perspective, thin string lines, every note the same style.</p><canvas id="a"></canvas>
+<h2>After: more legible</h2><p>Milder perspective (far notes stay ~75% size), faint bands per string, bigger digits, open strings hollow, bar lines with numbers, a dashed line before a move up the neck. Multiplier next to the score; nothing under the board.</p><canvas id="b"></canvas>
+<script>
+const COL=['#4ade80','#f87171','#facc15','#60a5fa'],NAMES=['E','A','D','G'],F='-apple-system, "SF Pro Display", system-ui';
+const NOTES=[[0.3,1,5],[0.6,1,7],[0.9,0,0],[1.2,0,0],[1.5,2,7],[1.8,1,5],[2.1,1,7],[2.4,3,5],[2.7,0,0],[3.0,2,7],[3.3,1,5],[3.6,0,3],[3.9,1,10],[4.2,2,12],[4.5,1,10],[4.8,2,12]];
+const MOVE=3.75;
+function draw(id,leg){
+ const cv=document.getElementById(id),dpr=2,W=1200,H=560;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);
+ g.fillStyle='#0a0a0d';g.fillRect(0,0,W,H);
+ for(const[x,y,c]of[[.25,.2,'rgba(139,92,246,.16)'],[.8,.25,'rgba(99,102,241,.10)']]){const r=g.createRadialGradient(W*x,H*y,0,W*x,H*y,H*.9);r.addColorStop(0,c);r.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=r;g.fillRect(0,0,W,H)}
+ const n=4,nearX=170,farX=W*.985,midY=H*.55,Z=5,dd=leg?Z*3:Z,rowH=Math.min(120,H*.64/n),gemH=Math.min(54,rowH*.62),gemW=gemH*1.25;
+ const depth=z=>dd/(z+dd),sx=z=>nearX+(farX-nearX)*((z*(Z+dd))/(Z*(z+dd))),laneY=(s,z)=>midY-(s-(n-1)/2)*rowH*depth(z),edgeY=(sd,z)=>midY+sd*(n/2)*rowH*depth(z);
+ const quad=(p,f)=>{g.fillStyle=f;g.beginPath();p.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));g.closePath();g.fill()};
+ const zp=-.25;
+ quad([[sx(zp),edgeY(-1,zp)],[sx(Z),edgeY(-1,Z)],[sx(Z),edgeY(1,Z)],[sx(zp),edgeY(1,zp)]],'rgba(22,22,28,.96)');
+ if(leg)for(let s=0;s<n;s++){const half=z=>rowH*depth(z)/2;quad([[sx(zp),laneY(s,zp)-half(zp)],[sx(Z),laneY(s,Z)-half(Z)],[sx(Z),laneY(s,Z)+half(Z)],[sx(zp),laneY(s,zp)+half(zp)]],s%2?'rgba(255,255,255,.035)':'rgba(255,255,255,0)');
+  const tint=g.createLinearGradient(nearX,0,farX,0);tint.addColorStop(0,COL[s]+'14');tint.addColorStop(1,COL[s]+'05');quad([[sx(zp),laneY(s,zp)-half(zp)+1],[sx(Z),laneY(s,Z)-half(Z)+1],[sx(Z),laneY(s,Z)+half(Z)-1],[sx(zp),laneY(s,zp)+half(zp)-1]],tint)}
+ for(let b=0;b<Z;b+=.3){const z=b+.15,i=Math.round(b/.3),maj=i%4===0;g.strokeStyle=maj?(leg?'rgba(255,255,255,.28)':'rgba(255,255,255,.14)'):(leg?'rgba(255,255,255,.03)':'rgba(255,255,255,.04)');g.lineWidth=depth(z)*(maj?(leg?2:1.5):1);g.beginPath();g.moveTo(sx(z),edgeY(-1,z));g.lineTo(sx(z),edgeY(1,z));g.stroke();
+  if(leg&&maj){g.fillStyle='rgba(255,255,255,.4)';g.font=`600 ${Math.round(12*depth(z)+1)}px ${F}`;g.textAlign='center';g.textBaseline='bottom';g.fillText(String(17+i/4),sx(z),edgeY(-1,z)-4)}}
+ for(let s=0;s<n;s++){g.strokeStyle=COL[s]+(leg?'80':'55');g.lineWidth=leg?2:1.5;g.beginPath();g.moveTo(sx(zp),laneY(s,zp));g.lineTo(sx(Z),laneY(s,Z));g.stroke()}
+ g.strokeStyle='#4ade80';g.lineWidth=1.5;for(const sd of[-1,1]){g.beginPath();g.moveTo(sx(zp),edgeY(sd,zp));g.lineTo(sx(Z),edgeY(sd,Z));g.stroke()}
+ g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=2;g.beginPath();g.moveTo(nearX,edgeY(-1,0)-4);g.lineTo(nearX,edgeY(1,0)+4);g.stroke();
+ // hand position marker
+ if(leg){const z=MOVE,x=sx(z),y=edgeY(1,z)+8;g.fillStyle='rgba(167,139,250,.18)';g.strokeStyle='#a78bfa';g.lineWidth=1;g.setLineDash([5,5]);g.lineWidth=2;g.strokeStyle='rgba(167,139,250,.7)';g.beginPath();g.moveTo(x-6,edgeY(-1,z));g.lineTo(x-6,edgeY(1,z));g.stroke();g.setLineDash([])}
+ // notes
+ g.textAlign='center';g.textBaseline='middle';
+ for(const[t,s,f] of [...NOTES].reverse()){const z=t;if(z>Z)continue;const k=depth(z),kk=leg?Math.max(.75,k):k,w=gemW*kk,h=gemH*kk,x=sx(z),y=laneY(s,z);let a=z>Z*.88?(Z-z)/(Z*.12):1;g.globalAlpha=Math.max(0,a);
+  g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,8*kk+2);
+  if(leg&&f===0){g.fillStyle='rgba(10,10,13,.9)';g.fill();g.lineWidth=3*kk;g.strokeStyle=COL[s];g.stroke();g.fillStyle=COL[s]}
+  else{g.fillStyle=COL[s];g.fill();g.fillStyle='#0b0b10'}
+  g.font=`${leg?800:700} ${Math.round(h*(leg?0.66:0.56))}px ${F}`;g.fillText(f,x,y+1);g.globalAlpha=1}
+ for(let s=0;s<n;s++){const y=laneY(s,0);g.beginPath();g.roundRect(nearX-gemW/2,y-gemH/2,gemW,gemH,10);g.fillStyle='#0e0e12';g.fill();g.lineWidth=2;g.strokeStyle=COL[s];g.stroke();
+  g.fillStyle=leg?COL[s]:'rgba(255,255,255,.5)';g.font=`${leg?700:600} ${leg?17:15}px ${F}`;g.textAlign='right';g.fillText(NAMES[s],nearX-gemW/2-30,y);g.textAlign='center'}
+ hud(g,W,leg?{m:3,fill:.6,streak:27,score:'12,450'}:{m:2,fill:.3,streak:14,score:'12,450'});
+}
+
+// Score + multiplier badge (top right): the ring fills toward the next multiplier; colour per level, x4 glows.
+const MC={1:'#a1a1aa',2:'#facc15',3:'#fb923c',4:'#38bdf8'};
+function hud(g,W,o){
+ const cx=W-62,cy=58,R=34,c=MC[o.m];
+ g.lineWidth=6;g.strokeStyle='rgba(255,255,255,.1)';g.beginPath();g.arc(cx,cy,R,0,Math.PI*2);g.stroke();
+ if(o.m===4){g.shadowColor=c;g.shadowBlur=22}
+ g.strokeStyle=c;g.lineCap='round';g.beginPath();g.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+Math.PI*2*(o.m===4?1:o.fill));g.stroke();g.lineCap='butt';g.shadowBlur=0;
+ g.fillStyle=o.m===4?'rgba(56,189,248,.16)':'rgba(255,255,255,.04)';g.beginPath();g.arc(cx,cy,R-6,0,Math.PI*2);g.fill();
+ g.textAlign='center';g.textBaseline='middle';g.fillStyle=o.m===1?'#e4e4e7':c;g.font=`800 30px ${F}`;g.fillText('×'+o.m,cx,cy+1);
+ g.fillStyle='rgba(255,255,255,.55)';g.font=`600 12px ${F}`;g.fillText(o.streak+' streak',cx,cy+R+18);
+ g.textAlign='right';g.textBaseline='alphabetic';g.fillStyle='#fff';g.font=`600 38px ${F}`;g.fillText(o.score,cx-R-20,cy+6);
+ // Stars under the score: earned ones gold, the next one filling left to right with the score.
+ const sv=o.stars??2.4,size=18,gap=5,right=cx-R-20;
+ const star=(x0,y0,r)=>{g.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.45:r;i?g.lineTo(x0+Math.cos(a)*rr,y0+Math.sin(a)*rr):g.moveTo(x0+Math.cos(a)*rr,y0+Math.sin(a)*rr)}g.closePath()};
+ for(let i=0;i<5;i++){const x0=right-(4-i)*(size+gap)-size/2,y0=cy+28,f=Math.max(0,Math.min(1,sv-i));
+  star(x0,y0,size/2);g.fillStyle='rgba(255,255,255,.14)';g.fill();
+  if(f>0){g.save();star(x0,y0,size/2);g.clip();g.fillStyle=sv>=5?'#fde047':'#facc15';if(f>=1){g.shadowColor='#facc15';g.shadowBlur=8}g.fillRect(x0-size/2,y0-size/2,size*f,size);g.restore()}}
+}
+draw('a',false);draw('b',true);
+// Particle fire around a ring: soft glowing sprites born on the ring (mostly its upper half),
+// rising with a little swirl, growing then shrinking, cooling white -> cyan -> deep blue.
+const SPR=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');const r=x.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(.35,'rgba(255,255,255,.55)');r.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=r;x.fillRect(0,0,64,64);return c})();
+const TINTS=[[255,255,255],[186,230,253],[56,189,248],[14,116,200]].map(([r,g,b])=>{const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');x.drawImage(SPR,0,0);x.globalCompositeOperation='source-in';x.fillStyle=`rgb(${r},${g},${b})`;x.fillRect(0,0,64,64);return c});
+const fires=new Map();
+function fire(g,cx,cy,R,ms,scale){
+ let st=fires.get(g);if(!st){st={ps:[],last:ms};fires.set(g,st)}
+ const dt=Math.min(0.05,(ms-st.last)/1000);st.last=ms;
+ for(let i=0;i<Math.round(260*dt*scale+1);i++){
+  const a=-Math.PI/2+(Math.random()-.5)*Math.PI*1.25*(Math.random()<.8?1:1.5);
+  const up=Math.max(0,-Math.sin(a));
+  st.ps.push({x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R,vx:Math.cos(a)*14*scale,vy:-(28+60*up+Math.random()*30)*scale,life:.35+.5*up*Math.random()+.15,age:0,size:(5+7*up+Math.random()*4)*scale,seed:Math.random()*10});
+ }
+ g.globalCompositeOperation='lighter';
+ for(let i=st.ps.length-1;i>=0;i--){const p=st.ps[i];p.age+=dt;const k=p.age/p.life;if(k>=1){st.ps.splice(i,1);continue}
+  p.x+=(p.vx+Math.sin(ms/120+p.seed)*18*scale*k)*dt;p.y+=p.vy*dt;p.vx*=0.96;p.vx+=(cx-p.x)*0.6*dt;   // swirl, drawn in toward the centre line like a flame
+  const sz=p.size*(k<.2?0.6+2*k:1.2-0.9*k),t=Math.min(3,Math.floor(k*4)),alpha=(1-k)*(k<.1?k*10:1);
+  g.globalAlpha=alpha*0.9;g.drawImage(TINTS[t],p.x-sz,p.y-sz,sz*2,sz*2);
+ }
+ g.globalAlpha=1;
+ const hal=g.createRadialGradient(cx,cy,R*.8,cx,cy,R*1.6);hal.addColorStop(0,'rgba(56,189,248,.22)');hal.addColorStop(1,'rgba(56,189,248,0)');g.fillStyle=hal;g.beginPath();g.arc(cx,cy,R*1.6,0,Math.PI*2);g.fill();
+ g.globalCompositeOperation='source-over';
+}
+// Close-up of the x4 badge.
+(function(){const cv=document.getElementById('big'),dpr=2,W=1200,H=380;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');
+ (function frame(){const ms=performance.now();g.setTransform(dpr,0,0,dpr,0,0);g.fillStyle='#0a0a0d';g.fillRect(0,0,W,H);
+  g.save();g.translate(W/2+260,H/2+40);g.scale(2.4,2.4);g.translate(-(W-62),-58);hud(g,W,{m:4,fill:1,streak:46,score:'31,820',stars:4.3});g.restore();
+  // fire drawn after the HUD, around the scaled ring
+  const cx=W/2+260,cy=H/2+40,R=34*2.4;fire(g,cx,cy,R,ms,2.4);
+  g.save();g.translate(W/2+260,H/2+40);g.scale(2.4,2.4);g.translate(-(W-62),-58);g.textAlign='center';g.textBaseline='middle';g.fillStyle='#e0f2fe';g.font=`800 30px ${F}`;g.fillText('×4',W-62,59);g.restore();
+  requestAnimationFrame(frame)})()})();
+
+// The badge at each level (animated: at ×4 electricity crackles out of the ring).
+(function(){const cv=document.getElementById('m'),dpr=2,W=1200,H=230;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.fillStyle='#0a0a0d';g.fillRect(0,0,W,H);
+ const bolts=[];let next=0;
+ function zap(cx,cy,R,ms){const a=Math.random()*Math.PI*2,len=R*(0.9+Math.random()*1.1),segs=6+Math.floor(Math.random()*4),pts=[[cx+Math.cos(a)*R,cy+Math.sin(a)*R]];
+  for(let j=1;j<=segs;j++){const d=R+len*j/segs,jit=(Math.random()-.5)*R*0.5;pts.push([cx+Math.cos(a)*d-Math.sin(a)*jit,cy+Math.sin(a)*d+Math.cos(a)*jit])}
+  bolts.push({pts,born:ms,life:110+Math.random()*120,fork:Math.random()<.5?Math.floor(segs/2):-1,fa:a+(Math.random()<.5?-.6:.6)})}
+ (function frame(){const ms=performance.now();g.setTransform(dpr,0,0,dpr,0,0);g.fillStyle='#0a0a0d';g.fillRect(0,0,W,H);
+  [[1,.4,4,'1,980',0.6],[2,.7,17,'6,240',1.5],[3,.2,22,'14,900',2.7],[4,1,46,'31,820',4.3]].forEach(([m,f,st,sc,sv],i)=>{g.save();g.translate(i*300-W+300+20,70);hud(g,W,{m,fill:f,streak:st,score:sc,stars:sv});g.restore()});
+  const cx=3*300+300+20-62,cy=70+58,R=34;
+  fire(g,cx,cy,R,ms,1);
+  g.globalCompositeOperation='source-over';g.lineCap='butt';
+  requestAnimationFrame(frame)})();
+})();
+
+</script>

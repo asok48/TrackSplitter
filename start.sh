@@ -33,4 +33,4 @@ if [ ! -f .venv/.installed ] || [ requirements.txt -nt .venv/.installed ]; then
     .venv/bin/python -m pip install -r requirements.txt || exit 1
     touch .venv/.installed
 fi
-.venv/bin/python app.py
+.venv/bin/python app.py "$@"

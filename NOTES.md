@@ -255,7 +255,7 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   so narrow windows show less time. Clicking the highway plays/pauses.
   User: "sort of hard to read" (too fast, too small): lanes now fill the height (up to
   120 px), gems up to 52 px with numbers ~0.62 of that, string names 13-22 px; a
-  Slow-Fast slider (0.25-1.6 x 3 s ahead, 120-420 px/s, nothing overrides it since the
+  Slow-Fast slider (0.25-2.5 x 3 s ahead, 120-420 px/s, nothing overrides it since the
   repeat ticks (see Game looks); `track-splitter-highway-speed`)
   replaced the speed-from-the-quickest-notes rule above. (Crowded gems used to get
   narrower; now every gem in a song is one size, see "Gem size".)
@@ -294,6 +294,25 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   Show my timing marks above notes, string names in a fixed column. Speed: the slider
   (shown in this mode), never so slow that ordinary notes touch (`typicalLaneGap`).
   Click plays/pauses.
+- Gaps in an imported tab (user, Look What Happened: "looks totally wrong on the import",
+  "looks right in songsterr"): the file (Songsterr downloader export, 133 bars, no repeat
+  or D.S. marks, 200 bpm) covers ~178 s of a 210 s recording; the sync left 26-51 s and
+  62-69 s without bars (the bass-only track plays a B/E/F# riff and an A-G#-F#-E-D# run
+  there that aren't in the file; bars 21+ match from 51 s, notes within ~10 ms). Only bar
+  starts are kept, so bar 20 became one 25 s bar and its Lines line ~30 s with the notes
+  crammed into the start. `layoutLines` now fills a bar >= 1.8x the median with empty
+  bars of about the median length (Whole tab: 8 blank lines there instead of one squashed
+  one). Scroll / Highway are by time and were fine. The file itself was read right
+  (intro double stops with a ringing E3 on the G string, ties merged).
+- Bars per line (View ▾ in Lines and Whole tab, `#tab-bpl`, per song in
+  `track-splitter-bars-per-line`; Auto shows what it picked, "Auto (4)"): on You Know What
+  They Do to Guys Like Us in Prison (186 bpm, ~5 notes/s) the user found the Lines view
+  "move too fast" and asked: "ideally we could fit more bars onto a single line". The
+  imported tab was within ~10 ms of the heard bass notes throughout, so it wasn't sync:
+  Auto (`layoutLines`: 8/4/2/1 bars, <= 6.5 s, notes >= 28 px apart) gives 4 bars (5.2 s)
+  there, and only 2 in a 1024 px window. A picked count (2, 3, 4, 6, 8) overrides Auto;
+  crowded numbers shrink as before (down to 55%). 8 bars at 1024 px still read fine.
+  Also used by the game played on the tab.
 - Flat (Tab section Highway, `track-splitter-highway-flat`; user: "a flat highway in the
   tab view, make it a toggle"): a switch next to the speed slider takes the lean off.
   Spacing (user: "more space on the highway"): the slider rules, but never so slow that
@@ -356,7 +375,7 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   flames) was added and later removed (user: "get rid of the guitar hero view, it sort
   of sucks compared to Rock Band"); Rock Band is the only look.
   - Both: sideways perspective with far notes at ~half size (dd = Z), one gem size per
-    song and speed. Speed is the slider alone (Note speed 0.25-1.6; 2.6 s ahead /
+    song and speed. Speed is the slider alone (Note speed 0.25-2.5, was 1.6 (see below); 2.6 s ahead /
     speed). There used to be a floor so two notes on a string never touched
     (`minLaneGap`), which on busy songs overrode the slider (Wow! Wow! Wow! ~520 px/s in
     the Tab Highway against Slow's ~150; user: "still too hard to read the highway",
@@ -367,6 +386,13 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
     its spacing at the strike line, not per frame: judged at each depth (and dropped
     once the note before was hit) notes turned from tick to gem on the way, and the
     user saw them "pop in and out". Far notes fade in over the last 15% of the board.
+    Faster top speed (user, 2026-10-30: "in game mode, notes are still too close"):
+    Note speed / the Highway's Slow-Fast now go to 2.5 (were 1.6; shared `hwSpeed`).
+    On the 3D board spacing at the far end is 1/4 of the strike line's (dd = Z) while
+    gems only halve, so on You Know What They Do... (186 bpm) far 16ths overlapped even at
+    1.6: ~18 px apart vs ~30 px gems on a 1400 px window; at 2.5 ~45 px. Flat spaces
+    evenly (Z / 2, ~910 px/s at speed 1). The Tab Highway stays capped at 600 px/s and
+    Scroll at 700. Checked: Game section draws at 2.5, no console errors.
   - Board (Game settings: 3D / Flat, `track-splitter-game-board`; user: "more legible
     from a not perspective"): Flat has no depth (every note the same size, straight
     lanes) and half the seconds ahead, so notes cross the strike line at the 3D board's
@@ -661,6 +687,19 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   reader (`heardNotes` with a bass range) for the wanted note (+13 real, +62-133 false in
   the moved-tab controls), and "the wanted note's own energy rises" (any pluck raises
   every frequency: hundreds false). Repeats with no blink and no level rise (~4) remain.
+  Fast notes (user, 2026-10-30: "16/32nd notes are still inconsistently hit"; no game check
+  of the song they meant, MCR's You Know What They Do..., so the 10-26 ones were used). A
+  Python replay of `judge` from a check's recorded plucks + readings matches the games note
+  for note (Brianstorm 205/205, Addictive 460/461); re-running `pitchOf` on input.flac at
+  each reading matches the recorded `raw` 99.4%. 16ths (< 0.2 s apart) score 90-95% on most
+  songs; Hysteria 289/642: its riff alternates a low D2/A1 with higher notes, the low ones
+  are plucked (plucks found) but come in 5-15 dB quieter and the 85 ms buffer holds the
+  previous note too, so YIN gives no clear reading. Offline Basic Pitch on the input also
+  finds almost none of the missed notes (12 of 353). Tried and dropped: a second YIN on the
+  newest 2048 samples (>= 50 Hz) when the long one is unclear: +31 real hits over 8 games,
+  +26 in the wrong-notes control (tab moved +2 / -1). Also no gain: letting plucks < 30-70 ms
+  after a pluck (the same attack counted twice) not take its pitch. 32nds: 8 in all the
+  checks, too few to say. Next step: a game check of a song where it feels off.
   Pick vs fingers (user: detection "way better using my fingers than a pick"): a labelled
   recording (recorder page `pick.html`, kept in `.bass-recordings` with `tools/live.py`, a
   Python copy of the live detection) showed no difference at one note per click (pick
@@ -1082,6 +1121,16 @@ track as heard, vs strum onsets found by hand-tuned flux):
 The user plays along through a Focusrite Scarlett (bass in an instrument input, Inst on,
 Direct Monitor to hear themselves) and gets their own tab, and can hear their playing
 with the band.
+- Live note with fast notes (2026-10-30, user: "if I play fast, it doesn't register all
+  the notes I play on the note output, it skips some"): the readout needed `steady` (5
+  agreeing readings, ~100 ms), and the attack blurs the first few, so 8ths at 180 bpm
+  (167 ms) often ended first. Within 250 ms of a pluck or pick click (`input.attackAt`) 3
+  agreeing readings now show it (`quick`); otherwise still 5 (thud / hum guard). Readout
+  only: `steady` for the game, Show my timing and wrong notes is unchanged. Replaying the
+  user's Look What Happened take (page YIN on its audio): 106 shown of 154 notes, now 154
+  (2 readings: 165, more than played); Fireman & Dancer take 168 -> 188. In the page with
+  a simulated input (E1/B1 8ths at 180 bpm, then 16 repeated E1s): 40 of 40 shown, a
+  repeat as a brief "–" then the note again.
 - Page: "Bass input" in the tab view opens `#input-bar` (it replaced a record dialog;
   the user also wanted to see what's coming through without recording, and to hear
   themselves): input (an input named Scarlett/Focusrite is picked first; input,
@@ -1422,6 +1471,80 @@ with the band.
   plucks blur together when transcribed): on the labelled recordings fast 8ths found 246
   -> 261 of 306, but more fake notes there and from hand touches (pluck-then-stop steps 21
   -> 25 notes for 10 plucks).
+  Add over a gap (2026-10-30, Look What Happened, user: "I'm playing 8th notes but it gives
+  a single note and it's wrong"): the draft started from an import whose sync left 26-51 s
+  without bars, so `bar_starts` had a 25 s bar, a 16th of it 1.56 s, and the take's 8ths
+  went in one per 1.56 s (19 added). `bar_starts` now cuts bars >= 1.8x the median into
+  bars of about the median length (as the page's `layoutLines`): the same pending take
+  adds 65, on 8ths. "Wrong": its E2s replaced the tab's open-E 8ths by the octave rule,
+  but the audio there has no 41 Hz (E1) and no 124 Hz, only 82 Hz: real E2s, not a
+  misread (where it read E1, 41 Hz is strong). Still open: 22-27 s, ~14 level jumps came
+  out as 4 notes; Basic Pitch's re-pluck split (`split=` 0.15-0.4) cut notes 70-150 ms
+  apart where no pluck was, so not used. MINE_RULES not bumped (kept takes keep their notes).
+  Next take (user: "still not what I played"): pitches now matched the audio (YIN runs vs
+  notes found), but 43 of 154 notes were under ADD_MIN_AMP (0.30-0.55: re-plucked 8ths of
+  a ringing B/A), so e.g. 12 B 8ths gave 1 note. Saved takes: clear ones have 18-48% under
+  0.55; two junk ones (Cry Baby Cry 23 notes, Wow! Wow! Wow! 20) have all of them under,
+  and peak level didn't tell them apart (-8 to -13 dB). So a take whose median note is
+  >= 0.55 keeps notes down to ADD_LOOSE_AMP 0.3, else stays at 0.55: that take 104 -> 131
+  added. Also by design: "add" keeps a tab note of another pitch in its slot (B played
+  over the tab's open-E 8ths at 24.8-27.3 s isn't added); Replace takes the stretch over.
+  Open-E 8ths (next take): re-plucks of E1 keep one steady pitch (YIN 106 readings in a
+  row), so ~15 plucks came out as 4 and 7 notes; E2/B/A runs were right. `take_notes` now
+  splits re-plucks (`_split_replucks`, `TAKE_SPLIT` 0.2, at least 8 frames ~93 ms apart)
+  of notes up to G1 (31) only: those runs 12 and 15 of ~15, the take's adds 121 -> 137.
+  Splitting every note (min gap 6) doubled notes 80 ms apart and on Fireman & Dancer's take
+  added 24 notes with 2 on the tab; low notes only: Fireman +2, Cry Baby Cry's long take
+  +41 (8 on its tab: unknown whether real). MINE_RULES not bumped (kept takes unchanged).
+  Then up to E2 (40), at least 10 frames (~116 ms) apart: the 9:02 take's E2 8ths also
+  came out as quarters or gaps (22.6-24.4 s: 5 notes, now 11 even 8ths; 27.4-30 s: 9-10
+  of ~15). Up to E2 with an 8-frame gap split held notes in two 0.1 s apart (Fireman &
+  Dancer: +17 notes, 2 on its tab, inside the tab's quarter notes); with 10: +9, 1 on, and
+  fewer notes < 0.11 s apart on every take (Cry Baby Cry 13 -> 5). Snapping to the take's
+  grid merges what's left of those into one step.
+  Takes on the grid (user: "a mode where it just overwrites with what I played" = Replace,
+  which existed; then "notes take my exact timing when they should be equally spaced"):
+  the page sends the draft's grid picker (`editGrid`: 8, 16, 32, 12, 24 steps a bar) with
+  each take (`grid`, kept in the pending take and the kept take). Replace now snaps each
+  played note to its bar's nearest step (two in one step: the surer stays); "add" uses the
+  grid instead of fixed 16ths. Takes without `grid` (older) keep their timing / 16ths. A
+  note rounding onto the bar line is the next bar's first step (before, step 16 of one bar
+  and step 0 of the next were two slots, so a note could double up). On the latest Look
+  What Happened take, Replace: median gap 0.174 s with 50 different gap sizes -> 0.165 s
+  (16ths: 28 sizes, 8ths: 21, from the bars' small length differences), none < 40 ms.
+  Delete / Replace bugs (user: "deleting a note from my draft doesn't work and when I did
+  replace ... only recording part was left, the rest of the song was gone"): (1) the note
+  was the waiting take's (green); `edit_mine` put it in the draft's `removed`, which the
+  take's notes never pass through. Now a note not in the draft goes to the pending take's
+  `removed` (undo takes it out), applied in the preview and on Keep (and copied into the
+  draft's `removed`, so `redo_mine` keeps it out). (2) The draft had been deleted before the
+  take (no log to say how; the import and auto tab were also rewritten at 9:07-9:08);
+  `record_tab` started a missing draft from the tab only for "add", so Replace made a draft
+  of just the take. Now for both modes. Checked on a copy: delete 176 -> 175 new notes,
+  undo 176; Replace with no draft -> draft from the import (794), on Keep 58 notes before
+  the take and 654 after it kept. Then "still deleted everything": Discard kept the empty
+  draft that bug had left, and an empty draft wasn't "no draft". Now a draft with no notes,
+  takes or base also starts from the tab (copy: 70 before / 661 after kept).
+  Replace only where played (user: "when I don't play anything, it removes what was there
+  when I actually want to keep it"): it cleared the whole stretch, the 2 s run-in included.
+  `played_spans` = the bars (of the draft's `bar_starts`) the take has notes in (a note
+  within 1/32 bar of the next bar line counts for that bar, as it snaps there); only those
+  are replaced, in the preview, on Keep (and the draft's `removed` / `moved` are cleared
+  only there). No bars: 1 s after each note. The 9:18 take (15.0-56.6 s): 79 draft notes
+  in the stretch, 0 kept before, 38 now (the intro bars 15-21.9 s, before the first note).
+  Click track (user: "can we add a click track when recording?"): a Click switch above
+  Record (`#record-click`, `track-splitter-record-click`). While a take records,
+  `startClickTrack` schedules `metronomeClick` (the timing calibration's tick) ~0.3 s ahead
+  on the audio clock for every beat of the tab's bars as shown (`clickBeats`: the page's
+  lines, so gap-filled bars too; beats a bar from the bpm like the faint beat lines, beat 1
+  higher), re-finding its place when playback restarts; the 2 s run-in is the count-in.
+  The recorder only takes the input. Checked in the page (simulated input, Look What
+  Happened): 20 clicks in 6.5 s, 0.325-0.338 s apart, an accent every 4; none after Stop.
+  Review warning: `match` is now taken only over take notes within 0.5 s of a draft note
+  (>= 10 of them, else none), and a take whose median note amplitude (`sure`) is >= 0.55
+  isn't flagged: the take over the import's gap said "Only 11% matches" (105 of 141 notes
+  where the draft had none; 44% where it had notes) at -15.6 dB from the Scarlett's
+  instrument input (Input 2).
 - Playback: the player's 4th mode "My bass" (shown when `song.my_bass`) = without +
   `/api/audio?part=mine` (`my_bass()`: all takes on the song timeline as one float WAV,
   later takes win, pitch-moved if recorded at another `shift`; each take scaled to the
@@ -1558,3 +1681,125 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
 - Dark theme, violet accent, system font; fits one screen down to ~1024x768 and
   collapses for narrow windows.
 
+
+## Game screen (/game)
+
+User (2026-10-30): "the game mode is a lot of fun, I would like to expand on it and make it
+its own standalone game that feels more legit". Asked what standalone means, they picked
+"its own screen in this app" (not a separate project) and, for feel, menus & song select,
+scoring depth and practice mode. Done in phases; phase 1 is the screen and menus.
+
+Phase 1 (screen, song select, Mac icon):
+- `/game` (`game_page()` in app.py) serves the same index.html; the page sees the path
+  (`arcadeOn`) and shows `#arcade` (fixed, z-index 45, hidden while `body.game-on`) over the
+  app instead of the shortcut card (`startArcade`). Everything else (library, tabs, input,
+  calibration, startGame / endGame) is the app's own code, so nothing is duplicated.
+- Screens (`setScreen`): title (Play, Game settings, Calibrate timing/strings, "Add game to
+  Applications", Back to Track Splitter), song wall (`renderWall`, `wallCard`; songs with at
+  least one version; search, sort Recent / A–Z / Artist kept in
+  `track-splitter-arcade-sort`), song screen (`renderSong`: instrument, the four
+  difficulties with stars and best at the current timing (`arcadeBest`), input, Play;
+  "Make the bass tab" runs the tab view's `makeTab` job when there's none).
+- Play (`arcadePlay`): connects the input if needed, loads the song's no-bass version
+  (`gameVersion`), opens the tab for the picked instrument, waits for it, switches to the
+  Game section and calls `startGame`. Results have a "Songs" button (`#game-songs`) in
+  /game; closing them shows the song screen with the new best. Going back to the wall or
+  title closes the hidden tab view so the highway stops drawing.
+- Stars: `endGame` now keeps the most stars per best key (`STARS_KEY`
+  `track-splitter-game-stars`). `bestKey` adds "-guitar" after the source for guitar tabs
+  (bass and guitar imports were both "imported" and shared bests; any guitar bests from
+  before are no longer shown).
+- Covers: `GET /api/cover?song` serves `.cover.<ext>` from the song folder, else a picture
+  inside the original (ffmpeg, cached in the temp `track-splitter-covers`), else 204 (not 404,
+  so the console stays clean) and the page shows a drawn cover (`coverEl`: two hues and a
+  pattern from a hash of the song id). The user's library is all YouTube .webm with no art,
+  and `.song.json` keeps the video title, not the link, so existing songs get drawn covers.
+  New links save the video's thumbnail (`fetch_thumbnail`, copied in as `.cover.<ext>` with
+  the original). Dropping a picture on the song screen's cover saves it
+  (`POST /api/cover`; the old one goes to the Trash). `song_info` has `tabs` {bass, guitar}
+  and `cover` (mtime, cache key).
+- Previews (`startPreview`): the game's version from 35% in, fading in over 0.8 s, 20 s.
+- Keyboard: title ↑/↓; wall arrows by grid column (`moveInGrid`), typing searches, ↓/Enter
+  from search into the grid, Esc back; song ↑/↓ difficulty, ←/→ instrument, Enter plays.
+- Input on the song screen mirrors the drawer's device list, level and note (the drawer is
+  in the hidden tab view).
+- Mac icon: `install_shortcut(game=True)` makes `~/Applications/Track Splitter Game.app`
+  that opens /game (or runs `start.sh --game`; start.sh passes its arguments on, `app.py
+  --game` opens /game). `/api/shortcut` has `game_exists`; POST takes `{"game": true}`.
+  Windows: a second .lnk running `app.py --game` (untested).
+- Tested on a copy of the library (port 7871): wall 28 songs, arrows/search/Enter, song
+  screen, simulated bass input, Play → full-screen game, pause → quit → results → Close /
+  Play again / Songs; normal app at / unchanged; no console errors. Shortcut made in a temp
+  home folder only. Thumbnail saving untested against a real link.
+
+Phase 1 redesign (same day):
+- Menus: the user picked a "concert stage" look (of stage / neon arcade / console clean):
+  title screen with a lighting truss, sweeping beams, haze and a lit floor; the song wall and
+  song screen merged into one song select: a 3D carousel of covers (`renderCarousel`, cards
+  kept by song id so moves animate, ±6 around the picked one; ←/→, wheel, click a side card),
+  under it the picked song (title, artist, Bass | Guitar, Make the bass tab) and the four
+  difficulties (skewed rows, colour per difficulty `DIFF_COLORS`) with Play. Input chip top
+  right. Keys: ←/→ song, ↑/↓ difficulty, Tab instrument, Enter play, typing searches, Esc back.
+  Display font Avenir Next Condensed (`--arc-font`; user: "just worry about mac").
+- In-game screen: a first restyle (stage truss, beams, crowd silhouette, chrome rails,
+  condensed italic HUD) was rejected ("looks like a flash game"). The user then chose a
+  "clean and premium" direction and iterated on mockups (kept in `design/game-mockups/`):
+  look A "Studio" (of Studio / Glass / Mono), then:
+  - Only the score at the top (no song title, artist or progress); stars with progress under
+    the score ("I still want the star system too being shown with the progress"); the
+    multiplier moved next to the score as a prominent ring badge (×1 grey, ×2 yellow, ×3
+    orange, ×4 electric blue), ring filling toward the next multiplier, streak under it.
+  - At ×4 the badge is on fire: particle fire (soft sprites rising and cooling white → cyan →
+    blue, drawn over the badge). Electric bolts were tried first; the user preferred flames;
+    a thinner, bluer fire drawn behind the ring "doesn't look as good" — keep the brighter one
+    (`board-hud-fire.html`, user: "that's sick").
+  - Dynamic background that follows how you're doing: deep violet glow when steady, bright
+    blue/violet at ×4, dim cold grey with a faint red tinge when struggling, easing between.
+  - Hits Rock Band-like but "more subtle and clean": button pops slightly and fills, quick soft
+    flare, thin ring, ~6 small sparks (~0.2 s); ×4 = the same in blue with a soft strike-line
+    glow, edges glowing blue, notes with a faint blue rim. No flames on hits, no lightning.
+  - Legibility: milder perspective (far notes ≥ ~75% size), faint per-string bands tinted the
+    string's colour and coloured string names, bigger bolder fret digits, open strings hollow
+    (outlined), bar lines stronger with bar numbers and fainter beat lines, a dashed purple
+    line before a move up the neck. Nothing under the board ("don't show the text at the
+    bottom": no position label, no multiplier there).
+  - System font (SF), weights 500-800, no italics.
+- Built (same day), replacing the rejected restyle: `drawStage` (mood glows, `MOODS`, eased via
+  `game.mood`), `drawGame` (milder perspective `dd = Z * 3`, notes `size(z) >= 0.75`, string bands,
+  bar numbers, `handMoves` dashed lines, flat notes / hollow opens, subtle hits: flare + ring + 6-8
+  sparks, Perfect / Good / Miss in sentence case), `rbScore(g, right, notesLen, cy)` (score + stars,
+  also used by Play on Tab), `drawMultiplier` (`MULT_COLORS`, ring fill = streak % 10) and
+  `drawRingFire` (particle sprites `FIRE_TINTS`, state `ringFire`). The score and ring sit lower
+  (`ringY` 70-96) so the x4 fire isn't cut off at the top. Pause / results / settings dialogs:
+  system font, plain #16161c panels, one purple button. `GAME_FONT` is the system font now (the
+  menus keep Avenir Next Condensed via CSS). Play on Tab keeps its older effects apart from the
+  score and stars. Removed: the song card, truss / beams / crowd, chrome rails, the multiplier
+  meter on the strike line.
+- Testing: localStorage `track-splitter-game-streak` starts a game at that streak (35 = x4) to
+  see the x2-x4 looks; with `track-splitter-game-start`. A simulated input must be a fresh
+  MediaStreamDestination per getUserMedia call (the app opens the input twice and stops the
+  first stream), kept live (a silent ConstantSource) until the bass track starts.
+- Tested on a library copy (port 7871): /game song select → Hysteria, steady, struggling (red
+  mood, amber edges), hits with calls, x4 via the test streak (blue board, fire, streak under the
+  ring), pause, results; the normal app's Game section and Play on Tab; no console errors. Not
+  yet seen with real playing at x4 for long.
+- "Still looks flash gamey" after the clean look was built: the diagnosis given was that it's
+  drawn (flat 2D shapes on a slanted canvas), not rendered. The user agreed to prototype a real 3D
+  board (WebGL, three.js). Notes coming toward you was offered and picked, then the user recalled it
+  had been hard to read: a vertical track was already tried and dropped ("vertical is too
+  confusing, keep it horizontal"). Any 3D board stays sideways (right to left, low E at the bottom).
+
+### 3D board (in progress, saved 2026-10-30)
+- Built: `static/game3d.js` (three.js 0.160 saved in `static/vendor/three/`, MIT, offline;
+  import map in index.html). `drawGame` uses it when Board = 3D (`use3D()`; Flat and guitar chords
+  stay 2D). Sideways board leaning back 45°, maple or dark fretboard (Game settings → Fretboard,
+  `track-splitter-fretboard`), fret wires as bar lines (dot inlays removed: "remove the dot"),
+  one-size notes with the number printed on top (white on colour), quick repeats as ticks, notes
+  fade in from the distance, pads dip and light on hits, mood-driven stage lights, x4 = blue pads,
+  blue highway wash, fire on the multiplier. HUD (`drawRockHud`): angled metal score plate with
+  stars, metal multiplier disc, the latest call (PERFECT / MISS ...) beside the score ("the accuracy
+  alert gets in the way" → "put the accuracy next to the score": user said "this is good").
+- Prototype: `design/game-mockups/board-3d-prototype.html`.
+- Not done yet: menus still in the violet "stage" style (user called the theme "AI like"; wants a
+  Rock Band-like rock style everywhere); pause/results not restyled to rock; bar numbers and the
+  hand-position line aren't on the 3D board; guitar chords in 3D; not tried with real playing.

@@ -69,6 +69,11 @@ OUTPUT_DIR = Path.home() / "Music" / "Track Splitter"
 OLD_OUTPUT_DIRS = [Path.home() / "Music" / "Bass Remover", Path(__file__).parent / "output"]
 STAGE_DIR = Path(tempfile.gettempdir()) / "track-splitter-uploads"
 SHIFT_DIR = Path(tempfile.gettempdir()) / "track-splitter-shifted"   # pitch-shifted audio cache
+COVER_DIR = Path(tempfile.gettempdir()) / "track-splitter-covers"     # cover art found inside originals
+# A song's cover for the game's song wall: .cover.<ext> in its folder (a link's thumbnail,
+# or an image the user dropped on it); otherwise art inside the original file, if any.
+COVER_NAME = ".cover"
+COVER_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 SAMPLERATE = 44100  # all Demucs v4 models use this
 INSTRUMENTS = ["bass", "drums", "vocals", "guitar", "lead guitar", "rhythm guitar", "piano"]
 GUITAR_PARTS = {"lead guitar", "rhythm guitar"}  # split out of the guitar stem by stereo position
@@ -401,6 +406,10 @@ def original_file(song_dir):
     return next(iter(song_dir.glob("original.*")), None)
 
 
+def cover_file(song_dir):
+    return next((p for p in song_dir.glob(f"{COVER_NAME}.*") if p.suffix.lower() in COVER_TYPES), None)
+
+
 def song_info(song_dir):
     meta = read_meta(song_dir)
     settings = meta.get("versions", {})
@@ -417,7 +426,11 @@ def song_info(song_dir):
     return {"id": rel(song_dir), "title": song_dir.name, "artist": song_dir.parent.name,
             "added": added, "has_original": original_file(song_dir) is not None,
             "my_bass": any(t.get("audio") for t in (read_mine(song_dir) or {}).get("takes", [])),
-            "trim": meta.get("trim"), "versions": versions}
+            "trim": meta.get("trim"), "versions": versions,
+            # For the game's song wall: which tabs it can play, and the cover's age (cache key).
+            "tabs": {"bass": any((song_dir / f).exists() for f in (TAB_FILE, IMPORT_FILE, MINE_FILE)),
+                     "guitar": (song_dir / GUITAR_IMPORT_FILE).exists()},
+            "cover": int(c.stat().st_mtime) if (c := cover_file(song_dir)) else 0}
 
 
 def library():
@@ -907,7 +920,12 @@ def take_notes(take, on_progress=lambda fraction: None):
         take = take * min(0.5 / loud, 1000.0)
     # Nothing above the 21st fret of a G string (E4) is a bass note: one of the user's takes
     # had a pulsing ~330-350 Hz tone on the input, read as F4 every ~0.1 s (199 of 288 notes).
-    notes = [n for n in tab.transcribe(take, on_progress) if n[2] <= 43 + 21]
+    # Re-plucks of low notes (up to E2) are split where the model's onset for them peaks
+    # again: an open E (or E2) re-plucked keeps one steady pitch, so 8ths came out as a few
+    # long notes (user's Look What Happened takes: ~15 plucks, 4 and 7 notes; now 12-16).
+    # At least ~116 ms apart: closer, a held note split in two (Fireman & Dancer, 0.1 s
+    # apart inside the tab's quarter notes). Every note: notes on no tab note (+24, 2 on).
+    notes = [n for n in tab.transcribe(take, on_progress, split=TAKE_SPLIT, split_below=40, split_gap=10) if n[2] <= 43 + 21]
     return tab.drop_ringing_octaves(notes, take)
 
 
@@ -940,9 +958,11 @@ def with_hand_added(notes, hand):
 
 
 ADD_MIN_AMP = 0.55   # how sure the transcription must be of a note "add" puts in (see apply_take)
+ADD_LOOSE_AMP = 0.3  # ... in a take whose median note is that sure
+TAKE_SPLIT = 0.2     # onset level that splits a take's low re-plucked notes (take_notes)
 
 
-def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None):
+def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None, grid=None):
     """A take's notes ([start, end, pitch(, amplitude)]) into the tab: "replace" takes over
     the stretch it covers; "add" keeps what's there and puts in what you played that it
     doesn't have, on the 16th-note grid of its bar (the draft's bars).
@@ -972,8 +992,10 @@ def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None):
             k = bisect.bisect_right(bars, t) - 1
             if k < 0 or k + 1 >= len(bars):
                 return None
-            step = (bars[k + 1] - bars[k]) / 16
+            step = (bars[k + 1] - bars[k]) / (grid or 16)
             i = round((t - bars[k]) / step)
+            if i >= (grid or 16):                          # on the bar line: the next bar's first step
+                return (k + 1, 0), bars[k + 1]
             return (k, i), bars[k] + i * step
 
         taken, holders = {}, {}
@@ -987,7 +1009,13 @@ def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None):
         # a same-pitch note the slot beside it is a real extra (a run of 16ths), not that
         # note played a little off (user: "what I really need is just 16th notes": a run
         # of 16th 6s lost every other note to that rule).
-        sure = [n for n in new if not (len(n) > 3 and n[3] < ADD_MIN_AMP)]
+        # A clear take (most notes sure) keeps its less sure ones too: re-plucks of a note
+        # still ringing come out 0.3-0.55 (Look What Happened: 8ths of B, 12 found, 1 added;
+        # user: "still not what I played"). A take that's mostly unsure stays strict: two of
+        # the user's junk takes had every note under 0.55.
+        amps = sorted(n[3] for n in new if len(n) > 3)
+        least = ADD_LOOSE_AMP if amps and amps[len(amps) // 2] >= ADD_MIN_AMP else ADD_MIN_AMP
+        sure = [n for n in new if not (len(n) > 3 and n[3] < least)]
         played = {(c, n[2]) for n in sure for c in [slot(n[0])] if c}
         played = {(c[0], p) for c, p in played}
         own = lambda c, pitch: (c, pitch) in played
@@ -1017,12 +1045,71 @@ def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None):
             t = round(t, 3)
             added.append([t, round(n[1] + t - n[0], 3), n[2], *mark])
         return sorted([o for o in notes if id(o) not in replaced] + added, key=order)
-    return sorted([n for n in notes if not start <= n[0] < end] + [list(n[:3]) + mark for n in new], key=order)
+    if grid and bars and len(bars) > 1:
+        # On the grid picked for the draft (user: "notes take my exact timing when they
+        # should be equally spaced"): each played note to its bar's nearest step; two in one
+        # step, the surer one stays. Takes without a grid (made before) keep their timing.
+        bars = sorted(bars)
+        snapped = {}
+        for n in new:
+            k = bisect.bisect_right(bars, n[0]) - 1
+            if 0 <= k < len(bars) - 1:
+                step = (bars[k + 1] - bars[k]) / grid
+                i = round((n[0] - bars[k]) / step)
+                key, t = ((k + 1, 0), round(bars[k + 1], 3)) if i >= grid else ((k, i), round(bars[k] + i * step, 3))
+            else:
+                key, t = ("off", n[0]), n[0]
+            amp = n[3] if len(n) > 3 else 1.0
+            if key not in snapped or amp > snapped[key][1]:
+                snapped[key] = ([t, round(t + max(0.05, n[1] - n[0]), 3), n[2]], amp)
+        new = [v[0] for v in snapped.values()]
+    spans = played_spans(new, start, end, bars)
+    inside = lambda t: any(a <= t < b for a, b in spans)
+    return sorted([n for n in notes if not inside(n[0])] + [list(n[:3]) + mark for n in new], key=order)
+
+
+def played_spans(new, start, end, bars=None):
+    """Where a Replace take takes over: the bars (of the take's stretch) it has notes in.
+    Bars it has none in keep the draft's notes (user: "when I don't play anything, it
+    removes what was there when I actually want to keep it": the 2 s run-in and rests
+    were wiped). Without bars: the stretch from each note to 1 s after it."""
+    if not new:
+        return []
+    if bars and len(bars) > 1:
+        bars = sorted(bars)
+        hit = set()
+        for n in new:
+            k = bisect.bisect_right(bars, n[0] + 1e-6) - 1
+            if 0 <= k < len(bars) - 1 and bars[k + 1] - n[0] < (bars[k + 1] - bars[k]) / 32:
+                k += 1                                     # snaps onto the next bar's first step
+            hit.add(k)
+        out = []
+        for k in sorted(hit):
+            a = bars[k] if k >= 0 else start
+            b = bars[k + 1] if k + 1 < len(bars) else end
+            out.append((max(a, start), min(b, end)))
+        return out
+    return [(n[0] - 0.05, n[0] + 1.0) for n in new]
 
 
 def bar_starts(mine):
-    """A draft's bar times (from the tab it started from), for snapping added notes."""
-    return sorted({t for a, b, inner in mine.get("lines") or [] for t in (a, b, *inner)})
+    """A draft's bar times (from the tab it started from), for snapping added notes.
+    A stretch an imported tab doesn't cover (its bars left out by the sync) is one long bar
+    there; it's cut into bars of the usual length, as the page shows it. Look What Happened
+    had a 25 s bar, so a 16th was 1.56 s and a take's 8ths in it became one note per 1.56 s
+    (user: "I'm playing 8th notes but it gives a single note")."""
+    bars = sorted({t for a, b, inner in mine.get("lines") or [] for t in (a, b, *inner)})
+    if len(bars) < 3:
+        return bars
+    usual = float(np.median(np.diff(bars)))
+    out = [bars[0]]
+    for b in bars[1:]:
+        gap = b - out[-1]
+        if usual > 0 and gap >= 1.8 * usual:
+            n = round(gap / usual)
+            out += [out[-1] + gap * q / n for q in range(1, n)]
+        out.append(b)
+    return out
 
 
 def take_new(song_dir, t):
@@ -1042,7 +1129,7 @@ def redo_mine(song_dir, mine):
         if not t.get("audio") or not path.exists():   # no audio: keep what it gave
             notes = apply_take(notes, [n[:3] for n in mine["notes"] if t["start"] <= n[0] < t["end"]], t["start"], t["end"], tag=t["made"])
             continue
-        notes = apply_take(notes, take_new(song_dir, t), t["start"], t["end"], t.get("mode", "replace"), bar_starts(mine), tag=t["made"])
+        notes = apply_take(notes, take_new(song_dir, t), t["start"], t["end"], t.get("mode", "replace"), bar_starts(mine), tag=t["made"], grid=t.get("grid"))
     notes = with_moves(notes, mine.get("moved", []))
     notes = with_hand_added(notes, mine.get("hand", []))
     mine.update(notes=sorted(without_removed(notes, mine.get("removed", [])), key=lambda n: n[:3]), rules=MINE_RULES)
@@ -1050,7 +1137,7 @@ def redo_mine(song_dir, mine):
     return mine
 
 
-def record_tab(song_dir, take_path, song_start, shift, report, mode="replace", replaces=None, device="", channel=""):
+def record_tab(song_dir, take_path, song_start, shift, report, mode="replace", replaces=None, device="", channel="", grid=16):
     """A take into the draft, held for review (user: "redo a section and then save my
     changes instead of auto saving"): it waits as mine["pending"] until Keep (`keep_take`)
     or Discard; another take meanwhile replaces it. replaces: the "made" of a take this one
@@ -1075,11 +1162,15 @@ def record_tab(song_dir, take_path, song_start, shift, report, mode="replace", r
     subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(take_path), "-ac", "1", "-ar", str(SAMPLERATE),
                     "-c:a", "flac", str(song_dir / MY_BASS_DIR / audio)], check=True)
     mine = read_mine(song_dir)
-    if mine is None and mode == "add":
-        # Adding with no draft yet: add to the song's tab, not to nothing (user: "it added
+    old = mine and mine.get("pending")   # an unreviewed take: this one replaces it
+    if mine is None or not (mine["notes"] or mine["takes"] or mine.get("base")):
+        # An empty draft counts as none (the one the bug below left behind was kept on
+        # Discard, and the next Replace went into it: "still deleted everything").
+        # No draft yet: start one from the song's tab, not from nothing (user: "it added
         # them but got rid of a bunch of stuff too, I just wanted to add": their draft had
-        # been deleted, and the take became the whole draft). The imported tab, else the
-        # automatic one, as "Start a draft from this tab" would.
+        # been deleted, and the take became the whole draft; then the same with Replace:
+        # "only recording part was left, the rest of the song was gone"). The imported tab,
+        # else the automatic one, as "Start a draft from this tab" would.
         for source in ("imported", "auto"):
             try:
                 mine = new_draft(song_dir, source)
@@ -1087,21 +1178,27 @@ def record_tab(song_dir, take_path, song_start, shift, report, mode="replace", r
             except ValueError:
                 pass
     mine = mine or {"notes": [], "takes": [], "rules": MINE_RULES}
-    old = mine.get("pending")
     if old and (song_dir / MY_BASS_DIR / old["audio"]).exists():   # an unreviewed take: this one replaces it
         send2trash(str(song_dir / MY_BASS_DIR / old["audio"]))
     # How the take came in, for the review: how much of it matches what the draft has there
     # (same note within 0.1 s, or an octave), and how loud it is. Two of the user's takes
     # were ~-33 dBFS at the peak and matched the tab 3-10% (one mostly a steady E4): not
     # their bass coming in as it should (input or gain), so their notes were left out.
+    # Only where the draft has notes (within 0.5 s): a take over a stretch the tab doesn't
+    # cover matched nothing there and was flagged (Look What Happened: 105 of 141 notes in
+    # an imported tab's 26-51 s gap, "11%"; 44% where the tab had notes). With under 10
+    # such notes there's nothing to compare. sure: the median note's amplitude (the junk
+    # takes had every note under ADD_MIN_AMP; clear ones a median of 0.6+).
     there = [n for n in mine["notes"] if start <= n[0] < end]
-    match = (sum(1 for n in new if any(abs(o[0] - n[0]) < 0.1 and (o[2] - n[2]) % 12 == 0 for o in there)) / len(new)
-             if there and new else None)
+    covered = [n for n in new if any(abs(o[0] - n[0]) < 0.5 for o in there)]
+    match = (sum(1 for n in covered if any(abs(o[0] - n[0]) < 0.1 and (o[2] - n[2]) % 12 == 0 for o in there)) / len(covered)
+             if len(covered) >= 10 else None)
+    sure = float(np.median([n[3] for n in new])) if new else None
     mine["pending"] = {"start": round(start, 3), "end": round(end, 3), "shifted_by": round(start - song_start, 3),
                        "notes": len(new), "made": made, "audio": audio, "shift": shift, "mode": mode,
-                       "match": match if match is None else round(match, 2), "peak_db": round(float(20 * np.log10(np.abs(take).max() + 1e-9)), 1),
+                       "match": match if match is None else round(match, 2), "sure": sure if sure is None else round(sure, 2), "peak_db": round(float(20 * np.log10(np.abs(take).max() + 1e-9)), 1),
                        "device": device, "channel": channel,   # the input it came from, named in the review
-                       "replaces": replaces, "new": [[float(v) for v in n[:3]] + [float(n[3])] for n in new]}
+                       "replaces": replaces, "grid": grid, "new": [[float(v) for v in n[:3]] + [float(n[3])] for n in new]}
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
 
 
@@ -1116,12 +1213,15 @@ def keep_take(song_dir, mine, keep=True):
         (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
         return mine
     new, start, end, mode = p["new"], p["start"], p["end"], p["mode"]
-    take = {k: p[k] for k in ("start", "end", "shifted_by", "notes", "made", "audio", "shift", "mode", "device", "channel") if k in p}
+    take = {k: p[k] for k in ("start", "end", "shifted_by", "notes", "made", "audio", "shift", "mode", "device", "channel", "grid") if k in p}
     if mode == "add":   # removed notes played again come back
         mine["removed"] = [r for r in mine.get("removed", []) if not any(abs(n[0] - r[0]) < 0.06 and n[2] == r[1] for n in new)]
-    else:               # new playing over the whole stretch
-        mine["removed"] = [r for r in mine.get("removed", []) if not start <= r[0] < end]
-        mine["moved"] = [m for m in mine.get("moved", []) if not (start <= m[0] < end or start <= m[2] < end)]
+    else:               # new playing over the bars it has notes in
+        spans = played_spans(new, start, end, bar_starts(mine))
+        inside = lambda t: any(a <= t < b for a, b in spans)
+        mine["removed"] = [r for r in mine.get("removed", []) if not inside(r[0])]
+        mine["moved"] = [m for m in mine.get("moved", []) if not (inside(m[0]) or inside(m[2]))]
+    mine["removed"] = mine.get("removed", []) + p.get("removed", [])   # deleted while it waited
     redone = next((t for t in mine["takes"] if t["made"] == p.get("replaces")), None)
     # Notes moved while the take waited (its own included) move for good now.
     mine["moved"] = mine.get("moved", []) + p.get("moved", [])
@@ -1130,8 +1230,8 @@ def keep_take(song_dir, mine, keep=True):
             send2trash(str(song_dir / MY_BASS_DIR / redone["audio"]))
         mine["takes"] = [t for t in mine["takes"] if t is not redone] + [take]
         return redo_mine(song_dir, mine)
-    notes = apply_take(mine["notes"], new, start, end, mode, bar_starts(mine), tag=p["made"])
-    mine.update(made=p["made"], notes=sorted(with_moves(notes, p.get("moved", [])), key=lambda n: n[:3]),
+    notes = apply_take(mine["notes"], new, start, end, mode, bar_starts(mine), tag=p["made"], grid=p.get("grid"))
+    mine.update(made=p["made"], notes=sorted(without_removed(with_moves(notes, p.get("moved", [])), p.get("removed", [])), key=lambda n: n[:3]),
                 takes=mine["takes"] + [take])
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
     return mine
@@ -1304,7 +1404,7 @@ def worker():
                 if settings.get("kind") == "record":
                     try:
                         record_tab(song_dir, item["path"], item["song_start"], item["shift"], report, item.get("mode", "replace"), item.get("replaces"),
-                                   item.get("device", ""), item.get("channel", ""))
+                                   item.get("device", ""), item.get("channel", ""), item.get("grid", 16))
                     finally:
                         item["path"].unlink(missing_ok=True)
                     job["done"].append(rel(song_dir))
@@ -1324,6 +1424,8 @@ def worker():
                                            on_progress=report, fast=settings["fast"])
                     if not original_file(song_dir):
                         shutil.copy2(stage["path"], song_dir / f"original{stage['path'].suffix.lower()}")
+                        if stage.get("cover") and stage["cover"].exists() and not cover_file(song_dir):
+                            shutil.copy2(stage["cover"], song_dir / f"{COVER_NAME}{stage['cover'].suffix}")
                         write_meta(song_dir, {**read_meta(song_dir),   # keeps the version's level
                                               "sha1": stage["sha1"], "source": stage["filename"],
                                               "added": time.time()})
@@ -1346,6 +1448,8 @@ def worker():
                     job["finished"].append(i)   # item index, so the page knows which to clear
                     if item.get("stage"):
                         item["stage"]["path"].unlink(missing_ok=True)
+                        if item["stage"].get("cover"):
+                            item["stage"]["cover"].unlink(missing_ok=True)
                         staged.pop(item["stage_id"], None)
         job.update(status="done", fraction=1.0)
 
@@ -1430,6 +1534,8 @@ def forget_old_uploads():
     for sid, s in list(staged.items()):
         if time.time() - s["created"] > 6 * 3600:
             s["path"].unlink(missing_ok=True)
+            if s.get("cover"):
+                s["cover"].unlink(missing_ok=True)
             staged.pop(sid, None)
 
 
@@ -1511,10 +1617,28 @@ def stage_link(req: LinkRequest):
     guess = {"title": info.get("track") or info.get("title") or "",
              "artist": info.get("artist") or info.get("creator") or ""}
     result = register_staged(sid, path, guess["title"] or path.name, file_sha1(path), guess)
+    if sid in staged:
+        staged[sid]["cover"] = fetch_thumbnail(info, sid)
     if result.get("artist") == UNKNOWN_ARTIST and uploader:
         result["artist"] = clean_name(uploader) or UNKNOWN_ARTIST
     result["filename"] = info.get("title") or url
     return result
+
+
+def fetch_thumbnail(info, sid):
+    """The link's thumbnail (the video's picture), saved as the song's cover; None if there's none."""
+    url = info.get("thumbnail") or ""
+    ext = Path(url.split("?")[0]).suffix.lower()
+    if not url.startswith("https://") or ext not in COVER_TYPES:
+        return None
+    dest = STAGE_DIR / f"{sid}.cover{ext}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = response.read(10 << 20)
+    except OSError:
+        return None   # a song without a cover is fine
+    dest.write_bytes(data)
+    return dest
 
 
 class ProcessItem(BaseModel):
@@ -2040,10 +2164,10 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
         drafted = [list(n) for n in mine["notes"]]
         pending, gone = mine.get("pending"), []
         if pending:
-            shown = apply_take(drafted, pending["new"], pending["start"], pending["end"], pending["mode"], bar_starts(mine), tag="new")
+            shown = apply_take(drafted, pending["new"], pending["start"], pending["end"], pending["mode"], bar_starts(mine), tag="new", grid=pending.get("grid"))
             kept = {id(n) for n in shown}
             gone = [n[:3] + ["gone"] for n in drafted if id(n) not in kept]
-            drafted = sorted(with_moves(shown, pending.get("moved", [])), key=lambda n: n[:3])   # moved while it waits
+            drafted = sorted(without_removed(with_moves(shown, pending.get("moved", [])), pending.get("removed", [])), key=lambda n: n[:3])   # moved / deleted while it waits
         number = {t["made"]: k + 1 for k, t in enumerate(mine["takes"])}
         kind = lambda n: n[3] if len(n) > 3 and isinstance(n[3], str) else (f"take:{number[n[3]]}" if len(n) > 3 and n[3] in number else "tab")
         everything = sorted(drafted + gone, key=lambda n: n[:3])
@@ -2064,6 +2188,7 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
                                         "added": sum(1 for n in out if n[5] == "new"), "removed": len(gone),
                                         "replaces": number.get(pending.get("replaces")), "replaces_made": pending.get("replaces"),
                                         "heard": pending["notes"], "match": pending.get("match"), "peak_db": pending.get("peak_db"),
+                                        "sure": pending.get("sure", float(np.median([n[3] for n in pending["new"]])) if pending["new"] else None),
                                         "device": pending.get("device"), "channel": pending.get("channel")},
                 "tunings": tunings, "notes": [n for n in out if n[5] != "gone"], "gone": [n for n in out if n[5] == "gone"]}
     if source == "imported" and imported:
@@ -2642,7 +2767,7 @@ def learning_status():
 @api.post("/api/tab/record")
 async def start_record(song: str = Form(...), song_start: float = Form(...), shift: int = Form(0),
                        mode: str = Form("replace"), replaces: Optional[float] = Form(None), device: str = Form(""),
-                       channel: str = Form(""), file: UploadFile = File(...)):
+                       channel: str = Form(""), grid: int = Form(16), file: UploadFile = File(...)):
     """A take recorded along with the song (WAV): queue turning it into My tab."""
     song_dir = library_path(song, 2)
     if not song_dir.is_dir():
@@ -2658,7 +2783,8 @@ async def start_record(song: str = Form(...), song_start: float = Form(...), shi
     job_queue.put((job_id, {"kind": "record", "items": [{"song_dir": song_dir, "title": song_dir.name, "path": path,
                                                          "song_start": max(0.0, song_start), "shift": shift,
                                                          "mode": "add" if mode == "add" else "replace", "replaces": replaces,
-                                                         "device": device[:120], "channel": channel[:8]}]}))
+                                                         "device": device[:120], "channel": channel[:8],
+                                                         "grid": grid if grid in (8, 12, 16, 24, 32) else 16}]}))
     return {"job": job_id}
 
 
@@ -2676,6 +2802,16 @@ def edit_mine(req: MineEdit, restore: bool = False):
     mine = read_mine(song_dir)
     if not mine:
         raise HTTPException(404, "This song has no recorded tab.")
+    # A note of the take waiting for review (green): deleted from that take, applied when
+    # it's shown and on Keep (user: "deleting a note from my draft doesn't work": it went
+    # into the draft's removed list, which the take's notes don't pass through).
+    p = mine.get("pending")
+    same = lambda r: abs(r[0] - req.start) < 0.06 and r[1] == req.pitch
+    if p and (restore and any(same(r) for r in p.get("removed", []))
+              or not restore and not any(n[2] == req.pitch and abs(n[0] - req.start) < 0.06 for n in mine["notes"])):
+        p["removed"] = [r for r in p.get("removed", []) if not same(r)] + ([] if restore else [[req.start, req.pitch]])
+        (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+        return {"ok": True}
     removed = [r for r in mine.get("removed", []) if not (abs(r[0] - req.start) < 0.06 and r[1] == req.pitch)]
     hand = [h for h in mine.get("hand", []) if not (abs(h[0] - req.start) < 0.03 and h[2] == req.pitch)]
     if not restore and len(hand) < len(mine.get("hand", [])):   # one you put in by hand: just gone
@@ -2721,7 +2857,7 @@ def move_mine(req: MineMove):
         mine["moved"] = mine.get("moved", []) + [move]
         mine["notes"] = sorted(with_moves(mine["notes"], [move]), key=lambda n: n[:3])
     elif p and here(with_moves(apply_take([list(n) for n in mine["notes"]], p["new"], p["start"], p["end"], p["mode"],
-                                          bar_starts(mine)), p.get("moved", []))):
+                                          bar_starts(mine), grid=p.get("grid")), p.get("moved", []))):
         # A note of the take waiting for review (user: "that note isn't in the draft any
         # more", dragging its green notes): moved in the preview, for good on Keep.
         p["moved"] = p.get("moved", []) + [move]
@@ -3156,6 +3292,59 @@ def quit_app():
     return {"ok": True}
 
 
+# --- Game screen ---------------------------------------------------------------
+
+@api.get("/game")
+def game_page():
+    """The game on its own screen: the same page, which shows its game menus at /game."""
+    return FileResponse(STATIC_DIR / "index.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
+@api.get("/api/cover")
+def get_cover(song: str):
+    """The song's cover: its .cover file, else the picture inside the original (cached); 204 if none."""
+    song_dir = library_path(song, 2)
+    cover = cover_file(song_dir)
+    if cover:
+        return FileResponse(cover, media_type=COVER_TYPES[cover.suffix.lower()])
+    source = original_file(song_dir)
+    if not source:
+        return Response(status_code=204)   # none (204, not 404: the page draws one, without a console error)
+    stat = source.stat()
+    key = hashlib.sha1(f"{source}|{stat.st_mtime_ns}".encode()).hexdigest()
+    found, none = COVER_DIR / f"{key}.jpg", COVER_DIR / f"{key}.none"
+    if not found.exists() and not none.exists():
+        COVER_DIR.mkdir(parents=True, exist_ok=True)
+        part = found.with_suffix(".part.jpg")
+        done = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(source), "-an", "-frames:v", "1",
+                               "-vf", "scale='min(600,iw)':-2", str(part)], capture_output=True)
+        if done.returncode == 0 and part.exists() and part.stat().st_size:
+            part.replace(found)
+        else:
+            part.unlink(missing_ok=True)
+            none.touch()
+    if not found.exists():
+        return Response(status_code=204)
+    return FileResponse(found, media_type="image/jpeg")
+
+
+@api.post("/api/cover")
+async def set_cover(song: str = Form(...), file: UploadFile = File(...)):
+    """An image the user dropped on a song in the game: its new cover (the old one goes to the Trash)."""
+    song_dir = library_path(song, 2)
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in COVER_TYPES:
+        raise HTTPException(400, "Use a JPG, PNG or WebP picture.")
+    data = await file.read((10 << 20) + 1)
+    if len(data) > 10 << 20:
+        raise HTTPException(400, "That picture is over 10 MB.")
+    old = cover_file(song_dir)
+    if old:
+        send2trash(str(old))
+    (song_dir / f"{COVER_NAME}{ext}").write_bytes(data)
+    return song_info(song_dir)
+
+
 # --- Launching without a terminal ----------------------------------------------
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -3164,24 +3353,27 @@ APP_ROOT = Path(__file__).resolve().parent
 _desktop = []
 
 
-def shortcut_path():
-    """Where the app shortcut lives on this computer (None if not supported here)."""
+def shortcut_path(game=False):
+    """Where the app shortcut lives on this computer (None if not supported here).
+    game: the second shortcut, "Track Splitter Game", which opens straight into the game."""
+    name = "Track Splitter Game" if game else "Track Splitter"
     if sys.platform == "darwin":
-        return Path.home() / "Applications" / "Track Splitter.app"
+        return Path.home() / "Applications" / f"{name}.app"
     if sys.platform == "win32":
         if not _desktop:  # the real Desktop may be redirected, e.g. into OneDrive
             out = subprocess.run(["powershell", "-NoProfile", "-Command",
                                   "[Environment]::GetFolderPath('Desktop')"],
                                  capture_output=True, text=True).stdout.strip()
             _desktop.append(Path(out) if out else Path.home() / "Desktop")
-        return _desktop[0] / "Track Splitter.lnk"
+        return _desktop[0] / f"{name}.lnk"
     return None
 
 
-def install_shortcut():
+def install_shortcut(game=False):
     """Create an app shortcut (Mac: ~/Applications, Windows: Desktop) that starts
     Track Splitter without a terminal window. Only runs when the user asks for it."""
-    path = shortcut_path()
+    path = shortcut_path(game)
+    name, page, arg = ("Track Splitter Game", "/game", " --game") if game else ("Track Splitter", "", "")
     if sys.platform == "darwin":
         macos = path / "Contents" / "MacOS"
         macos.mkdir(parents=True, exist_ok=True)
@@ -3190,8 +3382,8 @@ def install_shortcut():
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
             '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
             '<plist version="1.0"><dict>\n'
-            '  <key>CFBundleName</key><string>Track Splitter</string>\n'
-            '  <key>CFBundleIdentifier</key><string>local.track-splitter</string>\n'
+            f'  <key>CFBundleName</key><string>{name}</string>\n'
+            f'  <key>CFBundleIdentifier</key><string>local.track-splitter{"-game" if game else ""}</string>\n'
             '  <key>CFBundleExecutable</key><string>launch</string>\n'
             '  <key>CFBundlePackageType</key><string>APPL</string>\n'
             '</dict></plist>\n')
@@ -3202,15 +3394,15 @@ def install_shortcut():
             "#!/bin/sh\n"
             f"cd {shlex.quote(str(APP_ROOT))} || exit 1\n"
             f"if curl -s -o /dev/null --max-time 1 http://{HOST}:{PORT}/api/info; then\n"
-            f"    open http://{HOST}:{PORT}\n"
+            f"    open http://{HOST}:{PORT}{page}\n"
             "else\n"
-            '    nohup sh start.sh >> "$HOME/Library/Logs/Track Splitter.log" 2>&1 &\n'
+            f'    nohup sh start.sh{arg} >> "$HOME/Library/Logs/Track Splitter.log" 2>&1 &\n'
             "fi\n")
         launcher.chmod(0o755)
     elif sys.platform == "win32":
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         script = (f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{path}'); "
-                  f"$s.TargetPath = '{pythonw}'; $s.Arguments = 'app.py'; "
+                  f"$s.TargetPath = '{pythonw}'; $s.Arguments = 'app.py{arg}'; "
                   f"$s.WorkingDirectory = '{APP_ROOT}'; $s.Save()")
         subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, check=True)
     else:
@@ -3220,15 +3412,20 @@ def install_shortcut():
 
 @api.get("/api/shortcut")
 def shortcut_status():
-    path = shortcut_path()
+    path, game = shortcut_path(), shortcut_path(game=True)
     return {"supported": path is not None, "exists": bool(path and path.exists()),
+            "game_exists": bool(game and game.exists()),
             "where": "in your Applications folder" if sys.platform == "darwin" else "on your Desktop"}
 
 
+class ShortcutRequest(BaseModel):
+    game: bool = False
+
+
 @api.post("/api/shortcut")
-def create_shortcut():
+def create_shortcut(req: ShortcutRequest = ShortcutRequest()):
     try:
-        path = install_shortcut()
+        path = install_shortcut(req.game)
     except (OSError, subprocess.CalledProcessError) as e:
         raise HTTPException(500, f"Couldn't create the shortcut: {e}")
     return {"path": str(path)}
@@ -3256,8 +3453,8 @@ def already_running(port):
         return False
 
 
-def main(port=PORT, open_browser=True):
-    url = f"http://{HOST}:{port}"
+def main(port=PORT, open_browser=True, page=""):
+    url = f"http://{HOST}:{port}{page}"
     if already_running(port):
         if open_browser:
             webbrowser.open(url)
@@ -3283,4 +3480,4 @@ def main(port=PORT, open_browser=True):
 
 
 if __name__ == "__main__":
-    main()
+    main(page="/game" if "--game" in sys.argv[1:] else "")

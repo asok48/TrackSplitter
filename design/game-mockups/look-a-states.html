@@ -1,0 +1,80 @@
+<!doctype html><meta charset="utf-8"><title>Look A · Studio</title>
+<style>
+body{margin:0;background:#111;color:#ddd;font:15px -apple-system,system-ui;padding:20px}
+h2{font:600 19px -apple-system;margin:28px 0 6px} p{margin:0 0 10px;color:#999;max-width:900px}
+canvas{display:block;width:100%;max-width:1200px;height:auto;aspect-ratio:1200/640;border-radius:12px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px} .row canvas{aspect-ratio:600/460}
+</style>
+<h2>1 · Normal play</h2><p>Top: only the score. Background: a deep violet glow while it's going steadily. Long notes have a slim tail; a slide shows a thin line between the two notes, a hammer-on an "h". Beat lines are faint, bar lines a little brighter. The string you're playing gets a white outline with its fret.</p><canvas id="s1"></canvas>
+<h2>2 · Hot streak (×4)</h2><p>The background brightens to blue and violet. The edges and strike line turn electric blue, a soft blue wash lifts off the board, the multiplier bar is full. Hits flash the button and throw a few small sparks.</p><canvas id="s2"></canvas>
+<h2>3 · A miss</h2><p>The missed note turns grey and keeps going; the button flashes red with a small "Miss · played B" label. The edges dim to amber, and the background fades to a dim, cold grey with a faint red tinge while it's going badly; it warms back up as you recover.</p><canvas id="s3"></canvas>
+<h2>4 · Guitar chord</h2><p>Chord notes are joined by a thin bar with the chord name above, in the same flat style.</p><canvas id="s4"></canvas>
+<h2>5 · Pause and results</h2><p>Same type and colours: plain panels, one accent button.</p><div class="row"><canvas id="p"></canvas><canvas id="r"></canvas></div>
+<script>
+const COL=['#4ade80','#f87171','#facc15','#60a5fa','#fb923c','#c084fc'];
+const F='-apple-system, "SF Pro Display", system-ui';
+function scene(id,o){
+ const n=o.n||4,NAMES=n===6?['E','A','D','G','B','e']:['E','A','D','G'];
+ const cv=document.getElementById(id),dpr=2,W=1200,H=640;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);
+ // Dynamic background: soft light blobs whose colour and brightness follow how you're doing
+ // (mood 0 struggling: dim, cold grey with a red tinge; 0.5 steady: deep violet; 1 hot: bright blue/violet).
+ g.fillStyle='#0a0a0d';g.fillRect(0,0,W,H);
+ const mood=o.fire?1:o.bad?0.05:0.55;
+ const blobs=mood>0.9?[[.2,.25,'rgba(56,189,248,.30)'],[.75,.15,'rgba(139,92,246,.28)'],[.55,.9,'rgba(56,189,248,.18)']]
+   :mood<0.2?[[.3,.2,'rgba(239,68,68,.07)'],[.8,.3,'rgba(120,120,140,.06)']]
+   :[[.25,.2,'rgba(139,92,246,.16)'],[.8,.25,'rgba(99,102,241,.10)'],[.5,.95,'rgba(139,92,246,.08)']];
+ for(const[x,y,c]of blobs){const r=g.createRadialGradient(W*x,H*y,0,W*x,H*y,H*.85);r.addColorStop(0,c);r.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=r;g.fillRect(0,0,W,H)}
+ const nearX=170,farX=W*.985,midY=H*.56,Z=4.2,dd=Z,rowH=Math.min(130,H*.62/n),gemH=Math.min(52,rowH*.62),gemW=gemH*1.25;
+ const depth=z=>dd/(z+dd),sx=z=>nearX+(farX-nearX)*((z*(Z+dd))/(Z*(z+dd))),laneY=(s,z)=>midY-(s-(n-1)/2)*rowH*depth(z),edgeY=(sd,z)=>midY+sd*(n/2)*rowH*depth(z);
+ const quad=(p,f)=>{g.fillStyle=f;g.beginPath();p.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));g.closePath();g.fill()};
+ const zp=-.25, edge=o.fire?'#38bdf8':o.bad?'#f59e0b':'#4ade80';
+ quad([[sx(zp),edgeY(-1,zp)],[sx(Z),edgeY(-1,Z)],[sx(Z),edgeY(1,Z)],[sx(zp),edgeY(1,zp)]],'rgba(22,22,28,.96)');
+ if(o.fire){const w=g.createLinearGradient(nearX,0,farX,0);w.addColorStop(0,'rgba(56,189,248,.14)');w.addColorStop(1,'rgba(56,189,248,0)');quad([[sx(zp),edgeY(-1,zp)],[sx(Z),edgeY(-1,Z)],[sx(Z),edgeY(1,Z)],[sx(zp),edgeY(1,zp)]],w)}
+ for(let b=0;b<Z;b+=.3){const z=b+.12,maj=Math.round(b/.3)%4===0;g.strokeStyle=maj?'rgba(255,255,255,.14)':'rgba(255,255,255,.04)';g.lineWidth=depth(z)*(maj?1.5:1);g.beginPath();g.moveTo(sx(z),edgeY(-1,z));g.lineTo(sx(z),edgeY(1,z));g.stroke()}
+ for(let s=0;s<n;s++){g.strokeStyle=COL[s]+'55';g.lineWidth=1.5;g.beginPath();g.moveTo(sx(zp),laneY(s,zp));g.lineTo(sx(Z),laneY(s,Z));g.stroke()}
+ g.strokeStyle=edge;g.lineWidth=o.fire?2.5:1.5;g.shadowColor=edge;g.shadowBlur=o.fire?14:0;for(const sd of[-1,1]){g.beginPath();g.moveTo(sx(zp),edgeY(sd,zp));g.lineTo(sx(Z),edgeY(sd,Z));g.stroke()}g.shadowBlur=0;
+ g.strokeStyle=o.fire?'#7dd3fc':'rgba(255,255,255,.55)';g.lineWidth=2;g.beginPath();g.moveTo(nearX,edgeY(-1,0)-4);g.lineTo(nearX,edgeY(1,0)+4);g.stroke();
+ // notes
+ g.textAlign='center';g.textBaseline='middle';
+ const notes=[...o.notes].sort((a,b)=>b[0]-a[0]);
+ for(const nt of notes){const[t,s,f,len=0,mark,missed]=nt;const z=t;if(z>Z)continue;const k=depth(z),w=gemW*k,h=gemH*k,x=sx(z),y=laneY(s,z);let a=z>Z*.85?(Z-z)/(Z*.15):1;g.globalAlpha=Math.max(0,a);
+  const c=missed?'#52525b':COL[s];
+  if(len){const z2=Math.min(Z,z+len),w0=gemH*.22*k,w1=gemH*.22*depth(z2);g.globalAlpha=.55*a;quad([[x,y-w0/2],[sx(z2),laneY(s,z2)-w1/2],[sx(z2),laneY(s,z2)+w1/2],[x,y+w0/2]],c);g.globalAlpha=a}
+  g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,8*k+2);g.fillStyle=c;g.fill();g.fillStyle=missed?'#d4d4d8':'#0b0b10';g.font=`700 ${Math.round(h*.56)}px ${F}`;g.fillText(f,x,y+1);
+  if(mark){g.fillStyle='rgba(255,255,255,.75)';g.font=`600 ${Math.round(h*.38)}px ${F}`;g.fillText(mark,x,y-h*.78)}
+  g.globalAlpha=1}
+ for(const[t1,t2,s] of o.slides||[]){g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=1.5;g.beginPath();g.moveTo(sx(t1)+gemW*depth(t1)/2+2,laneY(s,t1)+4);g.lineTo(sx(t2)-gemW*depth(t2)/2-2,laneY(s,t2)-4);g.stroke()}
+ for(const ch of o.chords||[]){const z=ch.t,k=depth(z),x=sx(z),ys=ch.s.map(s=>laneY(s,z));g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=3*k;g.beginPath();g.moveTo(x,Math.min(...ys));g.lineTo(x,Math.max(...ys));g.stroke();
+  ch.s.forEach((s,i)=>{const w=gemW*k,h=gemH*k,y=ys[i];g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,8*k+2);g.fillStyle=COL[s];g.fill();g.fillStyle='#0b0b10';g.font=`700 ${Math.round(h*.56)}px ${F}`;g.fillText(ch.f[i],x,y+1)});
+  g.fillStyle='#fff';g.font=`600 ${Math.round(20*k)}px ${F}`;g.fillText(ch.name,x,Math.min(...ys)-gemH*k*.95)}
+ // buttons
+ for(let s=0;s<n;s++){const y=laneY(s,0),hit=o.hit===s,miss=o.miss===s;g.beginPath();g.roundRect(nearX-gemW/2,y-gemH/2,gemW,gemH,10);
+  if(hit){g.fillStyle=COL[s];g.shadowColor=COL[s];g.shadowBlur=22;g.fill();g.shadowBlur=0}else if(miss){g.fillStyle='rgba(239,68,68,.25)';g.fill()}else{g.fillStyle='#0e0e12';g.fill()}
+  g.lineWidth=2;g.strokeStyle=miss?'#ef4444':COL[s];g.stroke();
+  g.fillStyle='rgba(255,255,255,.5)';g.font=`600 15px ${F}`;g.textAlign='right';g.fillText(NAMES[s],nearX-gemW/2-30,y);g.textAlign='center'}
+ if(o.playing!=null){const s=o.playing,y=laneY(s,0),w=gemW*1.16,h=gemH*1.12;g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.roundRect(nearX-w/2,y-h/2,w,h,12);g.stroke();if(o.hit!==s){g.fillStyle='#fff';g.font=`700 ${Math.round(gemH*.5)}px ${F}`;g.fillText(o.playFret,nearX,y+1)}}
+ if(o.hit!=null&&o.fire){for(let i=0;i<9;i++){const a=-Math.PI*(.1+i*.09),L=24+((i*37)%30);const y0=laneY(o.hit,0);g.strokeStyle=i%3?COL[o.hit]:'#e0f2fe';g.lineWidth=2;g.beginPath();g.moveTo(nearX+Math.cos(a)*gemW*.6,y0+Math.sin(a)*gemH*.6);g.lineTo(nearX+Math.cos(a)*(gemW*.6+L),y0+Math.sin(a)*(gemH*.6+L));g.stroke()}}
+ // labels
+ g.textAlign='left';
+ if(o.hit!=null){g.font=`600 16px ${F}`;g.fillStyle='#fde68a';g.fillText('Perfect',nearX+gemW*.9,laneY(o.hit,0)-gemH*.75)}
+ if(o.miss!=null){g.font=`600 16px ${F}`;g.fillStyle='#f87171';g.fillText('Miss',nearX+gemW*.9,laneY(o.miss,0)-gemH*.75);g.font=`500 13px ${F}`;g.fillStyle='#fca5a5';g.fillText('played B · tab C',nearX+gemW*.9,laneY(o.miss,0)-gemH*.75+18)}
+ // multiplier
+ const mx=nearX-gemW/2-14,t0=edgeY(-1,0)+6,b0=edgeY(1,0)-6,fill=o.fire?1:o.level??.6;g.fillStyle='rgba(255,255,255,.1)';g.beginPath();g.roundRect(mx-2,t0,4,b0-t0,2);g.fill();g.fillStyle=o.fire?'#38bdf8':'#facc15';if(o.fire){g.shadowColor='#38bdf8';g.shadowBlur=12}g.beginPath();g.roundRect(mx-2,b0-(b0-t0)*fill,4,(b0-t0)*fill,2);g.fill();g.shadowBlur=0;
+ g.textAlign='center';g.fillStyle=o.fire?'#7dd3fc':'#fff';g.font=`600 18px ${F}`;g.fillText(`×${o.mult||3}`,nearX,edgeY(1,0)+30);g.fillStyle='rgba(255,255,255,.5)';g.font=`500 13px ${F}`;g.fillText(o.streak?`${o.streak} streak`:'',nearX,edgeY(1,0)+50);
+ if(o.milestone){g.fillStyle='#fff';g.font=`600 30px ${F}`;g.fillText(o.milestone,W/2,118);}
+ // HUD
+ g.textBaseline='alphabetic';g.textAlign='right';g.fillStyle='#fff';g.font=`600 34px ${F}`;g.fillText(o.score||'12,450',W-32,56);   // just the score
+ g.textAlign='center';g.fillStyle='rgba(255,255,255,.08)';g.beginPath();g.roundRect(W/2-44,20,88,30,15);g.fill();g.fillStyle='rgba(255,255,255,.8)';g.font=`600 12px ${F}`;g.fillText('Pause',W/2,40);
+}
+const base=[[0.9,0,0],[1.2,0,0,.5],[1.75,1,5],[2.05,1,7,0,'h'],[2.3,3,5],[2.6,0,0],[2.85,2,7],[3.1,1,5],[3.4,0,3],[3.7,3,5],[4.0,2,7]];
+scene('s1',{notes:[[0.3,1,5],[0.6,1,7,0,'h'],[3.6,1,7],...base],slides:[[3.1,3.6,1]],playing:1,playFret:5,level:.6,mult:3,streak:24});
+scene('s2',{notes:[[0.55,1,7,0,'h'],...base],hit:1,fire:true,mult:4,streak:46,stars:4,score:'31,820',milestone:'50 note streak'});
+scene('s3',{notes:[[-0.12,2,7,0,0,true],[0.5,1,5],...base],miss:2,bad:true,level:.1,mult:1,streak:0,score:'8,940',stars:2});
+scene('s4',{n:6,notes:[[2.4,0,3],[3.3,1,5]],chords:[{t:0.7,s:[0,1,2],f:[3,5,5],name:'G5'},{t:1.6,s:[1,2,3],f:[5,7,7],name:'D5'},{t:2.9,s:[0,1,2],f:[5,7,7],name:'A5'}],title:'American Idiot',sub:'Green Day  ·  Guitar  ·  Hard',mult:2,streak:12,level:.3,stars:2,score:'6,300'});
+function panel(id,draw){const cv=document.getElementById(id),dpr=2,W=600,H=460;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.fillStyle='#0c0c0f';g.fillRect(0,0,W,H);g.fillStyle='#16161c';g.beginPath();g.roundRect(90,30,420,400,18);g.fill();g.strokeStyle='rgba(255,255,255,.08)';g.stroke();g.textAlign='center';g.textBaseline='alphabetic';draw(g,W,H)}
+const btn=(g,x,y,w,label,primary)=>{g.beginPath();g.roundRect(x-w/2,y-20,w,40,10);g.fillStyle=primary?'#8b5cf6':'rgba(255,255,255,.07)';g.fill();if(!primary){g.strokeStyle='rgba(255,255,255,.14)';g.stroke()}g.fillStyle='#fff';g.font=`600 15px ${F}`;g.fillText(label,x,y+5)};
+panel('p',(g)=>{g.fillStyle='#fff';g.font=`600 28px ${F}`;g.fillText('Paused',300,96);g.fillStyle='rgba(255,255,255,.55)';g.font=`500 15px ${F}`;g.fillText('12,450 points · 1:23 of 3:47',300,124);btn(g,300,190,260,'Resume',true);btn(g,300,244,260,'Restart');btn(g,300,298,260,'Settings');btn(g,300,352,260,'Quit to songs')});
+panel('r',(g)=>{g.fillStyle='#fff';g.font=`600 26px ${F}`;g.fillText('Hysteria',300,84);g.fillStyle='rgba(255,255,255,.55)';g.font=`500 14px ${F}`;g.fillText('Muse · Expert · Relaxed timing',300,108);g.font=`34px ${F}`;let x=212;for(let i=0;i<5;i++){g.fillStyle=i<4?'#facc15':'rgba(255,255,255,.18)';g.fillText('★',x,160);x+=44}g.fillStyle='#fff';g.font=`600 54px ${F}`;g.fillText('48,210',300,232);g.fillStyle='#a78bfa';g.font=`600 14px ${F}`;g.fillText('New best · was 41,900',300,258);
+ [['92%','Accuracy'],['1,208/1,314','Notes hit'],['186','Best streak']].forEach(([v,l],i)=>{const cx=170+i*130;g.fillStyle='rgba(255,255,255,.05)';g.beginPath();g.roundRect(cx-58,280,116,64,10);g.fill();g.fillStyle='#fff';g.font=`600 19px ${F}`;g.fillText(v,cx,310);g.fillStyle='rgba(255,255,255,.5)';g.font=`500 12px ${F}`;g.fillText(l,cx,331)});
+ btn(g,205,392,110,'Songs');btn(g,395,392,150,'Play again',true)});
+</script>

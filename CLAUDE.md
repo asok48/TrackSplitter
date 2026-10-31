@@ -173,7 +173,8 @@ standard, drop D, half step down, 5-string, with a suggestion) and saves
   and note models (`tab.learn_note_models`), each used only if it beats the built-in on
   held-out data. Runs in its own low-priority process (`learner`, `_learn_in_child`,
   `LEARN_DELAY` 20 s after start), not the job queue; status via `GET /api/learning`.
-- Page views: Lines (current + next line, `buildSlots`), Scroll (`drawTabScroll`),
+- Page views: Lines (current + next line, `buildSlots`; Bars per line, `#tab-bpl`,
+  per song `track-splitter-bars-per-line`, Auto = `layoutLines`), Scroll (`drawTabScroll`),
   Highway (`drawHighway`, Flat switch), Whole tab (`wholeFrame`). Playhead follows
   `audioNow()` minus output latency; Line timing (`track-splitter-line-sync`); Raise ½
   step (`/api/audio?shift=1`, `track-splitter-raise`). Show my timing
@@ -222,6 +223,16 @@ on the tab APIs; Track picker (`POST /api/tab/tracks`, `tabimport.rank_tracks`);
 `GUITAR_HEARD_RULES`); fingering `tab.guitar_fingering` (`GUITAR_STYLE`). Learning from
 imported tabs stays bass only.
 
+## Game screen (/game)
+
+The game as its own screen (`/game`, `arcadeOn`, `#arcade`): title, song wall with covers
+(`/api/cover`, `.cover.<ext>`) and previews, song screen (instrument, difficulty, bests,
+input) -> `arcadePlay` -> `startGame`. Mac icon "Track Splitter Game" (`install_shortcut(game=True)`,
+`app.py --game`). Stars kept per best key (`STARS_KEY`). Menus: concert stage, song select
+carousel (`renderCarousel`). In-game look "clean and premium" (mockups in `design/game-mockups/`):
+`drawStage` mood background, `drawMultiplier` + `drawRingFire` by the score (`rbScore`); test
+streak `track-splitter-game-streak`. Phases 2-3 (scoring depth, practice mode) to come.
+
 ## Guitar game (step 2)
 
 The game works for guitar tabs: plays a version without the guitar and switches the input
@@ -248,7 +259,9 @@ Bass input drawer (`#input-bar`): input/channel (Both inputs default,
 `PITCH_RANGE`), level, live note, Hear myself (low-latency monitor, soft clipper),
 Tuner, Record. Stays on between songs; reopens on dropouts (`reopenInput`).
 - Record: `POST /api/tab/record` -> `record_tab()` (transcribe, `align_take()`,
-  `apply_take()` add/replace), saved in `.bass-tab-mine.json` + `.my-bass/take-<ms>.flac`;
+  Click switch (`#record-click`, `startClickTrack`, `track-splitter-record-click`);
+  `apply_take()` add/replace, both snapped to the take's `grid` (the page's `editGrid`);
+  add: `ADD_MIN_AMP` / `ADD_LOOSE_AMP`, `bar_starts` fills gap bars), saved in `.bass-tab-mine.json` + `.my-bass/take-<ms>.flac`;
   `redo_mine` rebuilds (bump `MINE_RULES`). A take waits as `pending` for review
   (`#take-review`, `POST /api/tab/mine/take`); Your takes (`#takes-dlg`).
 - Drafts: `POST /api/tab/draft` (`new_draft` / `start_draft`), editing by delete
