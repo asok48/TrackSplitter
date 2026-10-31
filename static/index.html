@@ -4854,6 +4854,16 @@
         g.globalAlpha = 1;
       }
     }
+    // The string names, crisp: just the letter in the string's colour, a soft shadow to keep it readable (no circle:
+    // "I don't like the circles").
+    const names = tabView.data && (showRaised() ? tabView.data.tunings.find((x) => x.key === 'standard') : tabView.data.tunings.find((x) => x.key === tabView.data.tuning))?.strings;
+    (names || []).forEach((name, s) => {
+      const p = window.Game3D.nameScreen(s);
+      if (!p) return;
+      g.font = `900 20px ${ROCK_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.shadowColor = 'rgba(0,0,0,0.85)'; g.shadowBlur = 6; g.fillStyle = LANE_COLORS[s % LANE_COLORS.length];
+      g.fillText(name, p.x, p.y + 1); g.shadowBlur = 0;
+    });
     // What you're playing now: its fret by the pad.
     if (input.note !== null && input.lane !== null && (input.laneFret ?? -1) >= 0) {
       const p = window.Game3D.padScreen(input.lane);

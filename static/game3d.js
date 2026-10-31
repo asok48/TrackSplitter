@@ -22,7 +22,7 @@ let lanes = { n: 0 }, bars = [], pool = [], used = new Map(), sparks = [], seenB
 const tex = {};
 const v3 = new THREE.Vector3();
 
-function label(text, color, outline = false, size = 128, chip = false) {
+function label(text, color, outline = false, size = 256, chip = false) {   // 256 px: crisp up close ("higher res")
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
   if (chip) {                                            // a small glass chip behind (the string names)
     g.fillStyle = 'rgba(10,8,6,0.6)'; g.strokeStyle = 'rgba(255,245,230,0.22)'; g.lineWidth = size * 0.03;
@@ -59,7 +59,7 @@ function woodTexture(base, light, dark, contrast) {
 
 function init() {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });   // see-through: the song's blurred cover shows behind (index.html)
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.setPixelRatio(Math.min(3, devicePixelRatio));   // the screen's full sharpness
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.domElement.className = 'game3d-gl';
   scene = new THREE.Scene();
@@ -95,7 +95,8 @@ function init() {
   mats.tailGeo = new THREE.BoxGeometry(1, 0.06, 0.16);
   mats.sparkGeo = new THREE.SphereGeometry(0.025, 6, 6);
 
-  composer = new EffectComposer(renderer);
+  // The glow pass renders through its own targets, which had no antialiasing (jagged edges): 4x MSAA on them.
+  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(1600, 1000), 0.35, 0.4, 0.98));
   composer.addPass(new OutputPass());
@@ -215,6 +216,7 @@ function buildLanes(n, colors, names) {
     const light = add(new THREE.PointLight(col, 0, 4, 2)); light.position.set(0.3, 0.8, laneZ(s));
     const name = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: label(names[s] || '', col, true, 128, true), depthWrite: false })));
     name.scale.set(0.62, 0.62, 1); name.position.set(NUT - 0.5, 0.35, laneZ(s));
+    name.visible = false;                                // drawn crisply on the HUD instead (nameScreen); kept for the camera fit
     lanes.pads.push({ rim, lens, light, col, hitAt: -1e9 });
     lanes.names.push(name);
   }
@@ -302,6 +304,15 @@ export function mount(wrap) {
   wrapEl = wrap;
   wrap.prepend(renderer.domElement);
   lastSize = '';
+}
+
+// Where string s's name goes on screen (CSS px within the wrap): the HUD draws it there, crisp (as a texture in the
+// scene the letters looked "sloppy").
+export function nameScreen(s) {
+  const n = lanes.names?.[s];
+  if (!n || !wrapEl) return null;
+  n.getWorldPosition(v3).project(camera);
+  return { x: ((v3.x + 1) / 2) * wrapEl.clientWidth, y: ((1 - v3.y) / 2) * wrapEl.clientHeight };
 }
 
 // Where pad s is on screen (CSS px within the wrap), for the HUD's calls.
@@ -494,4 +505,4 @@ export function frame(v) {
   composer.render();
 }
 
-window.Game3D = { mount, frame, padScreen };
+window.Game3D = { mount, frame, padScreen, nameScreen };

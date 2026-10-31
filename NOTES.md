@@ -1920,3 +1920,7 @@ Phase 1 redesign (same day):
   lines; Settings › Fretboard: Glass | Maple | Dark, stored as `encore-fretboard` (new key, so everyone starts on glass).
 - A comment added inside a one-line `if { ... }` once commented out its closing brace and broke the whole page
   ("Loading…" forever): re-check every inline script after each index.html change.
+- String names drawn on the HUD (`Game3D.nameScreen`), crisp: just the letter in the string's colour with a soft
+  shadow (circles round them were disliked) (as textures in the scene they looked "sloppy"); the 3D name sprites stay hidden, only for the camera fit.
+- "Higher res": 4x MSAA on the glow pass's render targets (EffectComposer had none: jagged edges), pixel ratio up to
+  the screen's (3), note / bar number textures 256 px.
