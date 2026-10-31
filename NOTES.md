@@ -1931,3 +1931,4 @@ Phase 1 redesign (same day):
 - Tuner in Settings ("can we add the tuner to the settings?"): Setup → Tuner → Open tuner moves the input drawer's tuner
   (#tuner) into Settings (connecting the input if needed) and switches it on; closing puts it back and switches it off
   if Settings switched it on (`settingsTuner`).
+- "Match the song's tone" defaults to on in Encore (/game) for songs never set; switching it off is kept per song (0).
