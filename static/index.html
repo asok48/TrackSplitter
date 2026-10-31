@@ -1152,10 +1152,14 @@
   dialog.game-screen, dialog.game-screen * { font-family: var(--arc-font) !important; }   /* same font as everything else in Encore */
   /* Transparent over whatever is behind, the whole width, two columns; it scrolls on a small window (it was cut off)
      (user: "make it a transparent background and the whole width") */
-  #settings-dlg.full { background: rgba(7, 5, 4, .5); backdrop-filter: blur(18px) saturate(1.1); }
+  #settings-dlg.full { width: 100vw; height: 100vh; max-width: none; max-height: none; background: rgba(7, 5, 4, .5); backdrop-filter: blur(18px) saturate(1.1); }   /* (an older #settings-dlg rule kept it 500 px wide: "too narrow to work") */
   #settings-dlg.full::after { background: linear-gradient(90deg, rgba(7, 5, 4, .55), rgba(7, 5, 4, .2)); }
   #settings-dlg > form { justify-content: flex-start; padding-top: 7vh; max-width: none; }
-  #settings-dlg .settings-body { display: block; columns: 2 520px; column-gap: 80px; min-height: 0; overflow-y: auto; }
+  #settings-dlg > form { overflow-y: auto; }          /* the whole screen scrolls when it doesn't fit */
+  #settings-dlg .settings-body { display: block; flex: none; height: auto; max-height: none; overflow: visible; columns: 2 460px; column-gap: 80px; }   /* one column when narrow */
+  #settings-dlg { --accent: #f59e0b; --accent-hover: #fbbf24; }
+  #settings-dlg .gs-tuner-box { break-inside: avoid; padding: 8px 0 16px; max-width: 520px; }
+  #settings-dlg .gs-tuner-box .tuner { background: rgba(255, 245, 230, .05); border: 1px solid rgba(255, 245, 230, .12); }   /* sliders and switches in Encore's amber, not the app's violet */
   #settings-dlg .set-row, #settings-dlg .set-group { break-inside: avoid; }
   #settings-dlg .set-group:first-child { margin-top: 0; }
   #settings-dlg h2 { font-size: clamp(48px, 6vw, 80px); }
@@ -1975,6 +1979,9 @@
       <div class="set-row"><span>Song volume</span>
         <label class="set-range"><input type="range" id="gs-volume" min="0" max="100" aria-label="Song volume"><span id="gs-volume-pct"></span></label></div>
       <div class="set-group">Setup</div>
+      <div class="set-row"><span>Tuner</span>
+        <button type="button" class="btn sm" id="gs-tuner">Open tuner</button></div>
+      <div class="gs-tuner-box hidden" id="gs-tuner-box"></div>
       <div class="set-row"><span>Timing</span>
         <button type="button" class="btn sm" id="gs-calibrate">Calibrate timing…</button></div>
       <div class="set-row"><span>Strings</span>
@@ -6542,6 +6549,26 @@
     $('#tuner-strings').replaceChildren(...tun.strings.map((name, s) => el('span', {
       textContent: name, className: tun.open[s] === note ? (inTune ? 'in' : 'near') : '' })));
   }
+  // The tuner in Settings (user: "can we add the tuner to the settings?"): the input drawer's tuner, moved into the
+  // Settings screen while it's open there, and put back (and switched off, if Settings turned it on) on close.
+  let tunerHome = null, tunerFromSettings = false;
+  async function settingsTuner(open) {
+    const box = $('#gs-tuner-box'), el2 = $('#tuner');
+    if (open) {
+      if (!input.stream) { await openInputBar(); $('#input-bar').classList.add('hidden'); }
+      if (!input.analyser) return;
+      tunerHome ||= { parent: el2.parentElement, next: el2.nextSibling };
+      box.append(el2); box.classList.remove('hidden');
+      if (!tunerOn) { $('#input-tuner-btn').click(); tunerFromSettings = true; }
+    } else if (tunerHome) {
+      if (tunerFromSettings && tunerOn) $('#input-tuner-btn').click();
+      tunerFromSettings = false;
+      tunerHome.parent.insertBefore(el2, tunerHome.next); tunerHome = null; box.classList.add('hidden');
+    }
+    $('#gs-tuner').textContent = open ? 'Close tuner' : 'Open tuner';
+  }
+  $('#gs-tuner').addEventListener('click', () => settingsTuner(!tunerHome));
+  $('#settings-dlg').addEventListener('close', () => settingsTuner(false));
   $('#input-tuner-btn').addEventListener('click', () => {
     tunerOn = !tunerOn;
     $('#tuner').classList.toggle('hidden', !tunerOn);
@@ -7900,6 +7927,7 @@
     $('#settings-dlg').showModal();
   }
   function closeSettings() {
+    settingsTuner(false);                                // the tuner goes back to the input drawer
     if ($('#settings-dlg').open) $('#settings-dlg').close();
     if (settingsFromPause && game.on && game.paused) $('#pause-dlg').showModal();   // back to the pause menu
   }

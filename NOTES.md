@@ -1924,3 +1924,10 @@ Phase 1 redesign (same day):
   shadow (circles round them were disliked) (as textures in the scene they looked "sloppy"); the 3D name sprites stay hidden, only for the camera fit.
 - "Higher res": 4x MSAA on the glow pass's render targets (EffectComposer had none: jagged edges), pixel ratio up to
   the screen's (3), note / bar number textures 256 px.
+- Settings was stuck 500 px wide (an older `#settings-dlg { width }` rule outranked the full-screen class: "too narrow to
+  work"); `#settings-dlg.full` sets the full window size.
+  Also: the list grows to its height and the screen scrolls (a height-limited multi-column list spilled sideways off
+  screen), two columns from ~1000 px wide, one below; sliders / switches amber (`--accent` set on #settings-dlg).
+- Tuner in Settings ("can we add the tuner to the settings?"): Setup → Tuner → Open tuner moves the input drawer's tuner
+  (#tuner) into Settings (connecting the input if needed) and switches it on; closing puts it back and switches it off
+  if Settings switched it on (`settingsTuner`).
