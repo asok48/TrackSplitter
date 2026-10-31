@@ -1800,6 +1800,123 @@ Phase 1 redesign (same day):
   stars, metal multiplier disc, the latest call (PERFECT / MISS ...) beside the score ("the accuracy
   alert gets in the way" → "put the accuracy next to the score": user said "this is good").
 - Prototype: `design/game-mockups/board-3d-prototype.html`.
-- Not done yet: menus still in the violet "stage" style (user called the theme "AI like"; wants a
-  Rock Band-like rock style everywhere); pause/results not restyled to rock; bar numbers and the
-  hand-position line aren't on the 3D board; guitar chords in 3D; not tried with real playing.
+- "Make the game look more finished" (same day, user picked all four):
+  - Menus in the rock style: violet swapped for amber / red / warm white (beams, lamps, buttons,
+    logo, carousel glow), dark metal plates for secondary buttons, grit over the menus.
+  - Pause / results / settings (`dialog.game-screen`): dark metal plates with a bright top edge,
+    heavy condensed type, amber main button, gold stars popping in, metal stat tiles.
+  - 3D board: bar numbers above the top string (sprites, `bar<i>` textures), dashed amber lines
+    before a hand move (`moves: handMoves(d)`).
+  - Loading screen `#arc-loading` (cover, title, artist, a tip from `LOAD_TIPS`, animated bar) and
+    fades (`fadeTo`, `#fader`): song select → loading → game, results → song select.
+- Not done yet: guitar chords in 3D; not tried with real playing.
+- The game is called **Encore** (user: a name "general for all instruments"; picked from Encore /
+  Headliner / Live Wire / Jam Session): title screen, window title, and the Mac app
+  `~/Applications/Encore.app` (`install_shortcut(game=True)`). The main app's sidebar has a big amber
+  "Encore · Play along with your songs" card (`#encore-btn`, a link to /game; user: "a prominent
+  button on the side bar") and, on a Mac without the Encore app yet, "Create Encore shortcut"
+  (`#encore-shortcut-btn`) in the sidebar footer. A "Track Splitter Game.app" made before the rename
+  isn't removed.
+- Song select tidied ("clean up the select song screen"): tools in one group at the top right (search
+  with the song count as its placeholder, sort, Covers | List), the input picker moved by Play, the
+  "Relaxed timing" line only shows warnings now, shorter key hints (`#arc-hint`), and the stage's floor
+  grid removed (it looked like highway bars). List view ("just see a list view", `arcade.view`,
+  `track-splitter-arcade-view`, `renderList` / `markList`): rows with a small cover, title, artist,
+  tabs and stars for the chosen difficulty, details + Play on the right; in List ↑/↓ is the song and
+  ←/→ the difficulty (Covers: the other way round); double-click a row plays.
+- Album covers (user: "search google for album covers?" → MusicBrainz / Cover Art Archive instead, free
+  and meant for apps): `album_candidates` (MusicBrainz recording search by artist + title; live versions
+  and live albums skipped, Brianstorm had come back as a Royal Albert Hall live album; the earliest
+  official studio album first) and `save_album_cover` (Cover Art Archive front-500). One file per album
+  in `<library>/.covers/<release group id>.jpg`, songs point at it via `.song.json` "cover_lookup":
+  {"album"} ("I don't want to store duplicate covers"); no match is remembered too. `cover_file` order:
+  dropped picture (.cover.*), album cover, link thumbnail (.thumb.*, now only a fallback), art inside
+  the original. Runs in the background (`cover_worker`, `queue_covers`): when /game opens
+  (`POST /api/covers/fetch`, `fetchCovers` polls `GET /api/covers/status` and re-renders as covers
+  arrive) and when a new song is added ("so they load after a song is uploaded"). Only the MusicBrainz
+  search is paced (~1/s); downloads run 4 at once ("it's pretty slow to get them": ~10 s → ~1 s a song).
+  Test copy: 27 songs in ~30 s, 21 found, 16 files. Only the artist and title are sent.
+- Covers: rate-limited lookups are retried (back in the queue after 2 / 4 / 8 s, up to 4 tries;
+  searches 1.2 s apart) instead of waiting for the next visit ("songs that are skipped are not tried
+  again until I go back"); a refresh on /game returns to song select with the same song
+  (`encore-place` in sessionStorage).
+- Encore as an app (user: "make this a standalone app", "like a mac app"; told a native WebKit
+  wrapper wouldn't run faster and risks the Scarlett's second channel and the timing calibration, so
+  picked "an installable Chrome app"): `static/encore-manifest.json` (name Encore, start /game, scope
+  /game, standalone) linked only on /game, icons `static/icons/encore-*.png` (a guitar pick with an E,
+  from encore.svg via qlmanage), an offline copy `static/encore-sw.js` (network first, never /api).
+  Install from Encore's title screen ("Install Encore app", Chrome's install prompt) or the sidebar link
+  (opens /game). If Track Splitter isn't running when Encore opens, Encore shows "Starting Track
+  Splitter…" (`#arc-starting`, `startTrackSplitter`), opens `encore-start://`, and reloads once it's up;
+  the link is handled by `~/Applications/Encore Helper.app` (`install_encore_helper`: no Dock icon,
+  registered with lsregister, runs `start.sh --no-browser`; `app.py --no-browser`). The helper is made
+  when installing. Untested: the browser pane used for testing refuses service workers, so the offline
+  start screen and the install prompt need trying in real Chrome.
+- Title screen polished ("the menu screen looks sort of weak ... polished"): a drifting, dimmed wall of
+  the library's covers (`#arc-wall`), the brand (pick icon + ENCORE) and a console-style menu on the left
+  (big text items, an amber bar sliding to the focused one, `moveMenuBar`; Play, Settings, the two
+  calibrations), "Jump back in" on the right (the last song played, `encore-last-song`, with its best),
+  Install / Back to Track Splitter as small footer links (`renderTitle`). Not yet looked at in a
+  browser (the user stopped browser checks).
+- "Make Encore only available from that button": the main app's tab view has no Tab | Game switch any
+  more (`#tab-section` hidden outside /game, `setSection` forces 'tab'); the game is reached through the
+  sidebar's Encore button (and the installed Encore app).
+- "I always see the app was updated text": it was accurate (the running server predated edits to app.py
+  made while it ran). The note now has a Restart now button (sidebar and Encore's title): `POST
+  /api/restart` stops the server and `main()` re-runs the same program with `--no-browser`
+  (`os.execv`); refused while a song is being processed; the page polls /api/info and reloads.
+- "Make the rest of the game ui look more modern" (all four picked), in the title screen's style:
+  - Pause, results and settings are full screens (`dialog.game-screen.full`, `.dlg-cover` with the song's
+    cover blurred behind via `setDlgCover`): big gradient titles and text-menu buttons (Resume large and
+    amber, Quit soft red), arrow keys move through them; results show the cover beside the title
+    (`#game-art`), a 96px score and the stats.
+  - Song select and loading: the picked song's cover blurred across the background (`#arc-select-bg`,
+    `#arc-load-bg`, crossfading), the stage beams faded to 25%, difficulties as chips, light glass
+    buttons instead of metal plates.
+  - HUD: a flat frosted score panel and a flat multiplier ring (x4 fire kept); the Pause pill is glass.
+  Not looked at in a browser yet (syntax checked only).
+- No Pause pill in a game ("do we want a pill?"): Space, Esc or a click on the board pauses. The pause
+  menu shows the frozen game blurred and dimmed behind it ("just a blurred background for the pause
+  menu"); results and settings keep the blurred cover.
+- Installed Encore "keeps waiting for Track Splitter to start": no Encore Helper existed (the running server
+  was older and had made the earlier Encore.app launcher instead), and once made, the helper's shell
+  launcher ran under Rosetta, so the venv's arm64 numpy failed to load ("have arm64, need x86_64"). Fixed:
+  the helper's Info.plist prefers arm64 / requires native, its launcher runs `arch -arm64 /bin/sh start.sh`,
+  the waiting screen shows a "Start Track Splitter" button after 4 s (Chrome may block the encore-start://
+  link without a click), and the installed app re-makes its helper on every start. Checked: `open
+  encore-start://open` started Track Splitter natively.
+- Stop when closed ("can we stop tracksplitter when I close it?"): the helper starts it with
+  `--auto-quit`; pages POST /api/ping every 5 s and a goodbye beacon on pagehide; `auto_quit_watch` stops the
+  server 15 s after the last check-in (45 s grace at start), never while a song is processing. Track
+  Splitter started any other way keeps running. The quit itself not yet seen happening.
+- `~/Applications/Encore.app` (the older launcher made before the helper) is left in place; the installed
+  Encore lives in `~/Applications/Chrome Apps/`.
+- No pills on song select ("I don't like the pill look"): sort / view / instrument as text tabs with an amber
+  underline, an underlined search, a bare back chevron, 10px-corner buttons.
+- Settings flattened ("just put settings at the top and then put the settings without a box around it"):
+  heading at the top, label column + plain choices (active underlined amber), amber text links for actions, no boxes.
+- Settings: transparent and blurred over what's behind (no cover), the whole width in two columns, scrolls on a
+  small window ("make it a transparent background and the whole width"; the list had been cut off, unable to scroll).
+- Pause works during a count-in too ("I don't want to wait for the countdown to pause again"): pauseGame cancels it
+  (`game.countToken`, checked by the start and resume count-in loops); Resume counts in again.
+- In-game, "more modern, keep 3D": tried the song's blurred cover behind the board (user: "I don't like the cover in
+  the back"); a concert with a crowd was declined ("no crowd, just lights in the back"); cone-shaped light beams
+  looked "cheap ... like a flash game". Now: soft out-of-focus glows (bokeh, `buildShow` / `updateShow` in
+  game3d.js) and a faint glow far behind the board, drifting slowly, brightening on the beat (`beatAt` from the
+  bars and `bpm`), coloured by the mood (dim red / amber / blue at x4). Also: strings glow faintly in their colour,
+  the string names sit on glass chips, the frame fades to dark at the edges, the call pops in sliding up.
+- The light show made livelier ("just more dynamic"; real concert footage was offered and not wanted): three rows
+  of soft lights like rigs at different depths, swaying; a wave chases across them at each bar; rows flash in turn
+  on the beats; each hit flares a front light in the string's colour; brighter with the multiplier (`mult`); x4 blue
+  with a white flash on beat 1. Streak banners moved left (W * 0.36) so they don't overlap the call by the score.
+- Holding a note ("make the effect of holding a note look better"): the tail burns bright and pulses with a soft
+  additive glow (`tailGlow`), the note glows on the pad, the string vibrates and glows (`lanes.strings`), small
+  sparks stream off the pad, a burst when the hold reaches its end, the pad pulses. Not yet seen with a real hold.
+- Repeats: the first note has its number; a repeat (the very next note played, same string and fret, within 2.5 s;
+  notes on other strings in between make it a new note) is the thin bar ("I wanted the first note to have a number and
+  any repeating to have the thinner bar"; "there's not repeating notes that are not showing").
+- Board surface: dark glass by default ("not huge on the fretboard look" → "dark glass highway"): satin (a mirror
+  finish caught the lights: "too shiny"), faint lane washes, glowing thin strings, light edges, soft light bar
+  lines; Settings › Fretboard: Glass | Maple | Dark, stored as `encore-fretboard` (new key, so everyone starts on glass).
+- A comment added inside a one-line `if { ... }` once commented out its closing brace and broke the whole page
+  ("Loading…" forever): re-check every inline script after each index.html change.

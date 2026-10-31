@@ -22,9 +22,14 @@ let lanes = { n: 0 }, bars = [], pool = [], used = new Map(), sparks = [], seenB
 const tex = {};
 const v3 = new THREE.Vector3();
 
-function label(text, color, outline = false, size = 128) {
+function label(text, color, outline = false, size = 128, chip = false) {
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
-  g.font = `900 ${size * 0.74}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (chip) {                                            // a small glass chip behind (the string names)
+    g.fillStyle = 'rgba(10,8,6,0.6)'; g.strokeStyle = 'rgba(255,245,230,0.22)'; g.lineWidth = size * 0.03;
+    g.beginPath(); g.roundRect(size * 0.14, size * 0.14, size * 0.72, size * 0.72, size * 0.2); g.fill(); g.stroke();
+    outline = false;
+  }
+  g.font = `900 ${size * (chip ? 0.5 : 0.74)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
   if (outline) { g.lineWidth = size * 0.1; g.lineJoin = 'round'; g.strokeStyle = 'rgba(10,7,5,.9)'; g.strokeText(text, size / 2, size / 2 + size * 0.05); }
   g.fillStyle = color; g.fillText(text, size / 2, size / 2 + size * 0.05);
   const t = new THREE.CanvasTexture(c); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t;
@@ -53,12 +58,12 @@ function woodTexture(base, light, dark, contrast) {
 }
 
 function init() {
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });   // see-through: the song's blurred cover shows behind (index.html)
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.domElement.className = 'game3d-gl';
   scene = new THREE.Scene();
-  scene.background = new THREE.Color('#0b0806');
+  scene.background = null;
   scene.fog = new THREE.Fog('#0b0806', 15, 36);
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.3;
@@ -74,9 +79,12 @@ function init() {
   }
 
   // The board runs on past the left edge of the screen and into the fog on the right.
-  mats.boards = { maple: { map: woodTexture('#6f4f2a', 'rgba(220,185,130,1)', 'rgba(60,36,12,1)', 0.9), roughness: 0.7, metalness: 0 },
-                  dark: { map: woodTexture('#1b1512', 'rgba(120,95,70,1)', 'rgba(0,0,0,1)', 0.5), roughness: 0.55, metalness: 0.25 } };
-  board = new THREE.Mesh(new THREE.BoxGeometry(80, 0.3, 1), new THREE.MeshStandardMaterial(mats.boards.maple));
+  // Surfaces: dark glass (the default: "not huge on the fretboard look", picked "dark glass highway"), maple, dark wood.
+  const white = new THREE.Color('#ffffff');
+  mats.boards = { glass: { map: null, color: new THREE.Color('#0b0d13'), roughness: 0.55, metalness: 0.1 },   // satin: a mirror finish caught the lights ("too shiny")
+                  maple: { map: woodTexture('#6f4f2a', 'rgba(220,185,130,1)', 'rgba(60,36,12,1)', 0.9), color: white, roughness: 0.7, metalness: 0 },
+                  dark: { map: woodTexture('#1b1512', 'rgba(120,95,70,1)', 'rgba(0,0,0,1)', 0.5), color: white, roughness: 0.55, metalness: 0.25 } };
+  board = new THREE.Mesh(new THREE.BoxGeometry(80, 0.3, 1), new THREE.MeshStandardMaterial(mats.boards.glass));
   world.add(board);
   mats.fret = new THREE.MeshStandardMaterial({ color: '#c9c3b8', metalness: 1, roughness: 0.35 });
   mats.line = new THREE.MeshBasicMaterial({ color: '#ffe9c9', transparent: true, opacity: 0.14 });
@@ -93,12 +101,103 @@ function init() {
   composer.addPass(new OutputPass());
 }
 
+// Lights in the back (user: "maybe some sort of dynamic background ... to make it feel like a concert", then
+// "no crowd, just lights in the back"): a soft glow far behind the board and out-of-focus stage lights drifting,
+// brightening on the beat (more on beat 1); their colours follow the mood.
+let show = null;
+function gradientTexture(stops, vertical = true) {
+  const c = document.createElement('canvas'); c.width = vertical ? 4 : 256; c.height = vertical ? 256 : 256; const g = c.getContext('2d');
+  const grad = vertical ? g.createLinearGradient(0, 0, 0, 256) : g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  stops.forEach(([at, col]) => grad.addColorStop(at, col));
+  g.fillStyle = grad; g.fillRect(0, 0, c.width, c.height);
+  return new THREE.CanvasTexture(c);
+}
+function buildShow() {
+  // Out-of-focus stage lights (bokeh; beams looked "cheap ... like a flash game"), made livelier ("just more
+  // dynamic"): three rows like lighting rigs at different depths, each swaying; a wave chases across them at each
+  // bar, rows flash in turn on the beats, your hits flare a light in the string's colour, and the whole show gets
+  // brighter with the multiplier.
+  const group = new THREE.Group(); scene.add(group);
+  const soft = gradientTexture([[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.55)'], [0.7, 'rgba(255,255,255,0.12)'], [1, 'rgba(255,255,255,0)']], false);
+  const mat = (o) => new THREE.SpriteMaterial({ map: soft, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false });
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(240, 120), new THREE.MeshBasicMaterial({ map: soft, transparent: true, opacity: 0.18,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false }));
+  wall.position.set(14, 4, -80); group.add(wall);
+  const rows = [];
+  [[-48, 18, 11, 7], [-60, 10, 13, 9], [-72, 24, 15, 12]].forEach(([z, y, count, size], r) => {
+    const rig = new THREE.Group(); rig.position.set(14, y, z); group.add(rig);
+    const lights = [];
+    for (let i = 0; i < count; i++) {
+      const glow = new THREE.Sprite(mat(0)); const sz = size * (0.8 + Math.random() * 0.4);
+      glow.scale.set(sz, sz, 1); glow.position.set((i - (count - 1) / 2) * (100 / count), 0, 0); rig.add(glow);
+      lights.push({ glow, flare: 0, flareCol: new THREE.Color(), phase: Math.random() * 6.3 });
+    }
+    rows.push({ rig, lights, r });
+  });
+  show = { group, wall, rows, lastBurst: 0, lastBar: -1, chaseAt: -1e9 };
+}
+// Seconds since the last beat and whether it was beat 1, from the tab's bars and tempo.
+function beatAt(bars, bpm, t, playing) {
+  if (!playing || !bars?.length || t < bars[0]) return { beat: 9, down: false };
+  let lo = 0, hi = bars.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (bars[mid] <= t) lo = mid; else hi = mid - 1; }
+  const b0 = bars[lo], b1 = bars[lo + 1] ?? b0 + 240 / (bpm || 120);
+  const beats = Math.max(1, Math.round(((b1 - b0) * (bpm || 120)) / 60)), step = (b1 - b0) / beats, k = Math.floor((t - b0) / step);
+  return { beat: t - (b0 + k * step), down: k === 0 };
+}
+const SHOW_COLORS = [   // [a, b] per mood: struggling, steady, hot (x4)
+  [new THREE.Color('#7f1d1d'), new THREE.Color('#52525b')],
+  [new THREE.Color('#f59e0b'), new THREE.Color('#e11d48')],
+  [new THREE.Color('#38bdf8'), new THREE.Color('#818cf8')],
+];
+function updateShow(ms, v, pulse) {
+  if (!show) buildShow();
+  const { beat, down } = beatAt(v.bars, v.bpm, v.t, v.playing);
+  const flash = Math.exp(-beat * 7) * (down ? 1 : 0.55);
+  const m = v.mood, k = m < 0.55 ? m / 0.55 : (m - 0.55) / 0.45, [from, to] = m < 0.55 ? [SHOW_COLORS[0], SHOW_COLORS[1]] : [SHOW_COLORS[1], SHOW_COLORS[2]];
+  const ca = from[0].clone().lerp(to[0], k), cb = from[1].clone().lerp(to[1], k);
+  const energy = (0.35 + 0.65 * Math.min(1, m / 0.55)) * (0.75 + 0.1 * (v.mult || 1));   // brighter with the multiplier
+  // A new bar: a wave of light chases across the rigs.
+  if (v.playing && v.bars?.length) {
+    let bar = 0; while (bar + 1 < v.bars.length && v.bars[bar + 1] <= v.t) bar++;
+    if (bar !== show.lastBar) { show.lastBar = bar; show.chaseAt = ms; }
+  }
+  const chase = (ms - show.chaseAt) / 700;               // 0..1 across the rigs
+  // Your hits flare a light (front rig) in the string's colour.
+  for (const b of v.bursts) {
+    if (b.at <= show.lastBurst) continue;
+    const row = show.rows[0], l = row.lights[Math.floor(Math.random() * row.lights.length)];
+    l.flare = 1; l.flareCol.set(v.colors[b.s % v.colors.length]);
+  }
+  show.lastBurst = Math.max(show.lastBurst, ...v.bursts.map((b) => b.at));
+  const beatNo = v.playing ? Math.floor(v.t / (60 / (v.bpm || 120))) : 0;
+  show.wall.material.color.copy(ca);
+  show.wall.material.opacity = (0.16 + 0.22 * flash) * energy + (v.onFire && down ? 0.25 * Math.exp(-beat * 10) : 0);
+  for (const row of show.rows) {
+    row.rig.rotation.z = Math.sin(ms * 0.00018 + row.r * 2.1) * 0.06;   // rigs swaying
+    row.rig.position.x = 14 + Math.sin(ms * 0.00011 + row.r) * 6;
+    const onBeat = beatNo % 3 === row.r;                  // the rows flash in turn
+    row.lights.forEach((l, i) => {
+      const across = i / Math.max(1, row.lights.length - 1), wave = Math.max(0, 1 - Math.abs(chase - across) * 5) * (chase < 1.2 ? 1 : 0);
+      const twinkle = 0.75 + 0.25 * Math.sin(ms * 0.002 + l.phase);
+      let o = (0.1 + 0.18 * (onBeat ? flash : flash * 0.3) + 0.35 * wave) * energy * twinkle;
+      const col = (i + row.r) % 2 ? cb : ca;
+      l.glow.material.color.copy(col);
+      if (l.flare > 0.01) { l.glow.material.color.lerp(l.flareCol, l.flare); o += 0.22 * l.flare; l.flare *= 0.9; }   // soft: bright ones bloomed over the board
+      if (v.onFire && down && beat < 0.08) { l.glow.material.color.lerp(new THREE.Color('#ffffff'), 0.4); o += 0.12; }   // x4: a white flash on beat 1
+      l.glow.material.opacity = Math.min(0.5, o);
+      const s = 1 + 0.25 * wave + 0.15 * (onBeat ? flash : 0);
+      l.glow.scale.setScalar((l.size ||= l.glow.scale.x) * s);
+    });
+  }
+}
+
 const laneZ = (s) => ((lanes.n - 1) / 2 - s) * LANE;   // low string nearest the camera = bottom of the screen
 
 // Strings, colour bands, pads and names for n strings (4 bass, 5 five-string, 6 guitar).
 function buildLanes(n, colors, names) {
   for (const o of lanes.objects || []) world.remove(o);
-  lanes = { n, objects: [], pads: [], names: [], bands: [], paint: [] };
+  lanes = { n, objects: [], pads: [], names: [], bands: [], paint: [], moveLines: [] };
   const boardW = LANE * n + 0.4;
   board.scale.z = boardW; board.position.set(30, -0.15, 0);
   const add = (o) => { world.add(o); lanes.objects.push(o); return o; };
@@ -108,18 +207,23 @@ function buildLanes(n, colors, names) {
     const band = add(new THREE.Mesh(new THREE.PlaneGeometry(80, LANE * 0.94), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.1, depthWrite: false })));
     band.rotation.x = -Math.PI / 2; band.position.set(30, 0.002, laneZ(s)); band.userData.col = col; lanes.bands.push(band);
     const r = Math.max(0.018, 0.045 - s * (0.027 / Math.max(1, n - 1)));
-    const str = add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, 80, 10), mats.string)); str.rotation.z = Math.PI / 2; str.position.set(30, 0.05, laneZ(s));
+    const str = add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, 80, 10), new THREE.MeshStandardMaterial({ color: '#8a847c', metalness: 0.6, roughness: 0.5, emissive: col, emissiveIntensity: 0.18 }))); str.rotation.z = Math.PI / 2; str.position.set(30, 0.05, laneZ(s)); (lanes.strings ||= []).push(str);
     const rim = add(new THREE.Mesh(new RoundedBoxGeometry(NOTE_W + 0.16, 0.1, 0.9, 4, 0.08), new THREE.MeshStandardMaterial({ color: '#000', emissive: col, emissiveIntensity: 0.55 })));
     rim.position.set(0, 0.06, laneZ(s));
     const lens = add(new THREE.Mesh(new RoundedBoxGeometry(NOTE_W + 0.04, 0.12, 0.78, 4, 0.08), new THREE.MeshPhysicalMaterial({ color: '#100c0a', roughness: 0.2, clearcoat: 1, emissive: col, emissiveIntensity: 0.12 })));
     lens.position.set(0, 0.13, laneZ(s));
     const light = add(new THREE.PointLight(col, 0, 4, 2)); light.position.set(0.3, 0.8, laneZ(s));
-    const name = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: label(names[s] || '', col, true), depthWrite: false })));
-    name.scale.set(0.45, 0.45, 1); name.position.set(NUT - 0.45, 0.35, laneZ(s));
+    const name = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: label(names[s] || '', col, true, 128, true), depthWrite: false })));
+    name.scale.set(0.62, 0.62, 1); name.position.set(NUT - 0.5, 0.35, laneZ(s));
     lanes.pads.push({ rim, lens, light, col, hitAt: -1e9 });
     lanes.names.push(name);
   }
   lanes.boardW = boardW;
+  lanes.edges = [-1, 1].map((side) => {                  // glass: a thin light edge along each side
+    const e = add(new THREE.Mesh(new THREE.BoxGeometry(80, 0.03, 0.03), new THREE.MeshBasicMaterial({ color: '#fff5e6', transparent: true, opacity: 0.35, toneMapped: false })));
+    e.position.set(30, 0.01, side * (boardW / 2)); return e;
+  });
+  lanes.style = null;                                    // re-apply the surface to the new strings and bands
   // At x4 the highway turns blue (user: "make the highway blue too"): a blue wash over the board,
   // strongest at the strike line, faded in and out by frame().
   const c = document.createElement('canvas'); c.width = 512; c.height = 4; const g = c.getContext('2d');
@@ -137,8 +241,10 @@ function barObject() {
   const grp = new THREE.Group();
   const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, lanes.boardW, 10), mats.fret); wire.rotation.x = Math.PI / 2; wire.position.y = 0.01;
   const line = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, lanes.boardW), mats.line); line.position.y = 0.008;
-  grp.add(wire, line); world.add(grp);
-  return { grp, wire, line };
+  const num = new THREE.Sprite(new THREE.SpriteMaterial({ depthWrite: false, transparent: true }));   // the bar's number, above the top string
+  num.scale.set(0.42, 0.42, 1); num.position.set(0.28, 0.12, laneZ(lanes.n - 1) - LANE * 0.55);
+  grp.add(wire, line, num); world.add(grp);
+  return { grp, wire, line, num, shown: -1 };
 }
 
 // A note from the pool: a glossy body on a dark skirt, the number printed on top, a tail for long notes.
@@ -152,15 +258,19 @@ function noteObject() {
   num.rotation.x = -Math.PI / 2; num.position.y = 0.335;
   const tail = new THREE.Mesh(mats.tailGeo, new THREE.MeshStandardMaterial({ transparent: true, roughness: 0.5 }));
   tail.position.y = 0.06;
-  grp.add(base, body, num); world.add(grp); world.add(tail);
-  return { grp, body, base, num, tail, k: -1, sinkAt: 0 };
+  const tailGlow = new THREE.Mesh(mats.tailGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  tailGlow.visible = false;                              // the soft glow round a held note's tail
+  grp.add(base, body, num); world.add(grp); world.add(tail); world.add(tailGlow);
+  return { grp, body, base, num, tail, tailGlow, k: -1, sinkAt: 0 };
 }
 
 function setFretboard(style) {
   if (lanes.style === style) return;
   lanes.style = style;
-  Object.assign(board.material, mats.boards[style]); board.material.needsUpdate = true;
-  lanes.bands.forEach((b, s) => { b.material.opacity = style === 'dark' ? (s % 2 ? 0.07 : 0.045) : 0.1; });
+  Object.assign(board.material, mats.boards[style] || mats.boards.glass); board.material.needsUpdate = true;
+  lanes.bands.forEach((b, s) => { b.material.opacity = style === 'glass' ? (s % 2 ? 0.035 : 0.022) : style === 'dark' ? (s % 2 ? 0.07 : 0.045) : 0.1; });
+  lanes.strGlow = style === 'glass' ? 0.6 : 0.18;      // glass: the strings are thin glowing lines
+  lanes.edges?.forEach((e) => { e.visible = style === 'glass'; });
 }
 
 // The camera: in front, turned 5 degrees right ("don't make it so angled"), slid sideways until every
@@ -224,7 +334,7 @@ export function frame(v) {
   // Mood: background, fog and the two stage spots ease between struggling, steady and hot.
   const lastHit = Math.max(-1e9, ...Object.values(v.laneHitMs)), pulse = Math.exp(-(ms - lastHit) / 180);
   const bg = moodColor(MOOD.bg, v.mood);
-  scene.background.copy(bg); scene.fog.color.copy(bg);
+  renderer.setClearColor(bg, 1); scene.fog.color.copy(bg);
   mats.spots[0].color.copy(moodColor(MOOD.spotA, v.mood)); mats.spots[1].color.copy(moodColor(MOOD.spotB, v.mood));
   const glow = (0.35 + 0.65 * Math.min(1, v.mood / 0.55)) * (v.onFire ? 1.2 + 0.5 * pulse : 1);
   mats.spots[0].intensity = 30 * glow; mats.spots[1].intensity = 25 * glow;
@@ -235,6 +345,8 @@ export function frame(v) {
   lanes.wash.material.opacity = lanes.fire * (0.55 + 0.1 * pulse);
   lanes.bands.forEach((b) => b.material.color.lerpColors(new THREE.Color(b.userData.col), new THREE.Color('#38bdf8'), lanes.fire));
 
+  updateShow(ms, v, pulse);
+
   // Bar lines.
   const visibleBars = [];
   for (let i = 0; i < v.bars.length; i++) { const x = (v.bars[i] - t) * speed; if (x > far + 1) break; if (x > NUT - 0.2) visibleBars.push([i, x]); }
@@ -243,10 +355,23 @@ export function frame(v) {
     const vb = visibleBars[j];
     b.grp.visible = !!vb;
     if (!vb) return;
-    const [, x] = vb, maple = v.fretboard !== 'dark';
+    const [i, x] = vb, maple = v.fretboard !== 'dark';
     b.grp.position.set(x, 0, 0);
-    b.wire.visible = maple; b.line.visible = !maple;
+    b.wire.visible = maple && v.fretboard === 'maple'; b.line.visible = !b.wire.visible;   // fret wires on maple, soft light lines otherwise
+    if (b.shown !== i) { b.shown = i; b.num.material.map = tex[`bar${i}`] ||= label(String(i + 1), '#d6c7b0', true); b.num.material.needsUpdate = true; }
+    b.num.material.opacity = Math.max(0, Math.min(1, (far - x) / FADE)) * (x > 0.6 ? 0.8 : 0);
   });
+
+  // Hand moves: a dashed amber line across the board just before the hand moves along the neck.
+  const moves = (v.moves || []).map((m) => (m - t) * speed).filter((x) => x > 0.3 && x < far);
+  while (lanes.moveLines.length < moves.length) {
+    const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d');
+    g.fillStyle = '#fbbf24'; for (let y = 0; y < 64; y += 16) g.fillRect(0, y, 4, 9);
+    const t2 = new THREE.CanvasTexture(c); t2.wrapT = THREE.RepeatWrapping; t2.repeat.set(1, lanes.n * 2);
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.07, lanes.boardW - 0.2), new THREE.MeshBasicMaterial({ map: t2, transparent: true, depthWrite: false, toneMapped: false }));
+    line.rotation.x = -Math.PI / 2; line.position.y = 0.012; world.add(line); lanes.objects.push(line); lanes.moveLines.push(line);
+  }
+  lanes.moveLines.forEach((l, j) => { l.visible = j < moves.length; if (l.visible) { l.position.x = moves[j]; l.material.opacity = 0.85 * Math.max(0, Math.min(1, (far - moves[j]) / FADE)); } });
 
   // Notes on the board now (past ones linger briefly to sink into the pad or slide off).
   let lo = 0, hi = notes.length;
@@ -254,16 +379,23 @@ export function frame(v) {
   const live = new Set();
   for (let k = lo; k < notes.length && (notes[k][0] - t) * speed < far; k++) live.add(k);
   for (const [k, o] of used) if (!live.has(k)) { o.grp.visible = false; o.tail.visible = false; o.k = -1; pool.push(o); used.delete(k); }
+  const held = new Set(), heldEnds = new Set();         // strings with a note held now / ending now
   for (const k of live) {
     const [ns, ne, s, f] = notes[k];
     if (s >= lanes.n) continue;
     let o = used.get(k);
     const res = v.result[k], missed = res === 'miss', open = f === 0;
-    const pk = v.prev[k], tick = pk >= 0 && notes[pk][3] === f && (ns - notes[pk][0]) * speed < NOTE_W + GAP;
+    // The first note has its number; the same fret again on that string is the thin bar (user: "I wanted the first
+    // note to have a number and any repeating to have the thinner bar"); after a rest of 2.5 s it's a full note again.
+    // A repeat is the very next note played, same string and fret, nothing in between (A5 E0 A5 isn't one: the user
+    // read those as new notes, "there's not repeating notes that are not showing").
+    let pk = k - 1;
+    while (pk >= 0 && ns - notes[pk][0] < 0.03 && notes[pk][2] !== s) pk--;   // skip notes struck together with it
+    const tick = pk >= 0 && notes[pk][2] === s && notes[pk][3] === f && ns - notes[pk][0] < 2.5, repeat = false;
     if (!o) {
       o = pool.pop() || noteObject(); used.set(k, o); o.k = k; o.sinkAt = 0; o.style = '';
     }
-    const style = `${s}|${f}|${missed}|${tick}|${v.onFire}`;
+    const style = `${s}|${f}|${missed}|${tick}|${repeat}|${v.onFire}`;
     if (o.style !== style) {                            // (re)paint for this note
       o.style = style;
       const col = new THREE.Color(v.colors[s % v.colors.length]);
@@ -274,7 +406,7 @@ export function frame(v) {
       const key = `${f}|${open}|${s}|${missed}`;
       tex[key] ||= label(String(f), missed ? '#a1a1aa' : open ? v.colors[s % v.colors.length] : '#ffffff', !open && !missed);
       o.num.material.map = tex[key]; o.num.material.needsUpdate = true;
-      o.num.visible = !tick;
+      o.num.visible = !tick && !repeat;
       const wide = tick ? 0.14 / 0.86 : NOTE_W / 0.86;
       o.body.scale.x = o.base.scale.x = wide;
       o.tail.material.color.copy(missed ? new THREE.Color('#3f3f46') : col);
@@ -295,7 +427,22 @@ export function frame(v) {
     // A slim tail as long as the note rings.
     const x0 = Math.max(0, x), x1 = Math.min(far, (end - t) * speed);
     o.tail.visible = end - ns > 0.15 && x1 > x0 + 0.1 && o.grp.visible;
-    if (o.tail.visible) { o.tail.scale.x = x1 - x0; o.tail.position.set((x0 + x1) / 2, 0.06, laneZ(s)); o.tail.material.opacity = 0.55 * fade * (holding ? 1.5 : 1); o.tail.material.emissive.copy(o.tail.material.color); o.tail.material.emissiveIntensity = holding ? 0.6 : 0; }
+    // Holding (user: "make the effect of holding a note look better"): the tail burns bright with a soft glow
+    // round it and drains into the pad, the note glows on the pad, pulsing.
+    const throb = 0.5 + 0.5 * Math.sin(ms / 70);
+    if (o.tail.visible) {
+      o.tail.scale.x = x1 - x0; o.tail.position.set((x0 + x1) / 2, 0.06, laneZ(s));
+      o.tail.material.opacity = holding ? 0.95 : 0.55 * fade; o.tail.material.emissive.copy(o.tail.material.color);
+      o.tail.material.emissiveIntensity = holding ? 1.1 + 0.5 * throb : 0;
+    }
+    o.tailGlow.visible = o.tail.visible && holding;
+    if (o.tailGlow.visible) {
+      o.tailGlow.scale.set(x1 - x0, 1.6, 3.2); o.tailGlow.position.set((x0 + x1) / 2, 0.07, laneZ(s));
+      o.tailGlow.material.color.copy(v.onFire ? new THREE.Color('#38bdf8') : new THREE.Color(v.colors[s % v.colors.length]));
+      o.tailGlow.material.opacity = 0.28 + 0.14 * throb;
+    }
+    if (holding) { o.body.material.emissiveIntensity = 0.45 + 0.3 * throb; held.add(s); if (end - t < 0.06) heldEnds.add(s); }
+    else if (o.style.endsWith('false') && !missed && !open) o.body.material.emissiveIntensity = 0;
   }
 
   // Pads: a hit dips the pad and lights its lens and a pool of light; at x4 everything goes blue;
@@ -304,12 +451,29 @@ export function frame(v) {
     const at = v.laneHitMs[s] ?? -1e9, age = ms - at, k = Math.max(0, 1 - age / 220), dip = age < 60 ? age / 60 : Math.max(0, 1 - (age - 60) / 120);
     const bad = Math.max(0, 1 - (ms - (v.laneMissMs[s] ?? -1e9)) / 300), held = ms - (v.sustain[s] ?? -1e9) < 120;
     const col = v.onFire ? '#38bdf8' : p.col;
-    p.lens.material.emissive.set(bad > k ? '#ef4444' : col); p.lens.material.emissiveIntensity = 0.12 + 1.5 * Math.max(k, bad * 0.6, held ? 0.7 : 0);
+    p.lens.material.emissive.set(bad > k ? '#ef4444' : col); p.lens.material.emissiveIntensity = 0.12 + 1.5 * Math.max(k, bad * 0.6, held ? 0.6 + 0.3 * Math.sin(ms / 70) : 0);
     p.light.color.set(col); p.light.intensity = 4 * Math.max(k, held ? 0.5 : 0);
     p.lens.position.y = 0.13 - 0.06 * dip; p.rim.position.y = 0.06 - 0.04 * dip;
     p.rim.material.emissive.set(v.inputLane === s ? '#ffffff' : bad > 0.3 ? '#ef4444' : col);
     p.rim.material.emissiveIntensity = v.inputLane === s ? 1.1 : 0.55;
   }
+  // Held strings vibrate and glow; sparks stream off the pad; a small burst when the hold reaches its end.
+  lanes.strings?.forEach((str, s) => {
+    const on = held.has(s);
+    str.position.y = 0.05 + (on ? Math.sin(ms / 16 + s) * 0.018 : 0);
+    str.material.emissiveIntensity = on ? 0.9 + 0.3 * Math.sin(ms / 50) : lanes.strGlow ?? 0.18;
+  });
+  const spark = (s, count, up) => {
+    const cols = v.onFire ? ['#e0f2fe', '#38bdf8'] : [lanes.pads[s].col, '#ffe7a3'];
+    for (let i = 0; i < count; i++) {
+      const sp = new THREE.Mesh(mats.sparkGeo, new THREE.MeshBasicMaterial({ color: cols[i % 2], transparent: true, toneMapped: false }));
+      sp.position.set(0, 0.3, laneZ(s)); world.add(sp);
+      sparks.push({ sp, z0: laneZ(s), v: [0.3 + Math.random() * up, 1.6 + Math.random() * up * 1.5, (Math.random() - 0.5) * 0.8], born: ms });
+    }
+  };
+  for (const s of held) if (Math.random() < 0.45) spark(s, 1, 0.8);
+  for (const s of heldEnds) if (!lanes.pads[s].burstAt || ms - lanes.pads[s].burstAt > 400) { lanes.pads[s].burstAt = ms; spark(s, 8, 1.6); }
+
   // New hits: a few small sparks rising off the pad.
   for (const b of v.bursts) {
     if (b.at <= seenBurst || b.s >= lanes.n) continue;

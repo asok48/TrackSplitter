@@ -225,7 +225,7 @@ imported tabs stays bass only.
 
 ## Game screen (/game)
 
-The game as its own screen (`/game`, `arcadeOn`, `#arcade`): title, song wall with covers
+The game, named **Encore**, as its own screen (`/game`, `arcadeOn`, `#arcade`; sidebar `#encore-btn`, Mac app `Encore.app`): title, song wall with covers
 (`/api/cover`, `.cover.<ext>`) and previews, song screen (instrument, difficulty, bests,
 input) -> `arcadePlay` -> `startGame`. Mac icon "Track Splitter Game" (`install_shortcut(game=True)`,
 `app.py --game`). Stars kept per best key (`STARS_KEY`). Menus: concert stage, song select

@@ -24,6 +24,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import webbrowser
@@ -70,9 +72,11 @@ OLD_OUTPUT_DIRS = [Path.home() / "Music" / "Bass Remover", Path(__file__).parent
 STAGE_DIR = Path(tempfile.gettempdir()) / "track-splitter-uploads"
 SHIFT_DIR = Path(tempfile.gettempdir()) / "track-splitter-shifted"   # pitch-shifted audio cache
 COVER_DIR = Path(tempfile.gettempdir()) / "track-splitter-covers"     # cover art found inside originals
-# A song's cover for the game's song wall: .cover.<ext> in its folder (a link's thumbnail,
-# or an image the user dropped on it); otherwise art inside the original file, if any.
+# A song's cover for the game: in order, an image the user dropped on it (.cover.<ext> in its folder),
+# its album's cover (one file per album in <library>/.covers/, shared by its songs: no duplicates), the
+# link's video thumbnail (.thumb.<ext>), else art inside the original file.
 COVER_NAME = ".cover"
+THUMB_NAME = ".thumb"
 COVER_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 SAMPLERATE = 44100  # all Demucs v4 models use this
 INSTRUMENTS = ["bass", "drums", "vocals", "guitar", "lead guitar", "rhythm guitar", "piano"]
@@ -406,8 +410,18 @@ def original_file(song_dir):
     return next(iter(song_dir.glob("original.*")), None)
 
 
+def own_cover(song_dir, name=COVER_NAME):
+    return next((p for p in song_dir.glob(f"{name}.*") if p.suffix.lower() in COVER_TYPES), None)
+
+
+def covers_dir():
+    return OUTPUT_DIR / ".covers"                     # album covers, one per album (MusicBrainz release group)
+
+
 def cover_file(song_dir):
-    return next((p for p in song_dir.glob(f"{COVER_NAME}.*") if p.suffix.lower() in COVER_TYPES), None)
+    album = (read_meta(song_dir).get("cover_lookup") or {}).get("album")
+    shared = covers_dir() / f"{album}.jpg" if album else None
+    return own_cover(song_dir) or (shared if shared and shared.exists() else None) or own_cover(song_dir, THUMB_NAME)
 
 
 def song_info(song_dir):
@@ -1424,8 +1438,8 @@ def worker():
                                            on_progress=report, fast=settings["fast"])
                     if not original_file(song_dir):
                         shutil.copy2(stage["path"], song_dir / f"original{stage['path'].suffix.lower()}")
-                        if stage.get("cover") and stage["cover"].exists() and not cover_file(song_dir):
-                            shutil.copy2(stage["cover"], song_dir / f"{COVER_NAME}{stage['cover'].suffix}")
+                        if stage.get("cover") and stage["cover"].exists():   # the video's thumbnail: used only without an album cover
+                            shutil.copy2(stage["cover"], song_dir / f"{THUMB_NAME}{stage['cover'].suffix}")
                         write_meta(song_dir, {**read_meta(song_dir),   # keeps the version's level
                                               "sha1": stage["sha1"], "source": stage["filename"],
                                               "added": time.time()})
@@ -1434,6 +1448,8 @@ def worker():
                                            settings["level"], settings["hq"],
                                            on_progress=report, fast=settings["fast"])
                 job["done"].append(version)
+                if item.get("stage"):
+                    queue_covers([song_dir])
             except Stopped:
                 # Nothing is saved before separation finishes, so there's nothing to undo.
                 # Uploads not yet processed stay staged, so the page can start them again.
@@ -3285,6 +3301,40 @@ def open_folder():
 _server = []  # the running uvicorn server, so the page's Quit button can stop it
 
 
+_restart = []
+# Stop when closed (user: "can we stop tracksplitter when I close it?"): started by the Encore Helper
+# (--auto-quit), the server stops once no page has checked in for 15 s (a minute's grace at start), unless
+# a song is being processed. Every page checks in every 5 s and says goodbye when it closes.
+_last_ping = [time.time() + 45]
+
+
+@api.post("/api/ping")
+def ping(bye: int = 0):
+    _last_ping[0] = time.time() - (12 if bye else 0)   # a goodbye: stop in ~3 s unless another page is open
+    return {"ok": True}
+
+
+def auto_quit_watch():
+    while True:
+        time.sleep(5)
+        busy = any(j.get("status") in ("queued", "running") for j in jobs.values())
+        if not busy and time.time() - _last_ping[0] > 15 and _server:
+            print("No Encore or Track Splitter window open: stopping.")
+            _server[0].should_exit = True
+            return
+
+
+@api.post("/api/restart")
+def restart_app():
+    """Restart in place to pick up changed code ("The app was updated", user: "I always see the app was
+    updated text"): the server stops and main() starts it again, without opening a browser window."""
+    if any(j.get("status") in ("queued", "running") for j in jobs.values()):
+        raise HTTPException(409, "A song is still being processed: restart when it's done.")
+    _restart.append(True)
+    threading.Timer(0.5, lambda: setattr(_server[0], "should_exit", True)).start()
+    return {"ok": True}
+
+
 @api.post("/api/quit")
 def quit_app():
     # Reply first, then stop shortly after so the page gets the answer.
@@ -3338,11 +3388,160 @@ async def set_cover(song: str = Form(...), file: UploadFile = File(...)):
     data = await file.read((10 << 20) + 1)
     if len(data) > 10 << 20:
         raise HTTPException(400, "That picture is over 10 MB.")
-    old = cover_file(song_dir)
+    old = own_cover(song_dir)                          # never the shared album cover
     if old:
         send2trash(str(old))
     (song_dir / f"{COVER_NAME}{ext}").write_bytes(data)
     return song_info(song_dir)
+
+
+# --- Album covers (MusicBrainz + Cover Art Archive) ----------------------------
+# User: "search google for album covers to display?" Google Images can't be used that way, so covers
+# come from MusicBrainz (the song's album, by artist and title) and the Cover Art Archive (its front
+# cover), both free and meant for apps. Only the artist and title are sent. Each album's cover is saved
+# once in <library>/.covers/<album id>.jpg and songs point at it ("cover_lookup": {"album"} in .song.json;
+# user: "I don't want to store duplicate covers"); one the user dropped in always wins; a song with no
+# match is marked too, so it isn't asked again. New songs are looked up when they're added ("so they
+# load after a song is uploaded"). MusicBrainz allows about one request a second.
+
+MB_AGENT = "TrackSplitter/1.0 (personal play-along app)"
+cover_queue, cover_state = queue.Queue(), {"running": False, "found": 0, "left": 0}
+
+
+def _get_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": MB_AGENT, "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def clean_cover_title(title):
+    """The song's title as an album search would know it: no "(2)", "[HQ]", "(Remastered ...)" and the like."""
+    title = re.sub(r"\s*\((\d+)\)$", "", title)
+    title = re.sub(r"\s*[\[(](?:hq|hd|official.*|remaster.*|live.*|lyric.*|audio)[\])]", "", title, flags=re.I)
+    return title.strip()
+
+
+def album_candidates(artist, title):
+    """Album ids (MusicBrainz release groups) the recording is on, best first: the earliest official
+    studio album, then singles / EPs; live versions and live albums left out."""
+    q = f'recording:"{title}" AND artist:"{artist}"'
+    found = _get_json("https://musicbrainz.org/ws/2/recording/?fmt=json&limit=50&query=" + urllib.parse.quote(q))
+    groups = []
+    for rec in found.get("recordings", []):
+        # Live versions crowd the results (Brianstorm came back as a Royal Albert Hall live album).
+        if int(rec.get("score", 0)) < 80 or "live" in (rec.get("disambiguation") or "").lower():
+            continue
+        for rel in rec.get("releases", []):
+            rg = rel.get("release-group") or {}
+            kind, extra = rg.get("primary-type") or "", rg.get("secondary-types") or []
+            if not rg.get("id") or "Live" in extra or re.search(r"\blive\b", rg.get("title") or "", re.I):
+                continue
+            rank = (0 if kind == "Album" else 1 if kind in ("Single", "EP") else 2,
+                    1 if extra else 0,                              # compilations etc. after the studio album
+                    rel.get("date") or "9999",                      # the earliest: where the song first came out
+                    0 if rel.get("status") == "Official" else 1)
+            groups.append((rank, rg["id"]))
+    out = []
+    for _, rgid in sorted(groups):
+        if rgid not in out:
+            out.append(rgid)
+    return out[:5]
+
+
+def save_album_cover(song_dir, candidates):
+    """Download the first candidate album's cover that exists (once per album) and link the song to it."""
+    album = None
+    for rgid in candidates:
+        dest = covers_dir() / f"{rgid}.jpg"
+        if dest.exists():
+            album = rgid
+            break
+        try:
+            req = urllib.request.Request(f"https://coverartarchive.org/release-group/{rgid}/front-500", headers={"User-Agent": MB_AGENT})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = r.read(10 << 20)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:                              # this album has no cover art: try the next
+                continue
+            raise
+        if data:
+            covers_dir().mkdir(parents=True, exist_ok=True)
+            part = dest.with_suffix(f".{uuid.uuid4().hex}.part"); part.write_bytes(data); part.replace(dest)
+            album = rgid
+            break
+    write_meta(song_dir, {**read_meta(song_dir), "cover_lookup": {"at": time.time(), "album": album}})
+    if album:
+        cover_state["found"] += 1
+
+
+COVER_TRIES = 4      # a song that hits a rate limit or a network error is tried again, up to this many times
+
+
+def cover_worker():
+    # Only MusicBrainz's search is paced (1.2 s apart, just over its limit of one a second); cover downloads
+    # run alongside (4 at once), so a song takes about a second (user: "it's pretty slow to get them").
+    # A rate limit ("503") or a network error puts the song back in the queue after a growing pause
+    # (2, 4, 8 s) instead of dropping it until the game screen opens again (user: "songs that are skipped
+    # are not tried again until I go back").
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(4)
+    while True:
+        song_dir, tries = cover_queue.get()
+        cover_state["running"] = True
+        began, pause = time.time(), 1.2
+        try:
+            if song_dir.exists() and not own_cover(song_dir) and not read_meta(song_dir).get("cover_lookup"):
+                candidates = album_candidates(song_dir.parent.name, clean_cover_title(song_dir.name))
+                pool.submit(_save_quietly, song_dir, candidates, tries)
+        except Exception as e:  # rate limited, no network...: back in the queue after a pause
+            pause = 2 ** (tries + 1)
+            retry_cover(song_dir, tries, e)
+        cover_state["left"] = cover_queue.qsize()
+        time.sleep(max(0.0, pause - (time.time() - began)))
+        if cover_queue.empty() and not cover_state.get("downloading"):
+            cover_state["running"] = False
+
+
+def retry_cover(song_dir, tries, err):
+    if tries + 1 < COVER_TRIES:
+        cover_queue.put((song_dir, tries + 1))
+        cover_state["running"] = True
+    else:
+        print(f"Album cover for {song_dir.name}: gave up ({err})")
+
+
+def _save_quietly(song_dir, candidates, tries):
+    cover_state["downloading"] = cover_state.get("downloading", 0) + 1
+    try:
+        save_album_cover(song_dir, candidates)
+    except Exception as e:  # the download failed (not a missing cover): look it up again later
+        retry_cover(song_dir, tries, e)
+    finally:
+        cover_state["downloading"] -= 1
+        if not cover_state["downloading"] and cover_queue.empty():
+            cover_state["running"] = False
+
+
+def queue_covers(song_dirs):
+    for d in song_dirs:
+        if not own_cover(d) and not read_meta(d).get("cover_lookup") and d.parent.name != UNKNOWN_ARTIST:
+            cover_queue.put((d, 0))
+    cover_state["left"] = cover_queue.qsize()
+    if not cover_queue.empty():
+        cover_state["running"] = True
+
+
+@api.post("/api/covers/fetch")
+def covers_fetch():
+    """Look up album covers for songs that have none yet (in the background)."""
+    if not cover_state["running"]:
+        queue_covers([d for a in visible_dirs(OUTPUT_DIR) for d in visible_dirs(a)])
+    return dict(cover_state)
+
+
+@api.get("/api/covers/status")
+def covers_status():
+    return dict(cover_state)
 
 
 # --- Launching without a terminal ----------------------------------------------
@@ -3355,8 +3554,10 @@ _desktop = []
 
 def shortcut_path(game=False):
     """Where the app shortcut lives on this computer (None if not supported here).
-    game: the second shortcut, "Track Splitter Game", which opens straight into the game."""
-    name = "Track Splitter Game" if game else "Track Splitter"
+    game: "Encore Helper" (Mac): no window or Dock icon; the installed Encore app (a Chrome app, see
+    static/encore-manifest.json) opens encore-start:// when Track Splitter isn't running, and the helper
+    starts it (user: "have the Encore launcher start Track Splitter first")."""
+    name = "Encore Helper" if game else "Track Splitter"
     if sys.platform == "darwin":
         return Path.home() / "Applications" / f"{name}.app"
     if sys.platform == "win32":
@@ -3373,7 +3574,9 @@ def install_shortcut(game=False):
     """Create an app shortcut (Mac: ~/Applications, Windows: Desktop) that starts
     Track Splitter without a terminal window. Only runs when the user asks for it."""
     path = shortcut_path(game)
-    name, page, arg = ("Track Splitter Game", "/game", " --game") if game else ("Track Splitter", "", "")
+    name, page, arg = ("Encore Helper", "/game", " --game") if game else ("Track Splitter", "", "")
+    if sys.platform == "darwin" and game:
+        return install_encore_helper(path)
     if sys.platform == "darwin":
         macos = path / "Contents" / "MacOS"
         macos.mkdir(parents=True, exist_ok=True)
@@ -3407,6 +3610,43 @@ def install_shortcut(game=False):
         subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, check=True)
     else:
         raise HTTPException(400, "Shortcuts are only supported on Mac and Windows.")
+    return path
+
+
+def install_encore_helper(path):
+    """The Encore Helper app: handles encore-start:// links by starting Track Splitter in the background
+    (no browser window: the Encore app is already open and waiting)."""
+    macos = path / "Contents" / "MacOS"
+    macos.mkdir(parents=True, exist_ok=True)
+    (path / "Contents" / "Info.plist").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0"><dict>\n'
+        '  <key>CFBundleName</key><string>Encore Helper</string>\n'
+        '  <key>CFBundleIdentifier</key><string>local.track-splitter.encore-helper</string>\n'
+        '  <key>CFBundleExecutable</key><string>launch</string>\n'
+        '  <key>CFBundlePackageType</key><string>APPL</string>\n'
+        '  <key>LSUIElement</key><true/>\n'
+        '  <key>LSArchitecturePriority</key><array><string>arm64</string><string>x86_64</string></array>\n'
+        '  <key>LSRequiresNativeExecution</key><true/>\n'
+        '  <key>CFBundleURLTypes</key><array><dict>\n'
+        '    <key>CFBundleURLName</key><string>Start Track Splitter</string>\n'
+        '    <key>CFBundleURLSchemes</key><array><string>encore-start</string></array>\n'
+        '  </dict></array>\n'
+        '</dict></plist>\n')
+    launcher = macos / "launch"
+    launcher.write_text(
+        "#!/bin/sh\n"
+        f"cd {shlex.quote(str(APP_ROOT))} || exit 1\n"
+        f"curl -s -o /dev/null --max-time 1 http://{HOST}:{PORT}/api/info && exit 0\n"
+        # Native on Apple silicon: launched under Rosetta, the venv's arm64 libraries failed to load.
+        'ARCH=""; [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] && ARCH="/usr/bin/arch -arm64"\n'
+        'nohup $ARCH /bin/sh start.sh --no-browser --auto-quit >> "$HOME/Library/Logs/Track Splitter.log" 2>&1 &\n')
+    launcher.chmod(0o755)
+    # Tell macOS about the encore-start:// links it handles.
+    lsregister = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
+    if lsregister.exists():
+        subprocess.run([str(lsregister), "-f", str(path)], capture_output=True)
     return path
 
 
@@ -3453,7 +3693,7 @@ def already_running(port):
         return False
 
 
-def main(port=PORT, open_browser=True, page=""):
+def main(port=PORT, open_browser=True, page="", auto_quit=False):
     url = f"http://{HOST}:{port}{page}"
     if already_running(port):
         if open_browser:
@@ -3472,12 +3712,18 @@ def main(port=PORT, open_browser=True, page=""):
         threading.Timer(1.5, webbrowser.open, [url]).start()
     threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=learner, daemon=True).start()
+    threading.Thread(target=cover_worker, daemon=True).start()
+    if auto_quit:
+        threading.Thread(target=auto_quit_watch, daemon=True).start()
     queue_learning()   # tabs imported before the app learned fingering, or removed by hand
     print(f"Track Splitter is running at {url} (use Quit in the app, or press Ctrl+C)")
     server = uvicorn.Server(uvicorn.Config(api, host=HOST, port=port, log_level="warning"))
     _server.append(server)
     server.run()
+    if _restart:                                       # /api/restart: the same program again, no browser window
+        args = [a for a in sys.argv if a != "--no-browser"] + ["--no-browser"]
+        os.execv(sys.executable, [sys.executable] + args)
 
 
 if __name__ == "__main__":
-    main(page="/game" if "--game" in sys.argv[1:] else "")
+    main(page="/game" if "--game" in sys.argv[1:] else "", open_browser="--no-browser" not in sys.argv[1:], auto_quit="--auto-quit" in sys.argv[1:])
