@@ -48,7 +48,7 @@ const cv=document.getElementById('cv'),g=cv.getContext('2d');
 let W=0,H=0,clock=0,last=performance.now(),paused=false,spread=true,speedSet=0.7,size=0.75,   // smaller numbers by default (user: "it's easier to read when the numbers aren't huge")
  song=Object.keys(PASSAGES)[1];
 let notes,bars,warp,info,mood={c:[245,230,211],d:[192,132,87]},sweepAt=-9,lastMult=1;
-let stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='mini';   // the user's pick: "I like the mini number"
+let stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
 const fx={x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
 
 function makeWarp(base,need){                  // spread fast runs (as in note-styles.html); need = board units between distinct notes on a string

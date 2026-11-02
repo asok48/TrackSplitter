@@ -5246,7 +5246,10 @@
     const trackH = Math.min(H * 0.5, 400), trackT = H * 0.56 - trackH / 2, trackB = trackT + trackH, sizeSp = Math.min(H * 0.3, 250) / n, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, pad = 18;
 
     // ---- around the track: a deep colour mesh following the song ----
-    g.fillStyle = '#05060a'; g.fillRect(0, 0, W, H);
+    // Drawing is the cost here, not the code (0.3 ms a frame, yet 20 fps at 1440x900 on a 2x screen: full-screen layers and
+    // blurred glows; "arcade mode is laggy and the tab isn't matching up", a late frame showing the tab behind the music).
+    // So the mesh is drawn small with the dark overlay and the glow behind the cursor baked in, then stretched once; the
+    // vignette, grain and the glass panel are drawn once per window size (arcadeStatic); glows are plain soft strokes.
     arcadeBoard.mesh ||= Object.assign(document.createElement('canvas'), { width: 48, height: 30 });
     {
       const m = arcadeBoard.mesh.getContext('2d'), mw = 48, mh = 30;
@@ -5262,31 +5265,40 @@
         const a = Math.min(1, 0.16 + 0.16 * busy + 0.05 * beat + 0.14 * swell + 0.06 * heat) * (i === 3 ? 0.6 : 1);
         const q = m.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, acss(c3, a)); q.addColorStop(1, acss(c3, 0)); m.fillStyle = q; m.fillRect(0, 0, mw, mh);
       }
-      g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.globalAlpha = 0.7; g.drawImage(arcadeBoard.mesh, 0, 0, W, H); g.restore();
-      g.fillStyle = 'rgba(5,6,10,.42)'; g.fillRect(0, 0, W, H);
+      m.globalCompositeOperation = 'source-over'; m.fillStyle = 'rgba(5,6,10,0.594)'; m.fillRect(0, 0, mw, mh);   // = drawn at 70% over the dark, then a 42% dark layer
+      m.globalCompositeOperation = 'lighter'; arcadeSoft(m, curX / W * mw, (trackT + trackB) / 2 / H * mh, 0.45 * mh, mood.c, 0.04 + 0.08 * beat * (0.4 + heat));   // a glow behind where you play
+      m.globalCompositeOperation = 'source-over';
+      g.imageSmoothingEnabled = true; g.drawImage(arcadeBoard.mesh, 0, 0, W, H);
     }
-    arcadeSoft(g, curX, (trackT + trackB) / 2, H * 0.45, mood.c, 0.04 + 0.08 * beat * (0.4 + heat));
-    { // vignette and fine grain
-      const q = g.createRadialGradient(W * 0.5, H * 0.48, Math.min(W, H) * 0.35, W * 0.5, H * 0.48, Math.max(W, H) * 0.8); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(1, 'rgba(0,0,0,.55)'); g.fillStyle = q; g.fillRect(0, 0, W, H);
-      arcadeBoard.grain ||= (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), im = x.createImageData(128, 128); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); return c; })();
-      g.save(); g.globalAlpha = 0.035; g.fillStyle = g.createPattern(arcadeBoard.grain, 'repeat'); g.translate(-((ms * 0.997) % 128), -((ms * 0.577) % 128)); g.fillRect(0, 0, W + 128, H + 128); g.restore();
+    // ---- the still layers (vignette, grain, the glass panel and its shadow), drawn once per size ----
+    const pw = R - L + 56 + pad, phh = trackH + pad * 2, skey = `${W}x${H}x${dpr}|${trackT}|${L}|${R}`;
+    if (arcadeBoard.staticKey !== skey) {
+      arcadeBoard.staticKey = skey;
+      const c = arcadeBoard.static ||= document.createElement('canvas'); c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+      const sg = c.getContext('2d'); sg.setTransform(dpr, 0, 0, dpr, 0, 0); sg.clearRect(0, 0, W, H);
+      let q = sg.createRadialGradient(W * 0.5, H * 0.48, Math.min(W, H) * 0.35, W * 0.5, H * 0.48, Math.max(W, H) * 0.8); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(1, 'rgba(0,0,0,.55)'); sg.fillStyle = q; sg.fillRect(0, 0, W, H);
+      const gr = document.createElement('canvas'); gr.width = gr.height = 128; const gx = gr.getContext('2d'), im = gx.createImageData(128, 128);
+      for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } gx.putImageData(im, 0, 0);
+      sg.globalAlpha = 0.035; sg.fillStyle = sg.createPattern(gr, 'repeat'); sg.fillRect(0, 0, W, H); sg.globalAlpha = 1;
+      sg.beginPath(); sg.roundRect(L - 56, trackT - pad, pw, phh, 18);
+      sg.shadowColor = 'rgba(0,0,0,.6)'; sg.shadowBlur = 40; sg.fillStyle = 'rgba(10,11,17,.82)'; sg.fill(); sg.shadowBlur = 0;
+      q = sg.createLinearGradient(0, trackT - pad, 0, trackB + pad); q.addColorStop(0, 'rgba(255,255,255,.05)'); q.addColorStop(1, 'rgba(255,255,255,.012)'); sg.fillStyle = q; sg.fill();
+      sg.strokeStyle = 'rgba(255,255,255,.07)'; sg.lineWidth = 1; sg.stroke();
+      sg.save(); sg.clip(); q = sg.createLinearGradient(L, 0, curX, 0); q.addColorStop(0, 'rgba(0,0,0,.35)'); q.addColorStop(1, 'rgba(0,0,0,0)'); sg.fillStyle = q; sg.fillRect(L - 56, trackT - pad, curX - L + 56, phh); sg.restore();   // the played side darker
     }
+    g.drawImage(arcadeBoard.static, 0, 0, W, H);
 
-    // ---- the track: a dark glass panel, blue at x4 ----
+    // ---- the track: blue at x4 ----
     g.save();
-    const pw = R - L + 56 + pad, phh = trackH + pad * 2;
     g.beginPath(); g.roundRect(L - 56, trackT - pad, pw, phh, 18);
-    g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 40; g.fillStyle = 'rgba(10,11,17,.82)'; g.fill(); g.shadowBlur = 0;
-    let q = g.createLinearGradient(0, trackT - pad, 0, trackB + pad); q.addColorStop(0, 'rgba(255,255,255,.05)'); q.addColorStop(1, 'rgba(255,255,255,.012)'); g.fillStyle = q; g.fill();
+    let q;
     if (x4k > 0.01) {   // x4: the board turns blue, strongest at the cursor (user: "I liked when the board turned blue before")
       const cp = (curX - (L - 56)) / pw; q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
       q.addColorStop(0, `rgba(21,87,192,${0.18 * x4k})`); q.addColorStop(cp, `rgba(30,110,230,${(0.5 + 0.06 * beat) * x4k})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(21,87,192,${0.22 * x4k})`); q.addColorStop(1, `rgba(21,87,192,${0.1 * x4k})`);
       g.fillStyle = q; g.fill();
     }
-    g.strokeStyle = `rgba(255,255,255,${0.07 * (1 - x4k)})`; g.lineWidth = 1; g.stroke();
     g.clip();
     const sp = trackH / n, sy = (s) => trackT + (n - 1 - s) * sp + sp / 2, fa = AVIS * 0.25, fb = AVIS, wt = warp(t), X = (tt) => L + (warp(tt) - wt + fa) / (fa + fb) * (R - L);
-    q = g.createLinearGradient(L, 0, curX, 0); q.addColorStop(0, 'rgba(0,0,0,.35)'); q.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = q; g.fillRect(L - 56, trackT - pad, curX - L + 56, phh);
     const sa = (ms - arcadeBoard.sweepAt) / 800;   // the multiplier went up: one soft band of light along the track
     if (sa >= 0 && sa < 1) { const sx = curX + (R - curX) * sa, w = W * 0.12; q = g.createLinearGradient(sx - w, 0, sx + w, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.16 * (1 - sa))); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(sx - w, trackT - pad, w * 2, phh); }
     // bar lines and beat ticks
@@ -5299,13 +5311,13 @@
     // strings: brighter for a moment when played, vibrating out from the cursor
     for (let s = 0; s < n; s++) {
       const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.exp(-age / 0.25);
-      g.strokeStyle = acss(amix(crgb(s), [125, 211, 252], 0.45 * x4k), 0.38 + 0.45 * a + 0.15 * x4k); g.lineWidth = Math.max(1, 2.4 - s * (1.4 / n)) + a; g.shadowColor = col(s); g.shadowBlur = 4 + 10 * a;
+      const sc3 = amix(crgb(s), [125, 211, 252], 0.45 * x4k), lw = Math.max(1, 2.4 - s * (1.4 / n)) + a;
       g.beginPath();
       if (age < 0.5) { const amp = sizeSp * 0.1 * Math.exp(-age * 7); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.2)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
       else { g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); }
-      g.stroke();
+      g.strokeStyle = acss(sc3, 0.08 + 0.22 * a); g.lineWidth = lw + 5 + 6 * a; g.stroke();   // a soft glow (a stroke, not shadowBlur)
+      g.strokeStyle = acss(sc3, 0.38 + 0.45 * a + 0.15 * x4k); g.lineWidth = lw; g.stroke();
     }
-    g.shadowBlur = 0;
     // which notes are on screen (binary search to the first one near the left edge)
     let lo = 0, hi = notes.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (X(notes[mid][0]) < L - 80) lo = mid + 1; else hi = mid; }
     const vis = []; for (let k = lo; k < notes.length && X(notes[k][0]) < R + 80; k++) if (notes[k][2] < n) vis.push(k);
@@ -5345,11 +5357,11 @@
         g.globalAlpha = 1;
       }
       const alpha = edgeA * (passed || res ? (res === 'hit' ? Math.max(0.28, 1 - Math.max(0, hitAge) / 0.4) : 0.45) : 1);
-      if (it.form === 'mark') {                           // an echo: a small keycap with the fret tiny inside
-        const w = markW * (1 + 0.12 * fl + 0.15 * near);
-        g.save(); g.translate(x, y); g.globalAlpha = alpha; g.shadowColor = cs; g.shadowBlur = 6 + 12 * Math.max(near, fl);
-        g.beginPath(); g.roundRect(-w / 2, -w / 2, w, w, w * 0.3); g.fillStyle = acss(c, 0.12 + 0.5 * fl); g.fill(); g.lineWidth = 1.6; g.strokeStyle = cs; g.stroke(); g.shadowBlur = 0;
-        g.font = `700 ${Math.round(w * 0.52)}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(c, 0.85 + 0.15 * fl); g.fillText(String(nt[3]), 0, w * 0.03);
+      if (it.form === 'mark') {                           // an echo: a small diamond (user: "did we say we would do the diamonds for the repeat notes?" -> "sure"; was the fret tiny inside a small keycap)
+        const w = markW * 0.92 * (1 + 0.12 * fl + 0.15 * near);
+        g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.globalAlpha = alpha; g.shadowColor = cs; g.shadowBlur = Math.max(near, fl) > 0.05 ? 6 + 12 * Math.max(near, fl) : 0;
+        g.beginPath(); g.roundRect(-w / 2, -w / 2, w, w, w * 0.3); g.fillStyle = acss(c, 0.18 + 0.5 * fl); g.fill(); g.lineWidth = 1.6; g.strokeStyle = cs; g.stroke(); g.shadowBlur = 0;
+        g.fillStyle = 'rgba(255,255,255,.4)'; g.beginPath(); g.roundRect(-w * 0.3, -w * 0.3, w * 0.28, w * 0.28, w * 0.06); g.fill();   // a facet of light at the top
         g.restore(); continue;
       }
       g.globalAlpha = alpha; g.font = `700 ${sz}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -5371,13 +5383,12 @@
     // the cursor: a slim line with a soft column of light
     q = g.createLinearGradient(curX - 16, 0, curX + 16, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.1 + 0.08 * beat)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(curX - 16, trackT - pad, 32, phh);
     g.restore();
-    g.strokeStyle = acss(mood.c, 0.85); g.lineWidth = 2; g.shadowColor = acss(mood.c, 1); g.shadowBlur = 8 + 6 * beat; g.beginPath(); g.moveTo(curX, trackT - pad - 6); g.lineTo(curX, trackB + pad + 6); g.stroke(); g.shadowBlur = 0;
+    g.beginPath(); g.moveTo(curX, trackT - pad - 6); g.lineTo(curX, trackB + pad + 6); g.strokeStyle = acss(mood.c, 0.12 + 0.08 * beat); g.lineWidth = 8; g.stroke(); g.strokeStyle = acss(mood.c, 0.85); g.lineWidth = 2; g.stroke();
     if (x4k > 0.01) {   // x4: caps on the cursor, and the board's edge glowing, its colour shimmering slowly along it (user: "we could make an outline, just cooler")
       arcadeSoft(g, curX, trackT - pad - 6, 16, mood.c, 0.6 * x4k); arcadeSoft(g, curX, trackB + pad + 6, 16, mood.c, 0.6 * x4k);
       const sh = (ms / 1000 * 0.15) % 1, oq = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
       for (let i = 0; i <= 6; i++) { const u = i / 6, v = (u + sh) % 1, c3 = v < 0.33 ? amix([125, 211, 252], [59, 130, 246], v / 0.33) : v < 0.66 ? amix([59, 130, 246], [139, 92, 246], (v - 0.33) / 0.33) : amix([139, 92, 246], [125, 211, 252], (v - 0.66) / 0.34); oq.addColorStop(u, acss(c3, (0.75 + 0.2 * beat) * x4k)); }
-      g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, pw, phh, 18); g.strokeStyle = oq; g.lineWidth = 1.6; g.shadowColor = '#60a5fa'; g.shadowBlur = (14 + 10 * beat) * x4k; g.stroke();
-      g.shadowBlur = 0; g.beginPath(); g.roundRect(L - 52, trackT - pad + 4, pw - 8, phh - 8, 15); g.strokeStyle = `rgba(125,211,252,${0.18 * x4k})`; g.lineWidth = 1; g.stroke(); g.restore();
+      g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, pw, phh, 18); g.globalAlpha = 0.3 + 0.15 * beat; g.strokeStyle = oq; g.lineWidth = 7; g.stroke(); g.globalAlpha = 1; g.lineWidth = 1.6; g.stroke(); g.beginPath(); g.roundRect(L - 52, trackT - pad + 4, pw - 8, phh - 8, 15); g.strokeStyle = `rgba(125,211,252,${0.18 * x4k})`; g.lineWidth = 1; g.stroke(); g.restore();
     }
     for (let s = 0; s < n; s++) { g.font = `600 15px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(crgb(s), 0.8); g.fillText(names[s], L - 34, sy(s)); }
 

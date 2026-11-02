@@ -2461,3 +2461,15 @@ Phase 1 redesign (same day):
   side by side read as "128"; the rule had only staggered numbers that touched). A first try put a `//` comment inside a
   one-line loop and the page stuck on "Loading…" (the known trap: comments in one-line blocks). Tested in a game on the
   library copy: no console errors.
+- "Arcade mode is laggy and the tab isn't matching up": measured in a game at 1440x900 on a 2x screen: the board's code
+  took 0.3 ms a frame but the game ran at 20 fps (51 ms frames): the cost was drawing pixels (full-screen layers: the
+  dark fill, the stretched mesh, a dark overlay, the vignette, moving grain; shadowBlur on the panel (40 px), every string,
+  the cursor and the x4 outline). A frame that late shows the tab behind the music, the "not matching up" (the board gets
+  the same time as the 3D board, `tabTime()` with the output delay). Now: the mesh canvas has the dark overlay (0.594,
+  the same result) and the glow behind the cursor baked in and is stretched once (no separate fill); the vignette, grain
+  (now still), the glass panel with its shadow, border and darker played side are drawn once per window size into
+  `arcadeBoard.static`; strings, cursor and x4 outline glow with a wider faint stroke instead of shadowBlur; echoes blur
+  only when near or hit. Result: 119 fps (115 at x4), frames 8.4 ms, no console errors.
+- "Did we say we would do the diamonds for the repeat notes?" (we hadn't settled it: Mini number was the last confirmed
+  pick) -> "sure": the game's echoes are now small diamonds (the echo turned 45 degrees at 92%, a faint fill, a facet of
+  light, no number); the mockup's default too. Checked in a game on the library copy (Baby's E-string 10s), no errors.
