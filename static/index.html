@@ -8803,17 +8803,17 @@
     let bests = {};
     try { bests = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* none */ }
     const before = bests[key] || 0;
-    if (game.score > before) { bests[key] = game.score; try { localStorage.setItem(BEST_KEY, JSON.stringify(bests)); } catch { /* not kept */ } }
-    // 1-5 stars by accuracy, the title by how it ended, the score counting up.
-    const acc = game.judged ? game.hits / game.judged : 0;
-    // Finished: Rock Band-style stars from the score; stopped early: from accuracy.
-    const stars = finished ? Math.floor(starsFor(game.score, total)) : [0.4, 0.6, 0.75, 0.88, 0.95].filter((x) => acc >= x).length;
-    // The most stars for this song and difficulty, for the game screen's song wall.
+    // A song you quit isn't kept and gets no record (user: "if I quit a song, don't save the score or show me a record";
+    // it was saved, with stars from its accuracy).
+    if (finished && game.score > before) { bests[key] = game.score; try { localStorage.setItem(BEST_KEY, JSON.stringify(bests)); } catch { /* not kept */ } }
+    // Rock Band-style stars from the score, shown as a record; the most per song and difficulty, for song select.
+    const stars = finished ? Math.floor(starsFor(game.score, total)) : 0;
     const starMap = readMap(STARS_KEY);
-    if (stars > (starMap[key] || 0)) { starMap[key] = stars; try { localStorage.setItem(STARS_KEY, JSON.stringify(starMap)); } catch { /* not kept */ } }
+    if (finished && stars > (starMap[key] || 0)) { starMap[key] = stars; try { localStorage.setItem(STARS_KEY, JSON.stringify(starMap)); } catch { /* not kept */ } }
     // A record for the run (the star level as Bronze … Diamond), filling as the score counts up and popping at each tier it
     // passes; a finished run shows its progress toward the next tier as the ring, and how many points that is.
-    const recVal = finished ? Math.min(5, starsFor(game.score, total)) : stars;
+    const recVal = finished ? Math.min(5, starsFor(game.score, total)) : 0;
+    $('#game-stars').classList.toggle('hidden', !finished);
     const recCanvas = recordEl(0, 190, false), recName = el('div', { className: 'game-record-name' });
     $('#game-stars').replaceChildren(recCanvas, recName);
     $('#game-stars').setAttribute('aria-label', recordTier(recVal) ? `${ARCADE_TIERS[recordTier(recVal)][0].toLowerCase()} record` : 'no record yet');
@@ -8829,15 +8829,18 @@
     const count = () => {
       const now = performance.now(), k = Math.min(1, (now - began) / 1600), e = 1 - (1 - k) ** 3, v = recVal * e;
       $('#game-score').textContent = Math.round(target * e).toLocaleString();
-      if (recordTier(v) > recTier) { recTier = recordTier(v); recPopAt = now / 1000; }
-      paintRecord(recCanvas, v, now / 1000, recPopAt);
-      recName.textContent = recordName(v); recName.style.color = recordColor(v);
+      if (finished) {
+        if (recordTier(v) > recTier) { recTier = recordTier(v); recPopAt = now / 1000; }
+        paintRecord(recCanvas, v, now / 1000, recPopAt);
+        recName.textContent = recordName(v); recName.style.color = recordColor(v);
+      }
       $('#game-next').classList.toggle('on', k >= 1);
-      if ($('#game-dlg').open || k < 1) requestAnimationFrame(count);   // the reflection keeps turning while it shows
+      if ((finished && $('#game-dlg').open) || k < 1) requestAnimationFrame(count);   // the reflection keeps turning while it shows
     };
     count();
-    $('#game-best').textContent = game.score > before ? (before ? `New best! (was ${before.toLocaleString()})` : 'Your first score for this song') : `Your best: ${before.toLocaleString()}`;
-    $('#game-best').classList.toggle('new', game.score > before);
+    $('#game-best').textContent = !finished ? `Not saved: you stopped early${before ? ` · your best ${before.toLocaleString()}` : ''}`
+      : game.score > before ? (before ? `New best! (was ${before.toLocaleString()})` : 'Your first score for this song') : `Your best: ${before.toLocaleString()}`;
+    $('#game-best').classList.toggle('new', finished && game.score > before);
     $('#game-acc').textContent = `${game.judged ? Math.round((game.hits / game.judged) * 100) : 0}%`;
     $('#game-hits').textContent = `${game.hits} of ${game.judged}`;
     $('#game-streak').textContent = String(game.best);

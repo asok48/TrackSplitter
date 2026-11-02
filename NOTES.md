@@ -2586,3 +2586,7 @@ progessing the new one, just do a ring on the outside").
   of light; while held the core brightens and one soft glint travels along it (no more flowing dashes). Checked in a game
   on Flower Power Madness (tubes on the D and A strings, no console errors); the held state, which the silent test input
   can't reach, was checked in the mockup.
+- A quit song isn't saved and shows no record (user: "if I quit a song, don't save the score or show me a record"; it
+  saved the score as a best and stars from its accuracy). Results then say "Not saved: you stopped early" (with your
+  best, if any); a finished song is unchanged. Checked on the library copy: quit from pause → no record, the saved
+  bests and records untouched.
