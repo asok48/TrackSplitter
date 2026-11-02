@@ -982,6 +982,11 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
 - Dead notes ("x") are left out of imported tabs when shown (user: "remove Xs in
   tabs"; Amsterdam's .gp had 223 of 868), so they're not in the views or the game;
   the saved import still has them (`notes[i][4]`).
+- Sha-La-La-Lady gave a 500 when played (user: "when I play sha lala lady I get a 500 error"): /api/tab raised
+  KeyError '40,40,33,33,35' in `unified_notes`. A saved "make repeats match" choice (new style, keyed by group) whose
+  group no longer exists (the bars grouped differently after a re-sync) was passed on as is. `unify_rules` now sends such
+  a choice to the group with a bar playing exactly those pitches, like the older choices, or drops it. Checked on a copy
+  of the song: /api/tab (imported, standard) and /api/tab/repeats return 200, and the game plays it.
 
 ## Guitar tabs (imported)
 

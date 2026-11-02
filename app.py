@@ -2074,14 +2074,17 @@ def import_view(imported, tuning):
 def unify_rules(imported, groups):
     """The import's saved choices as {group key: {pitch: (string, fret)}}. Choices saved
     before near repeats were grouped are keyed by one exact pitch sequence: each goes to the
-    group with a bar playing exactly that (later ones win where they overlap)."""
+    group with a bar playing exactly that (later ones win where they overlap). So does a
+    choice whose group no longer exists (the bars grouped differently after a re-sync: Sha-
+    La-La-Lady's "40,40,33,33,35" gave a KeyError, a 500 when the game asked for the tab);
+    with no such bar it's dropped."""
     out = {}
     for key, rule in (imported.get("unify") or {}).items():
         if rule == "easiest":   # each bar the way that fits it best
             if key in groups:
                 out[key] = rule
             continue
-        if isinstance(rule, dict):
+        if isinstance(rule, dict) and key in groups:
             out.setdefault(key, {}).update(_rule_map(key, rule))
             continue
         pitches = [int(p) for p in key.split(",")]
