@@ -2576,3 +2576,13 @@ progessing the new one, just do a ring on the outside").
   by side (`grp`) is one keycap centred on the run, each number at its own spot inside it, lighting / flashing / dimming
   on its own; rings and hit sparks sit on the number. Stems are gone from the game. Checked in a game on Flower Power
   Madness ("3 | 5" runs on the A string, no console errors).
+- Arcade: the score group no longer shifts as the score changes (user: "the score at the top is shifting left to
+  right"; it was centred on the score's current width): it's laid out for the widest score the song can reach and the
+  longest tier name, the score drawn from its left edge. Held notes lost their end bar (user: "held notes have a bar at
+  the end, can we make it not have that"): the ribbon just fades to its rounded end.
+- Hold line "more premium like the rest of the app" (user): the Arcade mockup got Hold looks (Ribbon, the game's; Glass;
+  Filament, a fine glowing line that mostly blended into the string; Satin, a brushed-metal ribbon with a sheen). User
+  picked Glass: a dark glass tube with a fine rim in the string's colour like the keycaps, a top reflection and a thin core
+  of light; while held the core brightens and one soft glint travels along it (no more flowing dashes). Checked in a game
+  on Flower Power Madness (tubes on the D and A strings, no console errors); the held state, which the silent test input
+  can't reach, was checked in the mockup.

@@ -5617,10 +5617,9 @@
     // which notes are on screen (binary search to the first one near the left edge)
     let lo = 0, hi = notes.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (X(notes[mid][0]) < L - 80) lo = mid + 1; else hi = mid; }
     const vis = []; for (let k = lo; k < notes.length && X(notes[k][0]) < R + 80; k++) if (notes[k][2] < n) vis.push(k);
-    // Held notes (user: "can we improve how held notes look?"; were a plain line): a ribbon in the string's colour fading
-    // toward its end, with an end marker where you let go. While held: bright with a pulsing glow, streaks of light
-    // flowing along it into the cursor, a glow where it meets the cursor, the end marker brightening in the last 0.4 s;
-    // the finished part fades behind the cursor. A hold let go of early, or a missed note, is grey. The only lines on
+    // Held notes (user: "can we improve how held notes look?"; were a plain line): a glass tube along the string, fading
+    // toward its rounded end (no end marker: user, "held notes have a bar at the end, can we make it not have that"),
+    // lit while held; the finished part fades behind the cursor. A hold let go of early, or a missed note, is grey. The only lines on
     // the track.
     for (const k of vis) {
       const nt = notes[k], end = Math.min(nt[1], info[k].next - 0.03); if (end - nt[0] < 0.3) continue;
@@ -5632,19 +5631,21 @@
         const a = Math.max(L - 40, x0), b = Math.min(curX, x1); if (b > a) { const q = g.createLinearGradient(a, 0, b, 0); q.addColorStop(0, acss(c3, 0)); q.addColorStop(1, acss(c3, lost ? 0.25 : 0.35)); ribbon(a, b, hh * 0.7); g.fillStyle = q; g.fill(); }
       }
       const a = holding ? curX : x0; if (x1 <= a) continue;
-      if (holding) { ribbon(a, x1, hh * 2.6); g.fillStyle = acss(c3, 0.12 + 0.08 * pulse); g.fill(); }   // the glow round it
-      const q = g.createLinearGradient(a, 0, x1, 0); q.addColorStop(0, acss(c3, lost ? 0.3 : holding ? 0.95 : 0.6)); q.addColorStop(1, acss(c3, lost ? 0.15 : holding ? 0.55 : 0.28));
-      ribbon(a, x1, hh); g.fillStyle = q; g.fill();
-      g.strokeStyle = `rgba(255,255,255,${lost ? 0.08 : holding ? 0.4 : 0.18})`; g.lineWidth = 1; g.beginPath(); g.moveTo(a + hh / 2, y - hh / 2 + 1); g.lineTo(x1 - hh / 2, y - hh / 2 + 1); g.stroke();   // a light top edge
-      if (holding) {                                       // streaks of light flowing into the cursor, and its glow there
-        g.save(); g.setLineDash([sizeSp * 0.3, sizeSp * 0.9]); g.lineDashOffset = (ms / 1000) * sizeSp * 4; g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = Math.max(1.5, hh * 0.3); g.lineCap = 'round';
-        g.beginPath(); g.moveTo(x1 - hh / 2, y); g.lineTo(a + hh / 2, y); g.stroke(); g.restore();
-        arcadeSoft(g, curX, y, sizeSp * 0.7, c3, 0.45 + 0.2 * pulse);
-      }
-      if (X(end) <= R + 10) {                              // the end marker: let go here
-        const near = holding ? Math.max(0, 1 - (end - t) / 0.4) : 0, mh = hh * (2 + 0.6 * near);
-        g.fillStyle = acss(lost ? c3 : amix(c3, [255, 255, 255], 0.3 + 0.5 * near), lost ? 0.3 : holding ? 0.85 + 0.15 * near : 0.55); g.beginPath(); g.roundRect(X(end) - 2, y - mh / 2, 4, mh, 2); g.fill();
-        if (near > 0) arcadeSoft(g, X(end), y, sizeSp * (0.4 + 0.5 * near), c3, 0.5 * near);
+      // Glass (user picked it in the mockup: "can we make the hold line look more premium like the rest of the app?"): a dark
+      // glass tube with a fine rim in the string's colour, like the keycaps, a top reflection, and a thin core of light
+      // inside; while held the core brightens and one soft glint travels along it.
+      const w = hh * 1.25, fade = (col, a0, a1) => { const q = g.createLinearGradient(a, 0, x1, 0); q.addColorStop(0, acss(col, a0)); q.addColorStop(1, acss(col, a1)); return q; };
+      if (holding) { ribbon(a, x1, w * 2.4); g.fillStyle = acss(c3, 0.07 + 0.04 * pulse); g.fill(); }   // the glow round it
+      ribbon(a, x1, w); g.fillStyle = 'rgba(9,10,15,.82)'; g.fill();
+      g.strokeStyle = fade(c3, lost ? 0.3 : holding ? 0.9 : 0.55, 0.12); g.lineWidth = 1.2; g.stroke();   // the rim
+      g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1; g.beginPath(); g.moveTo(a + w / 2, y - w / 2 + 1.5); g.lineTo(x1 - w / 2, y - w / 2 + 1.5); g.stroke();   // the glass's top reflection
+      g.lineCap = 'round'; g.strokeStyle = fade(holding ? amix(c3, [255, 255, 255], 0.35) : c3, lost ? 0.3 : holding ? 1 : 0.55, holding ? 0.5 : 0.1); g.lineWidth = Math.max(1.6, w * 0.22);
+      g.beginPath(); g.moveTo(a + w * 0.4, y); g.lineTo(x1 - w * 0.4, y); g.stroke(); g.lineCap = 'butt';   // the core
+      if (holding) {                                       // a glint travelling along it, and a glow where it meets the cursor
+        const len = Math.max(1, x1 - a), gx = a + (((ms / 1000) * sizeSp * 2.2) % len), q = g.createRadialGradient(gx, y, 0, gx, y, w * 1.6);
+        q.addColorStop(0, 'rgba(255,255,255,.75)'); q.addColorStop(1, 'rgba(255,255,255,0)');
+        g.save(); ribbon(a, x1, w); g.clip(); g.fillStyle = q; g.fillRect(gx - w * 2, y - w, w * 4, w * 2); g.restore();
+        arcadeSoft(g, curX, y, sizeSp * 0.55, c3, 0.4 + 0.15 * pulse);
       }
     }
     // the notes: layout per string (one size; keycaps too close share one), then drawn
@@ -5758,8 +5759,11 @@
     const tier = recordTier(val), [tname, mt] = ARCADE_TIERS[tier];
     if (tier !== arcadeBoard.tier) { if (tier > (arcadeBoard.tier ?? 0)) arcadeBoard.tierAt = ms; arcadeBoard.tier = tier; }
     {
-      const R0 = 26, ym = trackT - pad - 48; g.font = `200 48px ${GAME_FONT}`; const sw = g.measureText(sc).width;
-      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const label = tier ? `${tname} RECORD` : tname, lw = g.measureText(label).width + 22; g.letterSpacing = '0px';
+      // A fixed width, so the group stays put as the score grows (user: "the score at the top is shifting left to right"; it
+      // was centred on its current width): room for the widest score this song can reach and the longest tier name.
+      const R0 = 26, ym = trackT - pad - 48, widest = Math.round(perfectScore(game.units || notes.length) * 1.5).toLocaleString().replace(/\d/g, '8');
+      g.font = `200 48px ${GAME_FONT}`; const sw = Math.max(g.measureText(sc).width, g.measureText(widest).width);
+      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const label = tier ? `${tname} RECORD` : tname, lw = Math.max(...ARCADE_TIERS.map(([nm], i) => g.measureText(i ? `${nm} RECORD` : nm).width)) + 22; g.letterSpacing = '0px';
       const w = 2 * R0 + 20 + Math.max(sw, lw), left = (hl + hr) / 2 - w / 2, tx = left + 2 * R0 + 20;
       drawRecord(g, left + R0, ym, R0, val, ms / 1000, (arcadeBoard.tierAt ?? -1e9) / 1000);
       // the score, and the tier under it

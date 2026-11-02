@@ -31,6 +31,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Score</span><button data-hud="row">Row</button><button data-hud="center">Centred</button><button data-hud="below">Below</button><button data-hud="off">Off</button><span class="sep"></span><button data-award="stars">Stars</button><button data-award="records">Records</button><button data-look2="plaque">Plaque</button><button data-look2="classic">Classic</button>
  <span class="sep"></span>
+ <span style="color:rgba(245,245,247,.4)">Hold</span><button data-hold="ribbon">Ribbon</button><button data-hold="glass">Glass</button><button data-hold="filament">Filament</button><button data-hold="satin">Satin</button>
+ <span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Stagger</span><button data-stagger="stem">Stems</button><button data-stagger="lift">Lift</button><button data-stagger="joined">Joined</button><button data-stagger="gap">Slim</button>
  <span class="sep"></span>
  <button data-spread>Spread fast runs</button>
@@ -50,7 +52,7 @@ const cv=document.getElementById('cv'),g=cv.getContext('2d');
 let W=0,H=0,clock=0,last=performance.now(),paused=false,spread=true,speedSet=0.7,size=0.75,   // smaller numbers by default (user: "it's easier to read when the numbers aren't huge")
  song=Object.keys(PASSAGES)[1];
 let notes,bars,warp,info,mood={c:[245,230,211],d:[192,132,87]},sweepAt=-9,lastMult=1;
-let scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='row',stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
+let holdStyle='glass',scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='row',stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
 const fx={x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
 
 function makeWarp(base,need){                  // spread fast runs (as in note-styles.html); need = board units between distinct notes on a string
@@ -234,21 +236,52 @@ function frame(ms){
  g.shadowBlur=0;
  // held notes: a line along the string while it rings (the only lines on the track)
  const vis=notes.filter(n=>{const x=X(n[0]);return x>L-60&&x<R+60});
- // (held notes as in the game's drawArcade, user: "can we improve how held notes look?": a ribbon fading toward its end
- // with an end marker; while held bright and glowing, light streaks flowing into the cursor, the end brightening)
+ // (held notes as in the game's drawArcade, user: "can we improve how held notes look?"; no end marker since "held notes
+ // have a bar at the end, can we make it not have that")
  for(const n of vis){const I=info.get(n),end=Math.min(n[1],I.next-0.03);if(end-n[0]<0.3)continue;
   const x0=X(n[0]),x1=Math.min(R+20,X(end));if(x1<=x0)continue;
   const holding=n[0]<=t&&t<end,y=sy(n[2]),hh=sp*0.2,c3=ease(rgb(COL[n[2]]),[125,211,252],0.4*x4k),pulse=0.5+0.5*Math.sin(clock*1000/70);
   const ribbon=(a,b,w)=>{g.beginPath();g.roundRect(a,y-w/2,Math.max(0,b-a),w,w/2)};
   if(x0<curX){const a=Math.max(L-40,x0),b=Math.min(curX,x1);if(b>a){const q=g.createLinearGradient(a,0,b,0);q.addColorStop(0,css(c3,0));q.addColorStop(1,css(c3,0.35));ribbon(a,b,hh*0.7);g.fillStyle=q;g.fill()}}
   const a=holding?curX:x0;if(x1<=a)continue;
-  if(holding){ribbon(a,x1,hh*2.6);g.fillStyle=css(c3,0.12+0.08*pulse);g.fill()}
-  const q=g.createLinearGradient(a,0,x1,0);q.addColorStop(0,css(c3,holding?0.95:0.6));q.addColorStop(1,css(c3,holding?0.55:0.28));ribbon(a,x1,hh);g.fillStyle=q;g.fill();
-  g.strokeStyle=`rgba(255,255,255,${holding?0.4:0.18})`;g.lineWidth=1;g.beginPath();g.moveTo(a+hh/2,y-hh/2+1);g.lineTo(x1-hh/2,y-hh/2+1);g.stroke();
-  if(holding){g.save();g.setLineDash([sp*0.3,sp*0.9]);g.lineDashOffset=clock*sp*4;g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=Math.max(1.5,hh*0.3);g.lineCap='round';g.beginPath();g.moveTo(x1-hh/2,y);g.lineTo(a+hh/2,y);g.stroke();g.restore();
-   soft(curX,y,sp*0.7,c3,0.45+0.2*pulse)}
-  if(X(end)<=R+10){const near=holding?Math.max(0,1-(end-t)/0.4):0,mh=hh*(2+0.6*near);g.fillStyle=css(ease(c3,[255,255,255],0.3+0.5*near),holding?0.85+0.15*near:0.55);g.beginPath();g.roundRect(X(end)-2,y-mh/2,4,mh,2);g.fill();
-   if(near>0)soft(X(end),y,sp*(0.4+0.5*near),c3,0.5*near)}
+  // Hold looks (user: "can we make the hold line look more premium like the rest of the app?"):
+  //  ribbon   - the game's now: a colour ribbon fading to its end, light dashes flowing while held
+  //  glass    - a dark glass tube with a fine rim in the string's colour, like the keycaps; a thin core of light inside
+  //             that fills with colour from the cursor while you hold, one soft glint travelling along
+  //  filament - a single fine line with a soft glow, tapering to its end; held: brighter, a bead of light at the cursor
+  //  satin    - a slim ribbon shaded like brushed metal in the string's colour, a hairline highlight, a slow sheen while held
+  const fade=(x,a0,a1)=>{const q=g.createLinearGradient(a,0,x1,0);q.addColorStop(0,css(x,a0));q.addColorStop(1,css(x,a1));return q};
+  if(holdStyle==='ribbon'){
+   if(holding){ribbon(a,x1,hh*2.6);g.fillStyle=css(c3,0.12+0.08*pulse);g.fill()}
+   ribbon(a,x1,hh);g.fillStyle=fade(c3,holding?0.95:0.6,holding?0.55:0.28);g.fill();
+   g.strokeStyle=`rgba(255,255,255,${holding?0.4:0.18})`;g.lineWidth=1;g.beginPath();g.moveTo(a+hh/2,y-hh/2+1);g.lineTo(x1-hh/2,y-hh/2+1);g.stroke();
+   if(holding){g.save();g.setLineDash([sp*0.3,sp*0.9]);g.lineDashOffset=clock*sp*4;g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=Math.max(1.5,hh*0.3);g.lineCap='round';g.beginPath();g.moveTo(x1-hh/2,y);g.lineTo(a+hh/2,y);g.stroke();g.restore();soft(curX,y,sp*0.7,c3,0.45+0.2*pulse)}
+  }
+  if(holdStyle==='glass'){const w=hh*1.25;
+   if(holding){ribbon(a,x1,w*2.4);g.fillStyle=css(c3,0.07+0.04*pulse);g.fill()}
+   ribbon(a,x1,w);g.fillStyle='rgba(9,10,15,.82)';g.fill();
+   const rim=g.createLinearGradient(a,0,x1,0);rim.addColorStop(0,css(c3,holding?0.9:0.55));rim.addColorStop(1,css(c3,0.12));g.strokeStyle=rim;g.lineWidth=1.2;g.stroke();
+   g.strokeStyle='rgba(255,255,255,.14)';g.lineWidth=1;g.beginPath();g.moveTo(a+w/2,y-w/2+1.5);g.lineTo(x1-w/2,y-w/2+1.5);g.stroke();   // the glass's top reflection
+   g.lineCap='round';g.strokeStyle=fade(holding?ease(c3,[255,255,255],0.35):c3,holding?1:0.55,holding?0.5:0.1);g.lineWidth=Math.max(1.6,w*0.22);g.beginPath();g.moveTo(a+w*0.4,y);g.lineTo(x1-w*0.4,y);g.stroke();g.lineCap='butt';   // the core
+   if(holding){const len=Math.max(1,x1-a),gx=a+((clock*sp*2.2)%len),q=g.createRadialGradient(gx,y,0,gx,y,w*1.6);q.addColorStop(0,'rgba(255,255,255,.75)');q.addColorStop(1,'rgba(255,255,255,0)');
+    g.save();ribbon(a,x1,w);g.clip();g.fillStyle=q;g.fillRect(gx-w*2,y-w,w*4,w*2);g.restore();soft(curX,y,sp*0.55,c3,0.4+0.15*pulse)}
+  }
+  if(holdStyle==='filament'){g.lineCap='round';
+   g.strokeStyle=fade(c3,holding?0.28:0.14,0);g.lineWidth=hh*(holding?1.6:1.1);g.beginPath();g.moveTo(a,y);g.lineTo(x1,y);g.stroke();   // the glow
+   g.strokeStyle=fade(holding?ease(c3,[255,255,255],0.4):c3,holding?1:0.8,0.12);g.lineWidth=holding?2.6:2;g.beginPath();g.moveTo(a,y);g.lineTo(x1,y);g.stroke();
+   g.lineCap='butt';
+   if(holding){soft(curX,y,sp*0.5,c3,0.55+0.2*pulse);g.fillStyle='#fff';g.beginPath();g.arc(curX,y,2.6+0.6*pulse,0,7);g.fill()}
+  }
+  if(holdStyle==='satin'){const w=hh*0.9,m=(f)=>css(ease(c3,f>0?[255,255,255]:[0,0,0],Math.abs(f)),1);
+   if(holding){ribbon(a,x1,w*2.6);g.fillStyle=css(c3,0.08+0.05*pulse);g.fill()}
+   g.save();ribbon(a,x1,w);g.clip();
+   const v=g.createLinearGradient(0,y-w/2,0,y+w/2);v.addColorStop(0,m(0.45));v.addColorStop(0.45,m(0.05));v.addColorStop(1,m(-0.45));g.fillStyle=v;g.fillRect(a,y-w/2,x1-a,w);
+   const fo=g.createLinearGradient(a,0,x1,0);fo.addColorStop(0,'rgba(6,7,11,0)');fo.addColorStop(1,'rgba(6,7,11,.85)');g.fillStyle=fo;g.fillRect(a,y-w/2,x1-a,w);   // fading toward the end
+   if(holding){const len=Math.max(1,x1-a),sx=a+((clock*sp*1.4)%(len+sp))-sp*0.5,sh=g.createLinearGradient(sx-sp*0.5,0,sx+sp*0.5,0);sh.addColorStop(0,'rgba(255,255,255,0)');sh.addColorStop(0.5,'rgba(255,255,255,.55)');sh.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=sh;g.fillRect(sx-sp*0.5,y-w/2,sp,w)}
+   else{g.fillStyle='rgba(6,7,11,.3)';g.fillRect(a,y-w/2,x1-a,w)}
+   g.restore();
+   g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=0.8;g.beginPath();g.moveTo(a+w/2,y-w/2+0.8);g.lineTo(x1-w/2,y-w/2+0.8);g.stroke();
+   if(holding)soft(curX,y,sp*0.55,c3,0.4+0.15*pulse)}
  }
  // the notes: numbers on dark keycaps
  const nextT=Math.min(...notes.filter(n=>n[0]>t).map(n=>n[0])),ringed=new Set(notes.filter(n=>n[0]>t).slice(0,2));
@@ -486,6 +519,7 @@ function show(){
  bar.querySelectorAll('[data-award]').forEach(b=>b.classList.toggle('on',b.dataset.award===award2));
  bar.querySelectorAll('[data-hud]').forEach(b=>b.classList.toggle('on',b.dataset.hud===hudStyle));
  bar.querySelectorAll('[data-stagger]').forEach(b=>b.classList.toggle('on',b.dataset.stagger===stagger));
+ bar.querySelectorAll('[data-hold]').forEach(b=>b.classList.toggle('on',b.dataset.hold===holdStyle));
  bar.querySelectorAll('[data-bg]').forEach(b=>b.classList.toggle('on',b.dataset.bg===bgStyle));
  bar.querySelectorAll('[data-rep]').forEach(b=>b.classList.toggle('on',b.dataset.rep===repStyle));
  document.getElementById('echo-bar').style.display=repStyle==='echoes'?'contents':'none';
@@ -495,7 +529,7 @@ function show(){
  bar.querySelector('[data-pause]').textContent=paused?'Play':'Pause';
 }
 bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
- if(b.dataset.look2)scoreLook=b.dataset.look2;else if(b.dataset.award)award2=b.dataset.award;else if(b.dataset.hud)hudStyle=b.dataset.hud;else if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx)fx[b.dataset.fx]=!fx[b.dataset.fx];else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
+ if(b.dataset.look2)scoreLook=b.dataset.look2;else if(b.dataset.award)award2=b.dataset.award;else if(b.dataset.hud)hudStyle=b.dataset.hud;else if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.hold)holdStyle=b.dataset.hold;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx)fx[b.dataset.fx]=!fx[b.dataset.fx];else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
 addEventListener('keydown',e=>{if(e.key===' '){paused=!paused;e.preventDefault();show()}});
 const sp=document.getElementById('speed');sp.oninput=()=>{speedSet=+sp.value;document.getElementById('speedv').textContent=speedSet+'×';load()};
 const sz=document.getElementById('size');sz.oninput=()=>{size=+sz.value;document.getElementById('sizev').textContent=size+'×';load()};
