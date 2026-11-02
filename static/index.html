@@ -1287,12 +1287,233 @@
   #arc-feature-go { font-size: 34px; margin-top: 12px; }
   body.game-on #tab-game { display: none !important; }   /* no Pause pill (user: "do we want a pill?"): Space, Esc or a click pauses */
   @media (max-height: 820px) { .arc-top { padding-top: 22px; } .arc-actions #arc-go { height: 54px; } }
+  /* ---------- Encore in the Arcade board's look (mockup design/game-mockups/ui.html; user: "make the rest of the UI match this
+     arcade mode", "Yes, build it"): the colour mesh behind, light type for big things, small spaced capitals for labels, a
+     silver gradient on big numbers, hairlines instead of boxes, the board's still cursor as the focus mark, white pill
+     buttons, records instead of stars. Overrides the rock-stage rules above. ---------- */
+  :root { --arc-font: -apple-system, "SF Pro Display", "SF Pro Text", system-ui, sans-serif; --arc-mood: 245, 230, 211;
+    --arc-dim: rgba(245, 245, 247, .6); --arc-faint: rgba(245, 245, 247, .36); --arc-line: rgba(255, 255, 255, .09); }
+  .arcade { background: #06070b; -webkit-font-smoothing: antialiased; }
+  .arcade::after { opacity: .05; }
+  .arc-display { font-weight: 200; font-style: normal; text-transform: none; letter-spacing: .005em; }
+  .arc-stage { background: #06070b; }
+  .arc-stage > :not(#arc-mesh) { display: none; }
+  #arc-mesh { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .arc-stage.dim { opacity: 1; }
+  .arc-wall { display: none; }
+  #arc-title::before { background: radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, .45)); }
+  /* small capitals for every label */
+  .arc-brand small, .arc-feature-label, .arc-load-label, .arc-input-label, .arc-tune-label, .arc-hint, .arc-link, .arc-plaque-tier, .game-record-name,
+  .arc-diff-tier, .game-next, dialog.game-screen .set-group, #game-dlg dl > dt, #game-dlg .game-head .game-diff {
+    font: 600 10.5px var(--arc-font); letter-spacing: .24em; text-transform: uppercase; color: var(--arc-faint); }
+  .arc-hint kbd { border-width: 1px; border-color: rgba(255, 255, 255, .18); font: 600 10px var(--arc-font); color: var(--arc-dim); letter-spacing: 0; }
+  .arc-link:hover, .arc-link:focus-visible { color: #fff; }
+  .arc-screen :focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 3px; }
+  /* buttons: pills, the main one white */
+  .arc-screen .btn, .arc-screen .btn.primary, .arc-pill, dialog.game-screen .btn, dialog.game-screen .btn:not(.primary):not(.danger) {
+    height: 40px; padding: 0 24px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .04); color: #f5f5f7;
+    box-shadow: none; backdrop-filter: none; font: 600 11.5px var(--arc-font); font-style: normal; letter-spacing: .2em; text-transform: uppercase; filter: none; }
+  .arc-screen .btn:hover:not(:disabled), dialog.game-screen .btn:hover:not(:disabled) { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .35); filter: none; }
+  .arc-screen .btn.primary, dialog.game-screen .btn.primary { background: #f5f5f7; color: #0a0b10; border-color: transparent; box-shadow: 0 8px 30px rgba(var(--arc-mood), .18); }
+  .arc-screen .btn.primary:hover:not(:disabled), dialog.game-screen .btn.primary:hover:not(:disabled) { background: #fff; filter: none; }
+  dialog.game-screen .btn.danger { color: #ffb4b4; border-color: rgba(255, 140, 140, .3); background: rgba(255, 120, 120, .05); }
+  .arc-back, .arc-screen .btn.arc-back { width: 40px; height: 40px; padding: 0; border: 1px solid rgba(255, 255, 255, .18); background: rgba(255, 255, 255, .04); color: #f5f5f7; }
+
+  /* title */
+  .arc-brand .encore-mark { display: none; }
+  .arc-brand b { font: 200 clamp(48px, 5.4vw, 72px) var(--arc-font); letter-spacing: .34em; line-height: 1; filter: none; padding: 0;
+    background: linear-gradient(#fff, #c3c9d2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .arc-brand small { margin-bottom: 12px; }
+  #arc-title .arc-menu { padding-left: 28px; gap: 6px; }
+  .arc-menu-bar { width: 2px; border-radius: 2px; background: #fff; box-shadow: 0 0 12px rgba(var(--arc-mood), .9), 0 0 3px #fff; }
+  .arc-item, .arc-item.big, .arc-item.small { font: 200 40px var(--arc-font); letter-spacing: .01em; text-transform: none; color: rgba(245, 245, 247, .38); line-height: 1.15; }
+  .arc-item.big { font-size: 48px; }
+  .arc-item.small { font-size: 22px; font-weight: 300; }
+  .arc-item:hover, .arc-item:focus-visible, .arc-item.on, .arc-item.big.on, .arc-item.big:focus-visible { color: #fff; transform: translateX(4px); text-shadow: none; }
+  .arc-title-note { color: var(--arc-dim); }
+  .arc-feature { border-radius: 18px; padding: 22px; background: rgba(12, 13, 20, .5); border: 1px solid var(--arc-line); box-shadow: 0 30px 80px rgba(0, 0, 0, .4);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .arc-feature-label { margin-bottom: 14px; }
+  .arc-feature-art .arc-cover { border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .5); }
+  .arc-feature-title { margin-top: 18px; font: 300 28px var(--arc-font); line-height: 1.1; text-transform: none; }
+  .arc-feature-artist { font: 400 14px var(--arc-font); color: var(--arc-dim); }
+  .arc-feature-best { display: flex; align-items: center; gap: 12px; margin-top: 18px; min-height: 56px; font: inherit; color: inherit; letter-spacing: 0; }
+  .arc-plaque-num { font: 200 34px var(--arc-font); line-height: 1; background: linear-gradient(#fff, #c3c9d2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .arc-plaque-tier { margin-top: 7px; display: flex; align-items: center; gap: 8px; }
+  .arc-plaque-tier::before { content: ""; width: 12px; height: 1px; background: currentColor; }
+  .arc-plaque-none { font: 300 15px var(--arc-font); color: var(--arc-dim); }
+  .arc-feature .btn.primary { width: 100%; margin-top: 18px; height: 44px; font-size: 12px; font-style: normal; }
+
+  /* song select */
+  .arc-top h2 { font: 200 30px var(--arc-font); letter-spacing: .02em; }
+  .arc-search { font: 300 15px var(--arc-font); border-bottom-color: rgba(255, 255, 255, .2); }
+  .arc-search:focus { border-bottom-color: #fff; }
+  .arc-search::placeholder { color: var(--arc-faint); }
+  .arc-sort, .arc-inst { gap: 0; padding: 3px; border: 1px solid var(--arc-line); border-radius: 999px; background: rgba(255, 255, 255, .03); }
+  .arc-sort button, .arc-inst button { height: 28px; padding: 0 14px; border: 0; border-radius: 999px; font: 600 10.5px var(--arc-font); letter-spacing: .18em; color: var(--arc-faint); }
+  .arc-sort button.active, .arc-inst button.active { color: #fff; background: rgba(255, 255, 255, .12); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); border: 0; }
+  .arc-top-tools { gap: 18px; }
+  .arc-car-card { -webkit-box-reflect: unset; }
+  .arc-car-card.center .arc-cover { box-shadow: 0 0 0 1px rgba(255, 255, 255, .18), 0 24px 70px rgba(0, 0, 0, .6); }
+  .arc-carousel::before { background: radial-gradient(closest-side, rgba(var(--arc-mood), .1), transparent 75%); }
+  .arc-carousel::after { display: none; }
+  .arc-cover { border-radius: 10px; }
+  .arc-cover-title { font-weight: 700; font-style: normal; letter-spacing: .02em; }
+  .arc-cover-artist { font-weight: 600; }
+  .arc-select-bg { filter: blur(70px) brightness(.32) saturate(1.2); }
+  .arc-now h1 { font: 200 clamp(32px, 3.8vw, 48px) var(--arc-font); line-height: 1.05; text-transform: none; text-shadow: none; }
+  .arc-panel.drop .arc-now h1 { color: #fff; }
+  .arc-now-artist { font: 400 16px var(--arc-font); color: var(--arc-dim); letter-spacing: 0; }
+  .arc-song-note { font: 400 13px var(--arc-font); color: var(--arc-dim); }
+  .arc-song-note.warn { color: #f6d878; }
+  .arc-diffs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .arc-diff, .arc-diff.active { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 14px 8px 12px; border-radius: 14px; text-align: center;
+    background: rgba(255, 255, 255, .025); border: 1px solid var(--arc-line); box-shadow: none; transform: none; }
+  .arc-diff::before { display: none; }
+  .arc-diff b { font: 600 10.5px var(--arc-font); letter-spacing: .24em; text-transform: uppercase; color: var(--arc-faint); }
+  .arc-diff-tier { font-size: 9.5px; letter-spacing: .22em; margin-top: -1px; white-space: nowrap; }
+  .arc-diff-best { font: 300 14px var(--arc-font); color: var(--arc-dim); margin: 0; padding: 0; }
+  .arc-diff.active { border-color: rgba(255, 255, 255, .4); background: rgba(255, 255, 255, .07); box-shadow: 0 0 30px rgba(var(--arc-mood), .12); }
+  .arc-diff.active b { color: #fff; }
+  #arc-panel .arc-input { margin: 16px 0 0; height: 52px; padding: 0; border: 0; border-top: 1px solid var(--arc-line); border-bottom: 1px solid var(--arc-line); border-radius: 0; background: none; }
+  #arc-panel .arc-input select { background: none; font: 300 15px var(--arc-font); border-radius: 0; }
+  #arc-panel .arc-input .btn { height: 32px; padding: 0 16px; font-size: 10.5px; }
+  .arc-level { height: 2px; border-radius: 2px; width: 90px; }
+  .arc-level i { background: linear-gradient(90deg, #6ee7a8, #f6d878 75%, #f8a1a1); }
+  .arc-input-note { font: 300 15px var(--arc-font); }
+  .arc-tune { margin-top: 0; min-height: 52px; border-bottom: 1px solid var(--arc-line); }
+  .arc-tune-s { border-bottom: 0; }
+  .arc-tune-s b { font: 300 17px var(--arc-font); color: var(--arc-faint); }
+  .arc-tune-s small { font: 400 11px var(--arc-font); color: var(--arc-faint); }
+  .arc-tune-s.ok b, .arc-tune-s.ok small { color: #8ff0bd; } .arc-tune-s.near b, .arc-tune-s.near small { color: #f6d878; } .arc-tune-s.off b, .arc-tune-s.off small { color: #f8a1a1; }
+  .arc-tune-s.live { background: rgba(255, 255, 255, .05); border-radius: 6px; }
+  .arc-actions { justify-content: flex-end; margin-top: 18px; }
+  .arc-actions #arc-go { flex: 0 0 auto; height: 48px; padding: 0 44px; font-size: 12.5px; font-style: normal; letter-spacing: .2em; }
+  .arc-row { position: relative; border-radius: 10px; font-family: var(--arc-font); }
+  .arc-row:hover { background: rgba(255, 255, 255, .04); }
+  .arc-row.on { background: rgba(255, 255, 255, .06); border-color: transparent; }
+  .arc-row.on::before { content: ""; position: absolute; left: -10px; top: 12px; bottom: 12px; width: 2px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px rgba(var(--arc-mood), .9); }
+  .arc-row-title { font: 400 15px var(--arc-font); }
+  .arc-row-artist { font: 400 13px var(--arc-font); color: var(--arc-dim); }
+  .arc-row-tags i { font: 600 9.5px var(--arc-font); letter-spacing: .18em; background: rgba(255, 255, 255, .06); color: var(--arc-dim); border-radius: 999px; padding: 3px 8px; }
+  .arc-row-best { font: 300 15px var(--arc-font); color: var(--arc-dim); }
+  .arc-list-empty, .arc-car-empty { font: 300 16px var(--arc-font); color: var(--arc-dim); }
+
+  /* loading / starting */
+  .arc-load-art .arc-cover { border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .5); }
+  .arc-load-info h1 { margin-top: 10px; font: 200 clamp(34px, 4vw, 52px) var(--arc-font); line-height: 1.05; }
+  .arc-load-bar { height: 2px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+  .arc-load-bar i { background: linear-gradient(90deg, transparent, #fff, transparent); box-shadow: 0 0 10px rgba(var(--arc-mood), .9); }
+  .arc-load-tip { font: 400 15px var(--arc-font); color: var(--arc-dim); line-height: 1.5; }
+  .fader { background: #06070b; }
+
+  /* the game's screens: pause, results, settings, calibration */
+  dialog.game-screen { border-radius: 18px; border: 1px solid var(--arc-line); background: rgba(12, 13, 20, .88); box-shadow: 0 30px 90px rgba(0, 0, 0, .55);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); -webkit-font-smoothing: antialiased; }
+  dialog.game-screen::backdrop { background: rgba(5, 6, 10, .5); backdrop-filter: blur(6px); }
+  .game-screen h2, .game-head h2, dialog.full h2 { font: 200 34px var(--arc-font); font-style: normal; text-transform: none; letter-spacing: .01em; text-shadow: none; filter: none;
+    background: linear-gradient(#fff, #c3c9d2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  dialog.full h2 { font-size: clamp(40px, 4.6vw, 60px); line-height: 1.05; }
+  .game-screen p, .game-screen label, .game-screen .set-row { font-family: var(--arc-font); }
+  dialog.game-screen.full { border: 0; border-radius: 0; background: #06070b; backdrop-filter: none; }
+  dialog.full::after { background: radial-gradient(120% 90% at 50% 50%, rgba(6, 7, 11, .2) 40%, rgba(6, 7, 11, .7)); }
+  .dlg-cover { filter: blur(70px) brightness(.32) saturate(1.2); }
+  /* menus on pause: thin words, the cursor line beside the one you're on */
+  dialog.full .pause-body .btn, dialog.full .pause-body .btn:not(.primary):not(.danger), dialog.full .pause-body .btn.primary, dialog.full .pause-body .btn.danger {
+    position: relative; height: auto; padding: 2px 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+    font: 200 36px var(--arc-font); letter-spacing: .01em; text-transform: none; color: rgba(245, 245, 247, .38); transition: color .15s, transform .2s; }
+  dialog.full .pause-body .btn:hover, dialog.full .pause-body .btn:focus-visible { color: #fff; transform: translateX(4px); background: none; outline: none; text-shadow: none; }
+  dialog.full .pause-body .btn.danger:hover, dialog.full .pause-body .btn.danger:focus-visible { color: #ffb4b4; }
+  dialog.full .pause-body .btn:hover::before, dialog.full .pause-body .btn:focus-visible::before { content: ""; position: absolute; left: -28px; top: 22%; bottom: 22%; width: 2px;
+    border-radius: 2px; background: #fff; box-shadow: 0 0 12px rgba(var(--arc-mood), .9), 0 0 3px #fff; }
+  #pause-dlg.full { background: rgba(5, 6, 10, .45); backdrop-filter: blur(6px) saturate(.85); -webkit-backdrop-filter: blur(6px) saturate(.85); }
+  #pause-dlg.full::after { background: radial-gradient(120% 90% at 50% 50%, transparent 40%, rgba(5, 6, 10, .55)); }
+  #pause-dlg > form { padding-left: 12vw; }
+  #pause-dlg .pause-body { gap: 4px; }
+  #pause-dlg .pause-score { display: flex; align-items: center; gap: 14px; margin: 10px 0 30px; font: 400 14px var(--arc-font); color: var(--arc-dim); }
+  #pause-dlg .pause-time { margin-top: 7px; font: 400 13px var(--arc-font); color: var(--arc-faint); }
+  /* results: one centred column, the record big */
+  #game-dlg > form { align-items: center; text-align: center; justify-content: center; gap: 0; }
+  #game-dlg .game-head { display: flex; flex-direction: column; align-items: center; }
+  #game-dlg .game-head > * { justify-self: center; text-align: center; }
+  #game-dlg .game-art { display: none; }
+  #game-dlg .game-head h2 { font-size: clamp(26px, 2.6vw, 34px); font-weight: 300; }
+  #game-dlg .game-artist { font: 400 15px var(--arc-font); color: var(--arc-dim); margin-top: 2px; }
+  #game-dlg .game-head .game-diff { margin-top: 8px; font-size: 10.5px; }
+  #game-dlg .game-results { text-align: center; max-width: none; margin-top: 16px; display: flex; flex-direction: column; align-items: center; }
+  #game-dlg .game-stars, .game-results .game-stars { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: inherit; }
+  .game-record-name { font-size: 12px; letter-spacing: .32em; transition: color .3s; }
+  #game-dlg .game-results .game-score, .game-results .game-score { font: 200 clamp(64px, 7vw, 92px) var(--arc-font); line-height: 1; margin: 16px 0 8px; text-shadow: none; font-style: normal;
+    font-variant-numeric: tabular-nums; background: linear-gradient(#fff, #c3c9d2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .game-results .game-best { font: 400 13px var(--arc-font); color: var(--arc-dim); }
+  .game-results .game-best.new { font: 600 10.5px var(--arc-font); letter-spacing: .24em; color: #0a0b10; background: rgb(var(--arc-mood)); padding: 5px 12px; border-radius: 999px; }
+  .game-next { margin: 10px 0 0; opacity: 0; transition: opacity .4s; min-height: 14px; }
+  .game-next.on { opacity: 1; }
+  #game-dlg dl { display: grid; grid-template-columns: repeat(3, auto); column-gap: 0; row-gap: 8px; margin: 30px 0 4px; justify-content: center; }
+  #game-dlg dl > dt { grid-row: 1; padding: 0 38px; border-left: 1px solid var(--arc-line); }
+  #game-dlg dl > dd { grid-row: 2; padding: 0 38px; border-left: 1px solid var(--arc-line); font: 200 32px var(--arc-font); text-shadow: none; text-align: center; }
+  #game-dlg dl > dt:first-of-type, #game-dlg dl > dd:first-of-type { border-left: 0; }
+  #game-dlg dl > dt, #game-dlg dl > dd { text-align: center; background: none; border-top: 0; border-bottom: 0; border-right: 0; border-radius: 0; }
+  #game-dlg .game-note { font: 400 13px var(--arc-font); color: var(--arc-faint); }
+  #game-dlg .dlg-foot { justify-content: center; gap: 12px; padding: 24px 0 0; }
+  #game-dlg .dlg-foot .btn, #game-dlg .dlg-foot .btn.primary { font-size: 11.5px; transform: none; }
+  #game-dlg .dlg-foot .btn:hover, #game-dlg .dlg-foot .btn:focus-visible { transform: none; }
+  /* settings: rows on hairlines, choices as pills with the picked one lit */
+  #settings-dlg { --accent: rgb(var(--arc-mood)); --accent-hover: #fff; }
+  #settings-dlg.full { background: rgba(5, 6, 10, .55); backdrop-filter: blur(18px) saturate(.9); }
+  #settings-dlg.full::after { background: none; }
+  #settings-dlg > form { max-width: 1180px; margin: 0 auto; padding: 7vh 5vw 4vh; }
+  #settings-dlg h2 { font-size: clamp(36px, 3.6vw, 48px); }
+  dialog.game-screen .set-group { margin-top: 26px; padding: 0 0 8px; color: var(--arc-faint) !important; }
+  #settings-dlg .set-row { min-height: 54px; border-bottom: 1px solid var(--arc-line); font: 300 16px var(--arc-font); color: #f5f5f7; }
+  #settings-dlg .set-row > span:first-child { color: #f5f5f7; width: 190px; }
+  #settings-dlg .segmented { gap: 0; padding: 3px; border: 1px solid var(--arc-line); border-radius: 999px; background: rgba(255, 255, 255, .03); }
+  #settings-dlg .segmented button { height: 28px; padding: 0 14px; border: 0; border-radius: 999px; font: 600 10.5px var(--arc-font); letter-spacing: .18em; color: var(--arc-faint); }
+  #settings-dlg .segmented button.active { color: #fff; background: rgba(255, 255, 255, .12); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); border: 0; }
+  #settings-dlg .btn.sm, #settings-dlg a.btn.sm, #settings-dlg .btn.sm:not(.primary):not(.danger) { height: 32px; padding: 0 16px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px;
+    color: var(--arc-dim); font: 600 10.5px var(--arc-font); letter-spacing: .18em; display: inline-flex; align-items: center; }
+  #settings-dlg .btn.sm:hover { color: #fff; border-color: rgba(255, 255, 255, .35); }
+  #settings-dlg .set-range { color: var(--arc-dim); font: 300 14px var(--arc-font); }
+  #settings-dlg select { font: 300 15px var(--arc-font); border-bottom-color: rgba(255, 255, 255, .2); }
+  #settings-dlg .dlg-foot .btn, dialog.full .dlg-foot .btn { transform: none; }
+  /* (after the older hover and Play rules, which outranked these) */
+  .game-screen .btn:not(.primary):not(.danger):hover:not(:disabled) { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .35); filter: none; }
+  .game-screen .btn.danger:hover:not(:disabled) { background: rgba(255, 120, 120, .1); }
+  .game-screen .btn.primary:hover:not(:disabled), .arc-screen .btn.primary:hover:not(:disabled) { background: #fff; filter: none; }
+  #game-dlg .dlg-foot .btn:not(.primary):hover:not(:disabled), #settings-dlg .dlg-foot .btn:not(.primary):hover:not(:disabled) { background: rgba(255, 255, 255, .09); }
+  #game-dlg .dlg-foot .btn.primary:hover:not(:disabled), #settings-dlg .dlg-foot .btn.primary:hover:not(:disabled) { background: #fff; }
+  #arc-go, #arc-feature-go { display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 44px; border-radius: 999px; border: 0;
+    background: #f5f5f7; color: #0a0b10; font: 600 12.5px var(--arc-font); letter-spacing: .2em; text-transform: uppercase; box-shadow: 0 8px 30px rgba(var(--arc-mood), .18); }
+  #arc-go::after, #arc-feature-go::after { display: none; }
+  #arc-go:hover:not(:disabled), #arc-go:focus-visible, #arc-feature-go:hover, #arc-feature-go:focus-visible { background: #fff; color: #0a0b10; transform: none; text-shadow: none; box-shadow: 0 8px 30px rgba(var(--arc-mood), .3); }
+  #arc-go:disabled { background: rgba(255, 255, 255, .1); color: rgba(245, 245, 247, .4); box-shadow: none; }
+  #arc-feature-go { width: 100%; height: 44px; font-size: 12px; margin-top: 18px; }
+  #pause-dlg .pause-body .btn:hover:not(:disabled), #pause-dlg .pause-body .btn:focus-visible { background: none; box-shadow: none; }   /* (Resume showed a white box on hover: user) */
+  /* Settings as one panel in the middle with Game / Sound / Setup tabs (user: "can we improve the settings"; it was two
+     crowded columns across the whole screen) */
+  #settings-dlg.full[open] { display: flex; align-items: center; justify-content: center; }
+  #settings-dlg > form { width: min(720px, 92vw); height: auto; max-height: 88vh; max-width: none; margin: 0; padding: 0; gap: 0; display: flex; flex-direction: column;
+    justify-content: flex-start; overflow: hidden; background: rgba(12, 13, 20, .72); border: 1px solid var(--arc-line); border-radius: 20px; box-shadow: 0 30px 90px rgba(0, 0, 0, .55); }
+  #settings-dlg .dlg-head { padding: 24px 28px 14px; }
+  #settings-dlg .set-tabs { display: flex; gap: 26px; padding: 0 28px; border-bottom: 1px solid var(--arc-line); flex: none; }
+  #settings-dlg .set-tabs button { border: 0; background: none; padding: 10px 0 12px; margin-bottom: -1px; cursor: pointer; border-bottom: 2px solid transparent;
+    font: 600 10.5px var(--arc-font); letter-spacing: .22em; text-transform: uppercase; color: var(--arc-faint); }
+  #settings-dlg .set-tabs button:hover { color: var(--arc-dim); }
+  #settings-dlg .set-tabs button.on { color: #fff; border-bottom-color: #fff; }
+  #settings-dlg .settings-body { columns: auto; flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 4px 28px 8px; }
+  #settings-dlg .set-sec.off { display: none; }
+  #settings-dlg .set-sec > .set-row:last-child { border-bottom: 0; }
+  #settings-dlg .set-row > span:first-child { width: auto; flex: 1; }
+  #settings-dlg .set-range { width: min(300px, 40vw); }
+  #settings-dlg .dlg-foot { flex: none; justify-content: flex-end; padding: 14px 28px 22px; border-top: 1px solid var(--arc-line); }
+  #settings-dlg .dlg-foot .btn, #settings-dlg .dlg-foot .btn.primary { height: 40px; padding: 0 28px; font: 600 11.5px var(--arc-font); letter-spacing: .2em; }
+  #settings-dlg a.btn.sm { text-decoration: none; }
 </style>
 <script>
   // Encore as an installable Chrome app (its own icon and window): only the game's page links the manifest.
   if (location.pathname.replace(/\/+$/, '') === '/game') {
     document.head.append(Object.assign(document.createElement('link'), { rel: 'manifest', href: '/encore-manifest.json' }),
-      Object.assign(document.createElement('meta'), { name: 'theme-color', content: '#070504' }),
+      Object.assign(document.createElement('meta'), { name: 'theme-color', content: '#06070b' }),
       Object.assign(document.createElement('link'), { rel: 'icon', href: '/icons/encore-192.png' }));
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/encore-sw.js', { scope: '/game' }).catch(() => {});
   }
@@ -1640,6 +1861,7 @@
 <!-- The game on its own screen (/game): a concert stage; title, then song select -->
 <div class="arcade hidden" id="arcade">
   <div class="arc-stage" id="arc-stage" aria-hidden="true">
+    <canvas id="arc-mesh"></canvas>
     <div class="arc-haze"></div>
     <div class="arc-beam" style="left:12%;--c:#f59e0b;--a:-18deg;--t:8s"></div>
     <div class="arc-beam" style="left:30%;--c:#ef4444;--a:8deg;--t:11s;--d:-3s"></div>
@@ -1695,6 +1917,7 @@
           <button type="button" data-view="covers" title="Covers">Covers</button>
           <button type="button" data-view="list" title="List">List</button>
         </div>
+        <button type="button" class="btn arc-back" id="arc-select-settings" aria-label="Settings" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       </div>
     </div>
     <div class="arc-carousel" id="arc-carousel" tabindex="0" aria-label="Songs: left and right to browse"></div>
@@ -1950,7 +2173,7 @@
   <form method="dialog">
     <div class="dlg-head"><h2 id="pause-title">Paused</h2></div>
     <div class="dlg-body pause-body">
-      <p class="pause-score" id="pause-score"></p>
+      <div class="pause-score" id="pause-score"></div>
       <button type="button" class="btn primary" id="pause-resume">Resume</button>
       <button type="button" class="btn" id="pause-restart">Restart</button>
       <button type="button" class="btn" id="pause-settings">Settings</button>
@@ -2115,9 +2338,10 @@
       <div class="game-diff" id="game-diff"></div>
     </div>
     <div class="dlg-body game-results">
-      <div class="game-stars" id="game-stars" aria-label="Stars"></div>
+      <div class="game-stars" id="game-stars" aria-label="Record"></div>
       <div class="game-score" id="game-score">0</div>
       <p class="game-best" id="game-best"></p>
+      <p class="game-next" id="game-next"></p>
       <dl>
         <dt>Accuracy</dt><dd id="game-acc"></dd>
         <dt>Notes hit</dt><dd id="game-hits"></dd>
@@ -5072,7 +5296,7 @@
       g.lineWidth = Math.max(3, size * 0.14); g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,6,4,0.9)'; g.strokeText(text, x, y);
       g.fillStyle = fill; g.fillText(text, x, y);
     };
-    // Score plate (angled, metal-edged) with the stars, and the multiplier disc to its right.
+    // Score plate (angled, metal-edged) with the record, and the multiplier disc to its right.
     const R = 36, discX = W - 30 - R, discY = 30 + R + 56,   // room above for the x4 fire
       plateR = discX - R - 16, plateH = 78, plateY = discY - plateH / 2 - 4;
     // Floating text, no panel (user: "no pills, transparent background with floating text", like Settings; was a
@@ -5081,15 +5305,7 @@
     shout(game.score.toLocaleString(), plateR - 26, plateY + 30, 42, '#ffffff', 'right');
     g.shadowBlur = 0;
     const scoreW = Math.max(g.measureText(game.score.toLocaleString()).width, 110);   // the call sits just left of it
-    const value = starsFor(game.score, game.units || notesLen), sz = 17;
-    for (let i = 0; i < 5; i++) {
-      const x0 = plateR - 34 - (4 - i) * (sz + 5), y0 = plateY + 60, f = Math.max(0, Math.min(1, value - i));
-      g.save(); g.beginPath();
-      for (let j = 0; j < 10; j++) { const a = -Math.PI / 2 + (j * Math.PI) / 5, rr = j % 2 ? sz * 0.22 : sz / 2; if (j) g.lineTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr); else g.moveTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr); }
-      g.closePath(); g.fillStyle = 'rgba(255,245,230,0.22)'; g.fill(); g.clip();
-      if (f > 0) { g.fillStyle = '#f5b70a'; g.shadowColor = 'rgba(245,183,10,0.6)'; g.shadowBlur = f >= 1 ? 8 : 0; g.fillRect(x0 - sz / 2, y0 - sz / 2, sz * f, sz); }
-      g.restore();
-    }
+    hudRecordAt(g, plateR - 26, plateY + 60, starsFor(game.score, game.units || notesLen));
     // The multiplier: a brushed metal disc, a ring filling toward the next level in its colour.
     const m = multiplier(), col = ROCK_MULT[m], fill = m === 4 ? 1 : (game.streak % 10) / 10, pop = 1 + 0.12 * Math.max(0, 1 - (ms - game.multAt) / 300);
     g.save(); g.translate(discX, discY); g.scale(pop, pop);
@@ -5179,6 +5395,55 @@
   const ARCADE_TIERS = [['NO RECORD YET', ['#2e2e36', '#4a4a55', '#2e2e36']], ['BRONZE', ['#6b3a16', '#c97f42', '#7d4620']], ['SILVER', ['#737b86', '#d9dee5', '#858d98']],
                         ['GOLD', ['#8a5c03', '#efc244', '#a06c06']], ['PLATINUM', ['#9aa4b0', '#e8edf2', '#b0b9c3']], ['DIAMOND', ['#4fa9de', '#cdeeff', '#9b8cec']]];   // the star levels as records: name, metal
   const ARCADE_VIVID = ['#ff9a52', '#eef4ff', '#ffcf33', '#cfe3ff', '#5fd0ff'];   // the accent of the tier coming next
+  // A record (the star levels as Bronze / Silver / Gold / Platinum / Diamond; user: "replace stars with records ... should be
+  // everywhere"), centred at x, y with radius r0. val is starsFor's 0..5: the tier, plus progress to the next. The disc stays
+  // in its tier's metal; progress is a ring round the outside in the next tier's accent (user: "instead of changing entire
+  // record color when progressing the new one, just do a ring on the outside"). t: seconds (the reflection turns as if it
+  // spins); popAt: when a tier was reached (a pop and a shine). Small ones skip the grooves.
+  const recordTier = (val) => Math.min(5, Math.max(0, Math.floor(val)));
+  const recordName = (val) => (recordTier(val) ? `${ARCADE_TIERS[recordTier(val)][0]} RECORD` : 'NO RECORD YET');
+  const recordColor = (val) => (recordTier(val) ? ARCADE_TIERS[recordTier(val)][1][1] : 'rgba(245,245,247,.4)');
+  function drawRecord(g, x, y, r0, val, t = 0, popAt = -9) {
+    const tier = recordTier(val), frac = tier >= 5 ? 0 : val - tier, mt = ARCADE_TIERS[tier][1], small = r0 < 14;
+    const r = r0 * (1 + 0.25 * Math.max(0, 1 - (t - popAt) / 0.35));
+    const metal = (m) => { const q = g.createLinearGradient(-r, -r, r, r); q.addColorStop(0, m[0]); q.addColorStop(0.5, m[1]); q.addColorStop(1, m[2]); return q; };
+    g.save(); g.translate(x, y);
+    g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = r * 0.35; g.shadowOffsetY = r * 0.08; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = metal(mt); g.fill();
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    if (!small) for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(0, 0, r * (0.5 + i * 0.055), 0, 7); g.strokeStyle = i % 2 ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.12)'; g.lineWidth = Math.max(0.5, r / 40); g.stroke(); }   // grooves
+    g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip(); g.rotate(t * 0.8);   // a reflection, turning as if it spins
+    for (const k of [0, Math.PI]) { g.save(); g.rotate(k); const q = g.createLinearGradient(-r * 0.2, -r, r * 0.2, -r); q.addColorStop(0, 'rgba(255,255,255,0)'); q.addColorStop(0.5, 'rgba(255,255,255,.28)'); q.addColorStop(1, 'rgba(255,255,255,0)');
+      g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, -Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3); g.closePath(); g.fillStyle = q; g.fill(); g.restore(); }
+    g.restore();
+    g.beginPath(); g.arc(0, 0, r - 0.5, 0, 7); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1; g.stroke();   // the bright edge
+    const rr = r + Math.max(2.5, r * 0.13), lw = Math.max(1.8, r * 0.1), vc = ARCADE_VIVID[Math.min(4, tier)], ang = -Math.PI / 2 + Math.PI * 2 * frac;
+    if (frac > 0) {   // the progress ring: its empty track, then the part done
+      g.beginPath(); g.arc(0, 0, rr, 0, 7); g.strokeStyle = 'rgba(255,255,255,.1)'; g.lineWidth = lw; g.stroke();
+      g.save(); g.beginPath(); g.arc(0, 0, rr, -Math.PI / 2, ang); g.strokeStyle = vc; g.lineWidth = lw; g.lineCap = 'round'; g.shadowColor = vc; g.shadowBlur = small ? 3 : r * 0.3; g.globalAlpha = 0.65 + 0.35 * frac; g.stroke(); g.restore();
+    }
+    g.beginPath(); g.arc(0, 0, r * 0.36, 0, 7); g.fillStyle = 'rgba(0,0,0,.22)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 0.7; g.stroke();   // the label
+    g.fillStyle = '#050506'; g.beginPath(); g.arc(0, 0, Math.max(1, r * 0.07), 0, 7); g.fill();   // the spindle hole
+    if (tier === 5) {   // diamond: two twinkles
+      const sp4 = (px, py, k, z) => { g.fillStyle = `rgba(255,255,255,${0.4 + 0.6 * Math.max(0, Math.sin(t * 4 + k))})`; g.beginPath(); g.moveTo(px, py - z); g.lineTo(px + z * 0.28, py - z * 0.28); g.lineTo(px + z, py); g.lineTo(px + z * 0.28, py + z * 0.28); g.lineTo(px, py + z); g.lineTo(px - z * 0.28, py + z * 0.28); g.lineTo(px - z, py); g.lineTo(px - z * 0.28, py - z * 0.28); g.closePath(); g.fill(); };
+      sp4(r * 0.78, -r * 0.78, 0, r * 0.17); sp4(-r * 0.85, r * 0.55, 2.2, r * 0.11);
+    }
+    const sa = (t - popAt) / 0.7;   // the shine when a tier is reached
+    if (sa >= 0 && sa < 1) { g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip(); const sx = -r * 1.4 + 2.8 * r * sa, q = g.createLinearGradient(sx - r * 0.3, -r, sx + r * 0.3, r); q.addColorStop(0, 'rgba(255,255,255,0)'); q.addColorStop(0.5, 'rgba(255,255,255,.6)'); q.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore(); }
+    g.restore();
+  }
+  // A record in the page (song select, title, list rows, results): a small canvas, drawn once (results animate theirs).
+  function recordEl(val, size, label = true) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1), c = el('canvas', { className: 'arc-record', width: Math.round(size * dpr), height: Math.round(size * dpr) });
+    c.style.width = c.style.height = `${size}px`;
+    if (label) { c.setAttribute('role', 'img'); c.setAttribute('aria-label', recordTier(val) ? `${ARCADE_TIERS[recordTier(val)][0].toLowerCase()} record` : 'no record yet'); }
+    paintRecord(c, val);
+    return c;
+  }
+  function paintRecord(c, val, t = 0, popAt = -9) {
+    const g = c.getContext('2d'), s = c.width;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, s, s);
+    drawRecord(g, s / 2, s / 2, s / 2 * 0.78, val, t, popAt);
+  }
   const AVIS = 17.5;
   const arcadeBoard = {   // (`arcade` is the Encore screens' state)
     mood: null, x4: 0, meshT: 0, busyAvg: 0, sweepAt: -9, lastMult: 1, last: 0, mesh: null, grain: null };
@@ -5438,40 +5703,16 @@
 
     // ---- the plaque: a record as its emblem and the score, centred over the track; the latest call on the right ----
     // (from the mockup, user: "Yes, put them in"): records instead of stars (the 5 star levels as Bronze / Silver / Gold /
-    // Platinum / Diamond), the whole disc in the tier's metal, the next tier sweeping round it faint at first and more solid
-    // and vivid as it grows, a glowing arc on the rim tracing it; a pop and a shine on reaching a tier. No streak number:
+    // Platinum / Diamond, drawRecord), a ring round it filling toward the next; a pop and a shine on reaching a tier. No streak number:
     // a moment every 50 notes instead. No song title or progress (not wanted on the game screen).
     const hl = L - 56, hr = L - 56 + pw, sc = game.score.toLocaleString(), val = starsFor(game.score, game.units || notes.length);
-    const tier = Math.min(5, Math.floor(val)), frac = tier >= 5 ? 0 : val - tier, [tname, mt] = ARCADE_TIERS[tier], nm = ARCADE_TIERS[Math.min(5, tier + 1)][1];
+    const tier = recordTier(val), [tname, mt] = ARCADE_TIERS[tier];
     if (tier !== arcadeBoard.tier) { if (tier > (arcadeBoard.tier ?? 0)) arcadeBoard.tierAt = ms; arcadeBoard.tier = tier; }
     {
       const R0 = 26, ym = trackT - pad - 48; g.font = `200 48px ${GAME_FONT}`; const sw = g.measureText(sc).width;
       g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const label = tier ? `${tname} RECORD` : tname, lw = g.measureText(label).width + 22; g.letterSpacing = '0px';
       const w = 2 * R0 + 20 + Math.max(sw, lw), left = (hl + hr) / 2 - w / 2, tx = left + 2 * R0 + 20;
-      // the record
-      const pop = 1 + 0.25 * Math.max(0, 1 - (ms - (arcadeBoard.tierAt ?? -1e9)) / 350), r = R0 * pop, rcx = left + R0;
-      const metal = (m) => { const q2 = g.createLinearGradient(-r, -r, r, r); q2.addColorStop(0, m[0]); q2.addColorStop(0.5, m[1]); q2.addColorStop(1, m[2]); return q2; };
-      const vc = ARCADE_VIVID[Math.min(4, tier)], ang = -Math.PI / 2 + Math.PI * 2 * frac;
-      g.save(); g.translate(rcx, ym);
-      g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 8; g.shadowOffsetY = 2; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = metal(mt); g.fill(); g.shadowBlur = 0; g.shadowOffsetY = 0;
-      if (frac > 0) {   // the next tier filling in, tinted with its accent more as it grows
-        g.save(); g.globalAlpha = 0.35 + 0.65 * frac; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, -Math.PI / 2, ang); g.closePath(); g.fillStyle = metal(nm); g.fill();
-        g.globalAlpha = 0.12 + 0.25 * frac; g.fillStyle = vc; g.fill(); g.restore();
-        g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(ang) * r, Math.sin(ang) * r); g.strokeStyle = vc; g.globalAlpha = 0.8; g.lineWidth = 1.2; g.stroke(); g.globalAlpha = 1;
-      }
-      for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(0, 0, r * (0.5 + i * 0.055), 0, 7); g.strokeStyle = i % 2 ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.12)'; g.lineWidth = 0.6; g.stroke(); }   // grooves
-      g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip(); g.rotate(ms / 1000 * 0.8);   // a reflection, turning as if it spins
-      for (const k of [0, Math.PI]) { g.save(); g.rotate(k); const q2 = g.createLinearGradient(-r * 0.2, -r, r * 0.2, -r); q2.addColorStop(0, 'rgba(255,255,255,0)'); q2.addColorStop(0.5, 'rgba(255,255,255,.28)'); q2.addColorStop(1, 'rgba(255,255,255,0)');
-        g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, -Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3); g.closePath(); g.fillStyle = q2; g.fill(); g.restore(); }
-      g.restore();
-      g.beginPath(); g.arc(0, 0, r - 0.5, 0, 7); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1; g.stroke();   // the bright edge
-      if (frac > 0) { g.save(); g.beginPath(); g.arc(0, 0, r + 3, -Math.PI / 2, ang); g.strokeStyle = vc; g.lineWidth = 2.5; g.lineCap = 'round'; g.shadowColor = vc; g.shadowBlur = 8; g.globalAlpha = 0.65 + 0.35 * frac; g.stroke(); g.restore(); }   // the accent arc
-      g.beginPath(); g.arc(0, 0, r * 0.36, 0, 7); g.fillStyle = 'rgba(0,0,0,.22)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 0.7; g.stroke();   // the label
-      g.fillStyle = '#050506'; g.beginPath(); g.arc(0, 0, r * 0.07, 0, 7); g.fill();   // the spindle hole
-      if (tier === 5) { const sp4 = (px, py, k, z) => { g.fillStyle = `rgba(255,255,255,${0.4 + 0.6 * Math.max(0, Math.sin(ms / 250 + k))})`; g.beginPath(); g.moveTo(px, py - z); g.lineTo(px + z * 0.28, py - z * 0.28); g.lineTo(px + z, py); g.lineTo(px + z * 0.28, py + z * 0.28); g.lineTo(px, py + z); g.lineTo(px - z * 0.28, py + z * 0.28); g.lineTo(px - z, py); g.lineTo(px - z * 0.28, py - z * 0.28); g.closePath(); g.fill(); }; sp4(r * 0.78, -r * 0.78, 0, 4.5); sp4(-r * 0.85, r * 0.55, 2.2, 3); }
-      const sa = (ms - (arcadeBoard.tierAt ?? -1e9)) / 700;   // the shine when a tier is reached
-      if (sa >= 0 && sa < 1) { g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip(); const sx = -r * 1.4 + 2.8 * r * sa, q2 = g.createLinearGradient(sx - 7, -r, sx + 7, r); q2.addColorStop(0, 'rgba(255,255,255,0)'); q2.addColorStop(0.5, 'rgba(255,255,255,.6)'); q2.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q2; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore(); }
-      g.restore();
+      drawRecord(g, left + R0, ym, R0, val, ms / 1000, (arcadeBoard.tierAt ?? -1e9) / 1000);
       // the score, and the tier under it
       const sq = g.createLinearGradient(0, ym - 34, 0, ym + 4); sq.addColorStop(0, '#ffffff'); sq.addColorStop(1, '#c3c9d2');
       g.font = `200 48px ${GAME_FONT}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = sq; g.fillText(sc, tx, ym + 4);
@@ -8517,17 +8758,29 @@
     // The most stars for this song and difficulty, for the game screen's song wall.
     const starMap = readMap(STARS_KEY);
     if (stars > (starMap[key] || 0)) { starMap[key] = stars; try { localStorage.setItem(STARS_KEY, JSON.stringify(starMap)); } catch { /* not kept */ } }
-    $('#game-stars').replaceChildren(...[0, 1, 2, 3, 4].map((i) => el('span', { className: i < stars ? 'on' : '', textContent: '★' })));
-    $('#game-stars').setAttribute('aria-label', `${stars} of 5 stars`);
+    // A record for the run (the star level as Bronze … Diamond), filling as the score counts up and popping at each tier it
+    // passes; a finished run shows its progress toward the next tier as the ring, and how many points that is.
+    const recVal = finished ? Math.min(5, starsFor(game.score, total)) : stars;
+    const recCanvas = recordEl(0, 190, false), recName = el('div', { className: 'game-record-name' });
+    $('#game-stars').replaceChildren(recCanvas, recName);
+    $('#game-stars').setAttribute('aria-label', recordTier(recVal) ? `${ARCADE_TIERS[recordTier(recVal)][0].toLowerCase()} record` : 'no record yet');
+    const nextTier = recordTier(recVal);
+    $('#game-next').textContent = finished && nextTier < 5
+      ? `${Math.max(1, Math.ceil(STAR_STEPS[nextTier] * perfectScore(total) - game.score)).toLocaleString()} to ${ARCADE_TIERS[nextTier + 1][0][0]}${ARCADE_TIERS[nextTier + 1][0].slice(1).toLowerCase()}` : '';
     const song = state.library.songs.find((x) => x.id === game.song);
     $('#game-title').textContent = song?.title || 'Results';
     $('#game-artist').textContent = song?.artist || '';
     $('#game-diff').textContent = `${DIFFS[gameDiff][0]} · ${gameTiming[0].toUpperCase()}${gameTiming.slice(1)} timing${finished ? '' : ' · stopped early'}`;
     const target = game.score, began = performance.now();
+    let recTier = 0, recPopAt = -9;
     const count = () => {
-      const k = Math.min(1, (performance.now() - began) / 900);
-      $('#game-score').textContent = Math.round(target * (1 - (1 - k) ** 3)).toLocaleString();
-      if (k < 1) requestAnimationFrame(count);
+      const now = performance.now(), k = Math.min(1, (now - began) / 1600), e = 1 - (1 - k) ** 3, v = recVal * e;
+      $('#game-score').textContent = Math.round(target * e).toLocaleString();
+      if (recordTier(v) > recTier) { recTier = recordTier(v); recPopAt = now / 1000; }
+      paintRecord(recCanvas, v, now / 1000, recPopAt);
+      recName.textContent = recordName(v); recName.style.color = recordColor(v);
+      $('#game-next').classList.toggle('on', k >= 1);
+      if ($('#game-dlg').open || k < 1) requestAnimationFrame(count);   // the reflection keeps turning while it shows
     };
     count();
     $('#game-best').textContent = game.score > before ? (before ? `New best! (was ${before.toLocaleString()})` : 'Your first score for this song') : `Your best: ${before.toLocaleString()}`;
@@ -8608,7 +8861,12 @@
     game.countToken = (game.countToken || 0) + 1; game.countdown = 0;
     game.paused = true;
     if (player.playing) pause();
-    $('#pause-score').textContent = `${game.score.toLocaleString()} points · ${fmtTime(currentTime())} of ${fmtTime(duration())}`;
+    // The score as a plaque: the record so far, the score, its tier, where you are in the song.
+    const pauseVal = starsFor(game.score, game.units || tabView.data?.notes.length || 0);
+    $('#pause-score').replaceChildren(recordEl(pauseVal, 56), el('div', {},
+      el('div', { className: 'arc-plaque-num', textContent: game.score.toLocaleString() }),
+      el('div', { className: 'arc-plaque-tier', textContent: recordName(pauseVal), style: `color:${recordColor(pauseVal)}` }),
+      el('div', { className: 'pause-time', textContent: `${fmtTime(currentTime())} of ${fmtTime(duration())}` })));
     $('#pause-dlg').showModal();
   }
   async function resumeGame() {
@@ -8718,6 +8976,21 @@
   $('#pause-settings').addEventListener('click', () => openSettings(true));
   $('#game-settings-btn').addEventListener('click', () => openSettings(false));
   $('#settings-done').addEventListener('click', closeSettings);
+  // Settings in tabs, one per group (Game / Sound / Setup): each group's rows move into its own section.
+  const settingsTabs = el('div', { className: 'set-tabs', role: 'tablist' });
+  [...document.querySelectorAll('#settings-dlg .settings-body > .set-group')].forEach((head, i) => {
+    const rows = [];
+    for (let n = head.nextElementSibling; n && !n.classList.contains('set-group'); n = n.nextElementSibling) rows.push(n);
+    const sec = el('div', { className: `set-sec${i ? ' off' : ''}`, role: 'tabpanel' });
+    head.replaceWith(sec); sec.append(...rows);
+    const tab = el('button', { type: 'button', role: 'tab', className: i ? '' : 'on', textContent: head.textContent });
+    tab.addEventListener('click', () => {
+      settingsTabs.querySelectorAll('button').forEach((b, k) => b.classList.toggle('on', k === i));
+      document.querySelectorAll('#settings-dlg .set-sec').forEach((x, k) => x.classList.toggle('off', k !== i));
+    });
+    settingsTabs.append(tab);
+  });
+  $('#settings-dlg .settings-body').before(settingsTabs);
   $('#settings-dlg').addEventListener('cancel', (e) => { e.preventDefault(); closeSettings(); });
   const relay = (el, target, event) => { $(target).value = el.value; $(target).dispatchEvent(new Event(event)); setFill(el); };
   // Note speed as the other sliders: the value on the right ("1.25×") instead of Slow / Fast words; double-click = 1×
@@ -8889,32 +9162,27 @@
       chordCard(g, run, p.x, bottom, h, shape, alpha, waiting ? 0.4 + 0.6 * Math.max(0, 1 - since / 0.2) : 0, v.laneColor);
     }
   }
-  // The score (right-aligned at `right`, its middle at `cy`) with five stars under it:
-  // earned ones gold, the next one filling left to right as you score (starsFor).
+  // The score (right-aligned at `right`, its middle at `cy`) with the record under it (starsFor).
+  const hudRecord = { tier: 0, at: -1e9 };   // when the HUD's record last reached a tier (its pop)
+  function hudRecordPop(val, ms) {
+    const t = recordTier(val);
+    if (ms < hudRecord.at) hudRecord.at = -1e9;
+    if (t !== hudRecord.tier) { if (t > hudRecord.tier) hudRecord.at = ms; hudRecord.tier = t; }
+    return hudRecord.at / 1000;
+  }
+  // The record and its tier name, right-aligned at `right` (the 3D / Flat HUDs, where the stars were).
+  function hudRecordAt(g, right, y, val) {
+    const ms = performance.now();
+    drawRecord(g, right - 13, y, 12, val, ms / 1000, hudRecordPop(val, ms));
+    if (!recordTier(val)) return;
+    g.save(); g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillStyle = recordColor(val);
+    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 8; g.fillText(ARCADE_TIERS[recordTier(val)][0], right - 34, y); g.restore();
+  }
   function rbScore(g, right, notesLen, cy = 40) {
     g.textAlign = 'right'; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff';
     g.font = `600 38px ${GAME_FONT}`;
     g.fillText(game.score.toLocaleString(), right, cy + 6);
-    const value = starsFor(game.score, game.units || notesLen), sz = 18, gap = 5;
-    const star = (x0, y0, r) => {
-      g.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
-        if (i) g.lineTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr); else g.moveTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr);
-      }
-      g.closePath();
-    };
-    for (let i = 0; i < 5; i++) {
-      const x0 = right - (4 - i) * (sz + gap) - sz / 2, y0 = cy + 28, f = Math.max(0, Math.min(1, value - i));
-      star(x0, y0, sz / 2); g.fillStyle = 'rgba(255,255,255,0.14)'; g.fill();
-      if (f > 0) {
-        g.save(); star(x0, y0, sz / 2); g.clip();
-        g.fillStyle = value >= 5 ? '#fde047' : '#facc15';
-        if (f >= 1) { g.shadowColor = '#facc15'; g.shadowBlur = 8; }
-        g.fillRect(x0 - sz / 2, y0 - sz / 2, sz * f, sz);
-        g.restore();
-      }
-    }
+    hudRecordAt(g, right, cy + 28, starsFor(game.score, game.units || notesLen));
   }
 
   // Rock Band-style stars: they fill with the score against a perfect run of the whole
@@ -9476,8 +9744,7 @@
   const DIFF_COLORS = { easy: '#4ade80', medium: '#facc15', hard: '#fb923c', expert: '#f87171' };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const songById = (id) => state.library.songs.find((x) => x.id === id);
-  const starRow = (n) => el('span', { className: 'arc-stars', ariaLabel: `${n} of 5 stars` },
-    ...[0, 1, 2, 3, 4].map((i) => el('span', { className: i < n ? 'on' : '', textContent: '★' })));
+  const recordName1 = (n) => (recordTier(n) ? ARCADE_TIERS[recordTier(n)][0] : 'No record');   // the tier alone, for chips
   // Your best (score, stars) for a song, instrument and difficulty at the current timing, over its tabs.
   function arcadeBest(song, instrument, diff) {
     const bests = readMap(BEST_KEY), stars = readMap(STARS_KEY);
@@ -9568,7 +9835,7 @@
       if (!song.tabs?.bass && !song.tabs?.guitar) tags.append(el('i', { className: 'none', textContent: 'No tab' }));
       const row = el('button', { type: 'button', className: `arc-row${i === arcade.index ? ' on' : ''}`, tabIndex: -1, role: 'option' },
         coverEl(song), el('span', {}, el('div', { className: 'arc-row-title', textContent: song.title }), el('div', { className: 'arc-row-artist', textContent: song.artist })),
-        tags, el('span', { className: 'arc-row-best', textContent: best.score ? best.score.toLocaleString() : '' }), starRow(best.stars));
+        tags, el('span', { className: 'arc-row-best', textContent: best.score ? best.score.toLocaleString() : '' }), best.score ? recordEl(best.stars, 30) : el('span'));
       row.addEventListener('click', () => { pickSong(i); $('#arc-list').focus(); });
       row.addEventListener('dblclick', () => arcadePlay());
       return row;
@@ -9725,8 +9992,9 @@
     $('#arc-diffs').replaceChildren(...Object.entries(DIFFS).map(([d, [name]]) => {
       const best = arcadeBest(song.id, arcade.instrument, d);
       const b = el('button', { type: 'button', className: `arc-diff${d === gameDiff ? ' active' : ''}`, tabIndex: -1 },
-        el('b', { textContent: name }), starRow(best.stars),
-        el('span', { className: 'arc-diff-best', textContent: best.score ? best.score.toLocaleString() : '–' }));
+        el('b', { textContent: name }), recordEl(best.stars, 46),   // the record type between the record and the score (user)
+        el('span', { className: 'arc-diff-tier', textContent: recordName1(best.stars), style: `color:${recordColor(best.stars)}` }),
+        el('span', { className: 'arc-diff-best', textContent: best.score ? best.score.toLocaleString() : 'Not played' }));
       b.style.setProperty('--dc', DIFF_COLORS[d]);
       b.dataset.diff = d;
       b.addEventListener('click', () => { setDifficulty(d); renderSong(); });
@@ -9958,6 +10226,51 @@
     fadeTo(false);
   });
 
+  // Behind the menus, the Arcade board's colour mesh (user: "make the rest of the UI match this arcade mode"): a few huge
+  // soft clouds on a tiny canvas stretched over the screen, drifting, breathing gently; on the title a tab glides faintly
+  // under a still cursor along the bottom. Song select and loading put the song's cover, blurred, over it. ~30 fps,
+  // stopped while a game runs or the window is hidden.
+  const arcMesh = { on: false, t: 0, last: 0, small: null };
+  const ARC_MESH_COLS = [[245, 230, 211], [192, 132, 87], [218, 181, 149], [60, 40, 50]];
+  const ARC_TAB = Array.from({ length: 60 }, (_, i) => ({ x: i * 0.55 + ((i * 0.37) % 1) * 0.25, s: (i * 7 + (i >> 2)) % 4, f: [0, 3, 5, 7, 2, 5, 0, 12, 7, 5, 3, 10][(i * 5) % 12] }));
+  function drawArcMesh(ms) {
+    if (!arcadeOn || document.hidden || document.body.classList.contains('game-on') || $('#arcade').classList.contains('hidden')) { arcMesh.on = false; return; }
+    requestAnimationFrame(drawArcMesh);
+    if (ms - arcMesh.last < 32) return;
+    const dt = Math.min(0.1, (ms - arcMesh.last) / 1000); arcMesh.last = ms; arcMesh.t += dt * 0.3;
+    const cv = $('#arc-mesh'), dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
+    if (!W || !H) return;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!arcMesh.small) arcMesh.small = Object.assign(document.createElement('canvas'), { width: 48, height: 30 });
+    const m = arcMesh.small.getContext('2d'), mw = 48, mh = 30, mt = arcMesh.t, beat = Math.exp(-((ms / 500) % 1) * 6) * 0.5;
+    m.globalCompositeOperation = 'source-over'; m.fillStyle = '#05060a'; m.fillRect(0, 0, mw, mh); m.globalCompositeOperation = 'lighter';
+    ARC_MESH_COLS.forEach((c, i) => {
+      const x = mw * (0.5 + 0.38 * Math.sin(mt * (0.21 + i * 0.07) + i * 1.9)), y = mh * (0.5 + 0.36 * Math.cos(mt * (0.17 + i * 0.05) + i * 2.7)), r = mw * (0.42 + 0.08 * Math.sin(mt * 0.3 + i));
+      const a = (0.2 + 0.03 * beat) * (i === 3 ? 0.6 : 1), q = m.createRadialGradient(x, y, 0, x, y, r);
+      q.addColorStop(0, acss(c, a)); q.addColorStop(1, acss(c, 0)); m.fillStyle = q; m.fillRect(0, 0, mw, mh);
+    });
+    g.fillStyle = '#06070b'; g.fillRect(0, 0, W, H);
+    g.save(); g.imageSmoothingQuality = 'high'; g.globalAlpha = 0.75; g.drawImage(arcMesh.small, 0, 0, W, H); g.restore();
+    g.fillStyle = 'rgba(5,6,10,.38)'; g.fillRect(0, 0, W, H);
+    if (arcade.screen === 'title') {   // the tab gliding under the cursor, faint
+      const top = H * 0.86, th = H * 0.085, L = W * 0.06, R = W * 0.97, cx = L + (R - L) * 0.2, sp = th / 4, u = 70, off = (ms / 1000) * 1.6, sz = Math.min(sp * 0.62, 26);
+      g.save(); g.globalAlpha = 0.2;
+      ARCADE_COLORS.slice(0, 4).forEach((c, s) => { const y = top + sp * (3.5 - s); g.strokeStyle = acss(argb(c), 0.35); g.lineWidth = 1; g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke(); });
+      g.font = `500 ${sz * 0.62}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (const n of ARC_TAB) {
+        let x = cx + (n.x - (off % 33)) * u; if (x < cx - u * 2) x += 33 * u; if (x < L - 20 || x > R + 20) continue;
+        const y = top + sp * (3.5 - n.s); g.globalAlpha = 0.2 * (x < cx ? Math.max(0, 1 - (cx - x) / (u * 1.5)) : 1);
+        g.fillStyle = 'rgba(16,17,24,.9)'; g.beginPath(); g.roundRect(x - sz / 2, y - sz / 2, sz, sz, sz * 0.22); g.fill();
+        g.strokeStyle = acss(argb(ARCADE_COLORS[n.s]), 0.7); g.lineWidth = 1.2; g.stroke(); g.fillStyle = '#f5f5f7'; g.fillText(n.f, x, y + 0.5);
+      }
+      g.globalAlpha = 0.2; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, top - 10); g.lineTo(cx, top + th + 10); g.stroke();
+      g.restore();
+    }
+  }
+  function startArcMesh() { if (!arcMesh.on && arcadeOn) { arcMesh.on = true; requestAnimationFrame(drawArcMesh); } }
+  setInterval(startArcMesh, 1000);   // back after a game or when the window shows again
+
   // Title: the amber bar slides to the focused (or hovered) menu item; the cover wall; "Jump back in".
   function moveMenuBar(item) {
     const bar = $('#arc-menu-bar');
@@ -9983,7 +10296,10 @@
       requestAnimationFrame(() => fitText($('#arc-feature-title'), 18));
       $('#arc-feature-artist').textContent = song.artist;
       const best = arcadeBest(song.id, songInstrument(song), gameDiff);
-      $('#arc-feature-best').textContent = best.score ? `Your best on ${DIFFS[gameDiff][0]}: ${best.score.toLocaleString()} · ${'★'.repeat(best.stars)}` : 'Not played yet';
+      $('#arc-feature-best').replaceChildren(...(best.score
+        ? [recordEl(best.stars, 56), el('div', {}, el('div', { className: 'arc-plaque-num', textContent: best.score.toLocaleString() }),
+            el('div', { className: 'arc-plaque-tier', textContent: `${recordName(best.stars)} · ${DIFFS[gameDiff][0]}`, style: `color:${recordColor(best.stars)}` }))]
+        : [el('span', { className: 'arc-plaque-none', textContent: 'Not played yet' })]));
     }
     requestAnimationFrame(() => moveMenuBar($('#arc-play')));
   }
@@ -9992,6 +10308,7 @@
   // Title menu.
   $('#arc-play').addEventListener('click', () => setScreen('select'));
   $('#arc-settings').addEventListener('click', () => openSettings(false));
+  $('#arc-select-settings').addEventListener('click', () => openSettings(false));   // (user: "have a settings button on the song select page")
   $('#arc-calib').addEventListener('click', async () => { await connectInput(); if (input.analyser) openCalibration(null); });
   $('#arc-strcal').addEventListener('click', async () => { await connectInput(); if (input.analyser) openStringCal(); });
   $('#arc-app').addEventListener('click', () => { if (standalone()) window.open('/', '_blank'); else location.href = '/'; });   // the app window keeps Encore

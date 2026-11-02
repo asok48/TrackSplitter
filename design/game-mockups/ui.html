@@ -1,0 +1,496 @@
+<!doctype html><meta charset="utf-8"><title>Encore UI, arcade look</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The rest of Encore in the Arcade board's look (user: "How much work would it be to make the rest of the UI match this
+     arcade mode?", then "can we replace stars with records before we do anything? should be everywhere", then "do the
+     mockup first, that will include this change"). Shared language with arcade.html: the colour mesh behind everything,
+     light type (200/300) for big things, small spaced capitals for labels, a silver gradient on big numbers, hairlines
+     instead of boxes, the still cursor as the focus mark, and records (Bronze … Diamond) wherever stars were. -->
+<style>
+:root{color-scheme:dark;--ink:#f5f5f7;--dim:rgba(245,245,247,.6);--faint:rgba(245,245,247,.34);--line:rgba(255,255,255,.09);
+ --glass:rgba(12,13,20,.5);--mood:245,230,211;--font:-apple-system,"SF Pro Display",system-ui,sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#06070b;color:var(--ink);font:400 14px var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
+#bg{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit}
+.caps{font:600 10.5px var(--font);letter-spacing:.24em;text-transform:uppercase;color:var(--faint)}
+.silver{background:linear-gradient(#fff,#c3c9d2);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pill{height:40px;padding:0 24px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);
+ font:600 11.5px var(--font);letter-spacing:.2em;text-transform:uppercase;cursor:pointer;transition:background .15s,border-color .15s}
+.pill:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.35)}
+.pill.primary{background:var(--ink);color:#0a0b10;border-color:transparent;box-shadow:0 0 0 0 rgba(var(--mood),.0),0 8px 30px rgba(var(--mood),.18)}
+.pill.primary:hover{background:#fff}
+.pill.big{height:48px;padding:0 40px;font-size:12.5px}
+.screen{position:fixed;inset:0;padding:72px 56px 40px;display:none}
+.screen.on{display:block;animation:in .45s ease}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+canvas.rec{display:block}
+kbd{font:600 10px var(--font);padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.18);color:var(--dim);margin-right:3px}
+
+/* mockup controls */
+.bar{position:fixed;top:14px;left:18px;right:18px;z-index:9;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font:600 12.5px var(--font)}
+.bar b{font:700 15px var(--font);margin-right:6px}
+.bar button{border:0;background:none;padding:3px 0;color:rgba(245,245,247,.45);cursor:pointer;border-bottom:1.5px solid transparent}
+.bar button.on{color:#fff;border-bottom-color:rgba(255,255,255,.7)}
+.bar .sep{width:1px;height:14px;background:rgba(255,255,255,.15)}
+.bar .lbl{color:rgba(245,245,247,.4)}
+.bar.hide>*:not(#bar-toggle){display:none}
+
+/* the cursor: the board's still line, used as the focus mark on every menu */
+.menu{position:relative;display:flex;flex-direction:column;gap:6px;padding-left:28px}
+.menu .cur{position:absolute;left:0;width:2px;border-radius:2px;background:#fff;box-shadow:0 0 12px rgba(var(--mood),.9),0 0 3px #fff;transition:top .22s cubic-bezier(.3,.7,.2,1),height .22s}
+.menu button{border:0;background:none;padding:2px 0;text-align:left;cursor:pointer;font:200 40px var(--font);letter-spacing:.01em;color:rgba(245,245,247,.38);transition:color .15s,transform .2s}
+.menu button.small{font-size:22px;font-weight:300}
+.menu button.on{color:#fff;transform:translateX(4px)}
+.menu button.danger.on{color:#ffb4b4}
+
+/* title */
+.brand small{display:block;margin-bottom:10px}
+.brand h1{margin:0;font:200 64px var(--font);letter-spacing:.34em;line-height:1}
+#t-title .grid{display:grid;grid-template-columns:1fr 380px;gap:48px;height:calc(100% - 40px);align-items:center}
+#t-title .left{display:flex;flex-direction:column;gap:56px}
+.card{background:var(--glass);border:1px solid var(--line);border-radius:18px;padding:22px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.art{border-radius:10px;position:relative;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+.art i{position:absolute;left:10%;bottom:9%;font:700 11px var(--font);letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.85)}
+.feature .art{width:100%;aspect-ratio:1;margin:14px 0 18px}
+.feature h3{margin:0;font:300 28px var(--font)}
+.feature .who{color:var(--dim);margin:4px 0 18px}
+.plaque{display:flex;align-items:center;gap:14px}
+.plaque .num{font:200 34px var(--font);line-height:1}
+.plaque .tier{display:flex;align-items:center;gap:8px;margin-top:6px}
+.plaque .tier::before{content:"";width:12px;height:1px;background:currentColor}
+.feature .go{margin-top:20px;display:flex;justify-content:space-between;align-items:center}
+.foot{position:fixed;left:56px;right:56px;bottom:26px;display:flex;justify-content:space-between;align-items:center;color:var(--faint);font-size:12px}
+.link{border:0;background:none;cursor:pointer;color:var(--faint);font:600 10.5px var(--font);letter-spacing:.22em;text-transform:uppercase}
+.link:hover{color:var(--ink)}
+
+/* song select */
+.top{display:flex;align-items:center;gap:18px}
+.back{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.04);display:grid;place-items:center;cursor:pointer}
+.top h2{margin:0;font:200 30px var(--font);letter-spacing:.02em;flex:1}
+.search{width:220px;height:34px;border:0;border-bottom:1px solid rgba(255,255,255,.2);background:none;color:#fff;font:300 15px var(--font);outline:none}
+.search::placeholder{color:var(--faint)}
+.seg{position:relative;display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:rgba(255,255,255,.03)}
+.seg button{position:relative;z-index:1;border:0;background:none;height:28px;padding:0 14px;border-radius:999px;cursor:pointer;font:600 10.5px var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--faint);transition:color .15s}
+.seg button.on{color:#fff}
+.seg .knob{position:absolute;top:3px;bottom:3px;border-radius:999px;background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);transition:left .22s cubic-bezier(.3,.7,.2,1),width .22s}
+.car{position:relative;height:300px;margin:26px -56px 0;overflow:hidden}
+.car .item{position:absolute;top:50%;left:50%;width:240px;transition:transform .45s cubic-bezier(.3,.7,.2,1),opacity .45s,filter .45s;cursor:pointer}
+.car .item .art{width:240px;height:240px}
+.car .item.mid .art{box-shadow:0 24px 70px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.18)}
+.list{display:none;margin-top:22px;max-width:760px;height:300px;overflow:auto}
+.list .row{display:grid;grid-template-columns:44px 1fr 150px 90px;align-items:center;gap:16px;padding:9px 12px;border-radius:10px;cursor:pointer;position:relative}
+.list .row .art{width:44px;height:44px;border-radius:6px;box-shadow:none}
+.list .row.on{background:rgba(255,255,255,.06)}
+.list .row.on::before{content:"";position:absolute;left:-10px;top:10px;bottom:10px;width:2px;background:#fff;border-radius:2px;box-shadow:0 0 10px rgba(var(--mood),.9)}
+.list .row b{font:400 15px var(--font)}.list .row span{color:var(--dim);font-size:13px}
+.list .row .best{display:flex;align-items:center;gap:8px;justify-content:flex-end;font:300 15px var(--font)}
+.panel{display:grid;grid-template-columns:minmax(260px,1fr) minmax(420px,1.3fr);gap:56px;margin-top:22px;align-items:start}
+.panel h1{margin:0;font:200 44px var(--font);line-height:1.05}
+.panel .who{color:var(--dim);font-size:16px;margin:6px 0 20px}
+.diffs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.diff{border:1px solid var(--line);border-radius:14px;padding:14px 10px 12px;background:rgba(255,255,255,.025);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;transition:border-color .15s,background .15s}
+.diff .tn{font:600 9.5px var(--font);letter-spacing:.22em;text-transform:uppercase;margin-top:-2px}
+.diff .sc{font:300 14px var(--font);color:var(--dim)}
+.diff.on{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.07);box-shadow:0 0 30px rgba(var(--mood),.12)}
+.diff.on .caps{color:#fff}
+.rows{margin-top:18px;border-top:1px solid var(--line)}
+.rowx{display:flex;align-items:center;gap:16px;min-height:52px;border-bottom:1px solid var(--line)}
+.rowx .caps{width:120px}
+.meter{flex:0 0 120px;height:2px;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden}
+.meter i{display:block;height:100%;width:30%;background:linear-gradient(90deg,#6ee7a8,#f6d878);transition:width .08s}
+.strings{display:flex;gap:18px}
+.strings span{display:flex;align-items:baseline;gap:6px;font:300 15px var(--font)}
+.strings em{font-style:normal;font-size:11px;color:var(--faint)}
+.strings .ok{color:#8ff0bd}.strings .near{color:#f6d878}.strings .off{color:#f8a1a1}
+.actions{display:flex;justify-content:flex-end;margin-top:22px}
+
+/* loading */
+#t-load .wrap{height:100%;display:flex;align-items:center;justify-content:center;gap:56px}
+#t-load .art{width:300px;height:300px}
+#t-load h1{margin:10px 0 4px;font:200 52px var(--font)}
+.track{width:360px;height:2px;background:rgba(255,255,255,.12);border-radius:2px;margin:28px 0 14px;position:relative;overflow:visible}
+.track i{position:absolute;left:0;top:0;bottom:0;background:#fff;border-radius:2px;box-shadow:0 0 10px rgba(var(--mood),.9)}
+.track i::after{content:"";position:absolute;right:-1px;top:-7px;width:2px;height:16px;background:#fff;border-radius:2px;box-shadow:0 0 12px rgba(var(--mood),1)}
+.tip{color:var(--dim);max-width:360px;line-height:1.5}
+
+/* results */
+#t-res .wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+#t-res .song{margin-bottom:18px}
+#res-tier{font:600 12px var(--font);letter-spacing:.32em;margin-top:6px;transition:color .3s}
+#res-score{font:200 92px var(--font);line-height:1;margin:18px 0 10px;font-variant-numeric:tabular-nums}
+.best-line{display:flex;gap:12px;align-items:center;justify-content:center;min-height:26px}
+.newbest{font:600 10.5px var(--font);letter-spacing:.24em;padding:5px 12px;border-radius:999px;color:#0a0b10;background:rgb(var(--mood));opacity:0;transform:scale(.8);transition:opacity .3s,transform .3s}
+.newbest.on{opacity:1;transform:none}
+.next{display:flex;align-items:center;gap:10px;margin-top:10px}
+.next .meter{flex-basis:140px}
+.stats{display:flex;margin:34px 0 34px}
+.stats div{padding:0 38px;border-left:1px solid var(--line)}
+.stats div:first-child{border-left:0}
+.stats b{display:block;font:200 32px var(--font);margin-top:8px}
+.stats b small{font-size:16px;color:var(--faint)}
+.btns{display:flex;gap:12px}
+
+/* pause */
+.veil{position:fixed;inset:0;background:rgba(5,6,10,.45);backdrop-filter:blur(5px) saturate(.8);-webkit-backdrop-filter:blur(5px) saturate(.8)}
+#t-pause .wrap,#t-set .wrap{position:relative;height:100%;display:flex;align-items:center;justify-content:center}
+.pause{display:flex;gap:80px;align-items:center}
+.pause .info h2{margin:10px 0 4px;font:300 30px var(--font)}
+.pause .info .who{color:var(--dim);margin-bottom:26px}
+.pause .menu button{font-size:34px}
+
+/* settings */
+.sheet{width:min(680px,100%);max-height:calc(100vh - 140px);display:flex;flex-direction:column;background:rgba(12,13,20,.72);border:1px solid var(--line);border-radius:20px;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:0 30px 90px rgba(0,0,0,.55)}
+.sheet .head{display:flex;justify-content:space-between;align-items:center;padding:24px 28px 16px}
+.sheet h2{margin:0;font:200 34px var(--font)}
+.sheet .tabs{display:flex;gap:26px;padding:0 28px;border-bottom:1px solid var(--line)}
+.sheet .tabs button{border:0;background:none;padding:10px 0 12px;cursor:pointer;font:600 10.5px var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--faint);border-bottom:2px solid transparent;margin-bottom:-1px}
+.sheet .tabs button.on{color:#fff;border-bottom-color:#fff}
+.sheet .body{overflow:auto;padding:6px 28px 22px}
+.srow{display:flex;justify-content:space-between;align-items:center;min-height:56px;border-bottom:1px solid var(--line);gap:20px}
+.srow:last-child{border-bottom:0}
+.srow>span{font:300 16px var(--font)}
+.srow>span small{display:block;font-size:12px;color:var(--faint);margin-top:2px}
+.sw{position:relative;width:40px;height:22px;border-radius:999px;background:rgba(255,255,255,.12);cursor:pointer;transition:background .2s;flex:none}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s}
+.sw.on{background:rgba(var(--mood),.85)}.sw.on::after{left:21px}
+.range{display:flex;align-items:center;gap:12px;font:300 14px var(--font);color:var(--dim)}
+.range input{-webkit-appearance:none;appearance:none;width:180px;height:2px;border-radius:2px;background:linear-gradient(90deg,#fff var(--p,50%),rgba(255,255,255,.15) var(--p,50%))}
+.range input::-webkit-slider-thumb{-webkit-appearance:none;width:3px;height:18px;border-radius:2px;background:#fff;box-shadow:0 0 10px rgba(var(--mood),1);cursor:pointer}
+.range output{width:44px;text-align:right}
+.ghost{height:32px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:none;cursor:pointer;font:600 10.5px var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.ghost:hover{color:#fff;border-color:rgba(255,255,255,.35)}
+</style>
+<canvas id="bg"></canvas>
+
+<div class="bar" id="bar">
+ <b>Encore</b>
+ <button data-go="title">Title</button><button data-go="select">Song select</button><button data-go="load">Loading</button><button data-go="res">Results</button><button data-go="pause">Pause</button><button data-go="set">Settings</button>
+ <span class="sep"></span><span class="lbl">Results record</span>
+ <button data-tier="0.6">None</button><button data-tier="1.5">Bronze</button><button data-tier="2.4">Silver</button><button data-tier="3.62">Gold</button><button data-tier="4.3">Platinum</button><button data-tier="5">Diamond</button>
+ <span class="sep"></span><button data-tab>Tab behind title</button>
+ <span class="sep"></span><button id="bar-toggle">Hide bar</button>
+</div>
+
+<!-- Title -->
+<section class="screen" id="t-title">
+ <div class="grid">
+  <div class="left">
+   <div class="brand"><small class="caps">Track Splitter</small><h1 class="silver">ENCORE</h1></div>
+   <nav class="menu" data-menu><i class="cur"></i>
+    <button class="on" data-go="select">Play</button>
+    <button data-go="set">Settings</button>
+    <button class="small">Calibrate timing</button>
+    <button class="small">Calibrate strings</button>
+   </nav>
+  </div>
+  <div class="card feature">
+   <div class="caps">Jump back in</div>
+   <div class="art" data-art="1"><i>Flower Power Madness</i></div>
+   <h3>Flower Power Madness</h3>
+   <div class="who">The Sunny Days</div>
+   <div class="plaque"><canvas class="rec" data-val="3.62" data-size="56"></canvas>
+    <div><div class="num silver">48,210</div><div class="tier caps" data-tiername="3.62"></div></div></div>
+   <div class="go"><span class="caps">Your best · Hard</span><button class="pill primary" data-go="load">Play</button></div>
+  </div>
+ </div>
+ <div class="foot"><span><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Enter</kbd> pick</span><button class="link">Back to Track Splitter</button></div>
+</section>
+
+<!-- Song select -->
+<section class="screen" id="t-select">
+ <div class="top">
+  <button class="back" data-go="title" aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <h2>Choose a song</h2>
+  <input class="search" placeholder="Search songs">
+  <div class="seg"><i class="knob"></i><button class="on">Recent</button><button>A–Z</button><button>Artist</button></div>
+  <div class="seg" id="viewseg"><i class="knob"></i><button class="on" data-view="car">Covers</button><button data-view="list">List</button></div>
+ </div>
+ <div class="car" id="car"></div>
+ <div class="list" id="list"></div>
+ <div class="panel">
+  <div>
+   <h1 id="s-title"></h1>
+   <div class="who" id="s-artist"></div>
+   <div class="seg"><i class="knob"></i><button class="on">Bass</button><button>Guitar</button></div>
+  </div>
+  <div>
+   <div class="diffs" id="diffs"></div>
+   <div class="rows">
+    <div class="rowx"><span class="caps">Bass input</span><span style="font:300 15px var(--font);flex:1">Scarlett 2i2 · Input 1</span><div class="meter"><i id="lvl"></i></div><span style="width:32px;text-align:right;font:300 15px var(--font)" id="live">E</span></div>
+    <div class="rowx"><span class="caps">Tuning</span><span style="font:300 15px var(--font);flex:1">Standard</span>
+     <div class="strings"><span class="ok">E<em>+1</em></span><span class="ok">A<em>−2</em></span><span class="near">D<em>+9</em></span><span class="ok">G<em>0</em></span></div></div>
+   </div>
+   <div class="actions"><button class="pill primary big" data-go="load">Play</button></div>
+  </div>
+ </div>
+</section>
+
+<!-- Loading -->
+<section class="screen" id="t-load">
+ <div class="wrap">
+  <div class="art" data-art="1"><i>Flower Power Madness</i></div>
+  <div>
+   <div class="caps">Now loading</div>
+   <h1>Flower Power Madness</h1>
+   <div style="color:var(--dim);font-size:16px">The Sunny Days · Hard</div>
+   <div class="track"><i id="load-bar"></i></div>
+   <p class="tip">Repeated notes show as a small diamond: play the same fret again.</p>
+  </div>
+ </div>
+</section>
+
+<!-- Results -->
+<section class="screen" id="t-res">
+ <div class="wrap">
+  <div class="song caps">Flower Power Madness · The Sunny Days · Hard</div>
+  <canvas class="rec" id="res-rec" data-size="230"></canvas>
+  <div id="res-tier" class="caps"></div>
+  <div id="res-score" class="silver">0</div>
+  <div class="best-line"><span class="newbest" id="newbest">NEW BEST</span><span class="caps" id="prevbest">Previous best 44,960</span></div>
+  <div class="next" id="next"><span class="caps" id="next-txt"></span><div class="meter"><i id="next-bar" style="background:#fff"></i></div></div>
+  <div class="stats">
+   <div><span class="caps">Accuracy</span><b>94<small>%</small></b></div>
+   <div><span class="caps">Notes hit</span><b>412 <small>/ 438</small></b></div>
+   <div><span class="caps">Best streak</span><b>187</b></div>
+  </div>
+  <div class="btns"><button class="pill" data-go="select">Songs</button><button class="pill primary" data-replay>Play again</button></div>
+ </div>
+</section>
+
+<!-- Pause -->
+<section class="screen" id="t-pause">
+ <div class="veil"></div>
+ <div class="wrap">
+  <div class="pause">
+   <div class="info">
+    <div class="caps">Paused</div>
+    <h2>Flower Power Madness</h2>
+    <div class="who">The Sunny Days · Hard · 1:42 of 3:18</div>
+    <div class="plaque"><canvas class="rec" data-val="2.55" data-size="56"></canvas>
+     <div><div class="num silver">21,880</div><div class="tier caps" data-tiername="2.55"></div></div></div>
+   </div>
+   <nav class="menu" data-menu><i class="cur"></i>
+    <button class="on">Resume</button><button>Restart</button><button data-go="set">Settings</button><button class="danger">Quit</button>
+   </nav>
+  </div>
+ </div>
+</section>
+
+<!-- Settings -->
+<section class="screen" id="t-set">
+ <div class="veil"></div>
+ <div class="wrap">
+  <div class="sheet">
+   <div class="head"><h2>Settings</h2><button class="pill primary" data-go="pause">Done</button></div>
+   <div class="tabs" id="settabs"><button class="on" data-tab="game">Game</button><button data-tab="sound">Sound</button><button data-tab="setup">Setup</button></div>
+   <div class="body" id="setbody"></div>
+  </div>
+ </div>
+</section>
+
+<script>
+const FONT='-apple-system,"SF Pro Display",system-ui,sans-serif',DPR=Math.min(2,devicePixelRatio||1);
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const rgb=(h)=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),css=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`,ease=(a,b,k)=>a.map((v,i)=>v+(b[i]-v)*k);
+
+// ---- records (the same drawing as the Arcade plaque in arcade.html, one function for every size) ----
+const TIERS=[['NO RECORD YET',['#2e2e36','#4a4a55','#2e2e36']],['BRONZE',['#6b3a16','#c97f42','#7d4620']],['SILVER',['#737b86','#d9dee5','#858d98']],
+             ['GOLD',['#8a5c03','#efc244','#a06c06']],['PLATINUM',['#9aa4b0','#e8edf2','#b0b9c3']],['DIAMOND',['#4fa9de','#cdeeff','#9b8cec']]];
+const VIVID=['#ff9a52','#eef4ff','#ffcf33','#cfe3ff','#5fd0ff'];
+const tierOf=(v)=>Math.min(5,Math.floor(v)),tierName=(v)=>{const t=tierOf(v);return t?TIERS[t][0]+' RECORD':'NO RECORD YET'};
+// g at the record's centre; r its radius; v the record value (0..5: the tier, plus progress to the next); t the clock;
+// popAt when it last reached a tier (a pop and a shine); small records skip the grooves and the rim glow
+function drawRecord(g,r0,v,t,popAt=-9){
+ const tier=tierOf(v),frac=tier>=5?0:v-tier,mt=TIERS[tier][1],nm=TIERS[Math.min(5,tier+1)][1],small=r0<14;
+ const pop=1+0.25*Math.max(0,1-(t-popAt)/0.35),r=r0*pop;
+ const metal=(m)=>{const q=g.createLinearGradient(-r,-r,r,r);q.addColorStop(0,m[0]);q.addColorStop(0.5,m[1]);q.addColorStop(1,m[2]);return q};
+ g.save();
+ g.shadowColor='rgba(0,0,0,.55)';g.shadowBlur=r*0.4;g.shadowOffsetY=r*0.1;g.beginPath();g.arc(0,0,r,0,7);g.fillStyle=metal(mt);g.fill();g.shadowColor='transparent';
+ if(!tier){g.globalAlpha=0.6;g.fill();g.globalAlpha=1}
+ const vc=VIVID[Math.min(4,tier)],ang=-Math.PI/2+Math.PI*2*frac;
+ // progress to the next tier: only a ring round the outside (user: "instead of changing entire record color when progressing
+ // the new one, just do a ring on the outside"); the disc stays in its own metal
+ if(!small)for(let i=0;i<9;i++){g.beginPath();g.arc(0,0,r*(0.5+i*0.055),0,7);g.strokeStyle=i%2?'rgba(0,0,0,.14)':'rgba(255,255,255,.12)';g.lineWidth=Math.max(0.5,r/40);g.stroke()}
+ g.save();g.beginPath();g.arc(0,0,r,0,7);g.clip();g.rotate(t*0.8);
+ for(const k of[0,Math.PI]){g.save();g.rotate(k);const q=g.createLinearGradient(-r*0.2,-r,r*0.2,-r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.28)');q.addColorStop(1,'rgba(255,255,255,0)');
+  g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2-0.3,-Math.PI/2+0.3);g.closePath();g.fillStyle=q;g.fill();g.restore()}
+ g.restore();
+ g.beginPath();g.arc(0,0,r-0.5,0,7);g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=1;g.stroke();
+ const rr=r+Math.max(2.5,r*0.13),lw=Math.max(1.8,r*0.1);
+ if(tier<5){g.beginPath();g.arc(0,0,rr,0,7);g.strokeStyle='rgba(255,255,255,.1)';g.lineWidth=lw;g.stroke()}   // the ring's empty track
+ if(frac>0){g.save();g.beginPath();g.arc(0,0,rr,-Math.PI/2,ang);g.strokeStyle=vc;g.lineWidth=lw;g.lineCap='round';g.shadowColor=vc;g.shadowBlur=small?3:r*0.3;g.globalAlpha=0.65+0.35*frac;g.stroke();g.restore()}
+ g.beginPath();g.arc(0,0,r*0.36,0,7);g.fillStyle='rgba(0,0,0,.22)';g.fill();g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=0.7;g.stroke();
+ g.fillStyle='#050506';g.beginPath();g.arc(0,0,Math.max(1,r*0.07),0,7);g.fill();
+ if(tier===5){const sp4=(px,py,k,z)=>{g.fillStyle='rgba(255,255,255,'+(0.4+0.6*Math.max(0,Math.sin(t*4+k)))+')';g.beginPath();g.moveTo(px,py-z);g.lineTo(px+z*0.28,py-z*0.28);g.lineTo(px+z,py);g.lineTo(px+z*0.28,py+z*0.28);g.lineTo(px,py+z);g.lineTo(px-z*0.28,py+z*0.28);g.lineTo(px-z,py);g.lineTo(px-z*0.28,py-z*0.28);g.closePath();g.fill()};
+  sp4(r*0.78,-r*0.78,0,r*0.17);sp4(-r*0.85,r*0.55,2.2,r*0.11)}
+ const sa=(t-popAt)/0.7;if(sa>=0&&sa<1){g.save();g.beginPath();g.arc(0,0,r,0,7);g.clip();const sx=-r*1.4+2.8*r*sa,q=g.createLinearGradient(sx-r*0.3,-r,sx+r*0.3,r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.6)');q.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=q;g.fillRect(-r,-r,2*r,2*r);g.restore()}
+ g.restore();
+}
+// a record in the page: <canvas class="rec" data-val data-size>, sized for the screen, redrawn every frame while shown
+function sizeRec(c){const s=+c.dataset.size||40;c.style.width=c.style.height=s+'px';c.width=c.height=Math.round(s*DPR)}
+function paintRec(c,t,v=+c.dataset.val,popAt=-9){const g=c.getContext('2d'),s=+c.dataset.size||40;g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,s,s);g.translate(s/2,s/2);drawRecord(g,s/2*0.78,v,t,popAt)}
+const recEl=(v,size)=>{const c=document.createElement('canvas');c.className='rec';c.dataset.val=v;c.dataset.size=size;sizeRec(c);return c};
+const tierColor=(v)=>tierOf(v)?TIERS[tierOf(v)][1][1]:'rgba(245,245,247,.4)';
+$$('[data-tiername]').forEach(e=>{e.textContent=tierName(+e.dataset.tiername);e.style.color=tierColor(+e.dataset.tiername)});
+$$('canvas.rec').forEach(sizeRec);
+
+// ---- songs (covers are stand-ins: two colours each; the real ones come from /api/cover) ----
+const SONGS=[
+ {t:'Baby',a:'Midnight Avenue',c:['#e85d75','#2b1055'],best:{easy:[4.6,18200],medium:[3.2,31040],hard:[1.8,29400],expert:0}},
+ {t:'Flower Power Madness',a:'The Sunny Days',c:['#f6b93b','#e55039'],best:{easy:0,medium:[4.1,40220],hard:[3.62,48210],expert:[0.7,21300]}},
+ {t:'Low Tide',a:'Harbour Lights',c:['#38ada9','#0c2461'],best:{easy:0,medium:[2.4,22900],hard:0,expert:0}},
+ {t:'Electra',a:'Neon Arcade',c:['#82ccdd','#6a00f4'],best:{easy:0,medium:0,hard:[5,61880],expert:[2.9,44100]}},
+ {t:'Back Porch',a:'Dust & Gold',c:['#c8a165','#3c2a21'],best:{easy:[5,20100],medium:0,hard:0,expert:0}},
+ {t:'Satellite',a:'Glass Hours',c:['#f8c291','#4a69bd'],best:{easy:0,medium:0,hard:0,expert:0}},
+ {t:'Sunday Run',a:'The Lettermen Club',c:['#b8e994','#079992'],best:{easy:0,medium:[1.3,15600],hard:0,expert:0}},
+];
+const artCss=(s)=>`radial-gradient(circle at 28% 24%,${s.c[0]} 0,transparent 62%),radial-gradient(circle at 80% 85%,${s.c[1]} 0,transparent 70%),linear-gradient(135deg,${s.c[1]},#0b0b12)`;
+$$('[data-art]').forEach(e=>e.style.background=artCss(SONGS[+e.dataset.art]));
+const bestOf=(s)=>Object.values(s.best).filter(Boolean).reduce((m,b)=>b[0]>m[0]?b:m,[0,0]);
+let sel=1,diff='hard';
+const DIFFS=['easy','medium','hard','expert'];
+function buildSelect(){
+ const car=$('#car'),list=$('#list');car.replaceChildren();list.replaceChildren();
+ SONGS.forEach((s,i)=>{
+  const it=document.createElement('div');it.className='item';it.innerHTML=`<div class="art" style="background:${artCss(s)}"><i>${s.t}</i></div>`;
+  const b=bestOf(s);   // no record on the cover (user: "don't show the record on the album cover when selecting"): the difficulty cards show it
+  it.onclick=()=>{sel=i;place()};car.append(it);
+  const row=document.createElement('div');row.className='row';row.innerHTML=`<div class="art" style="background:${artCss(s)}"></div><div><b>${s.t}</b><br><span>${s.a}</span></div>`;
+  const best=document.createElement('div');best.className='best';if(b[0]){best.append(recEl(b[0],28));best.append(document.createTextNode(b[1].toLocaleString()))}else best.innerHTML='<span class="caps">New</span>';
+  const tn=document.createElement('span');tn.className='caps';tn.textContent=b[0]?TIERS[tierOf(b[0])][0]:'';tn.style.color=tierColor(b[0]);
+  row.append(tn,best);row.onclick=()=>{sel=i;place()};list.append(row);
+ });
+ place();
+}
+function place(){
+ $$('#car .item').forEach((it,i)=>{const d=i-sel,ad=Math.abs(d),sc=d===0?1.12:Math.max(0.55,0.78-0.08*(ad-1));
+  const x=d===0?0:Math.sign(d)*(230+(ad-1)*170);
+  it.style.transform=`translate(-50%,-50%) translateX(${x}px) scale(${sc})`;it.style.opacity=ad>3?0:d===0?1:0.55-0.1*(ad-1);it.style.zIndex=10-ad;it.style.filter=d===0?'none':'saturate(.7)';it.classList.toggle('mid',d===0)});
+ $$('#list .row').forEach((r,i)=>r.classList.toggle('on',i===sel));
+ const s=SONGS[sel];$('#s-title').textContent=s.t;$('#s-artist').textContent=s.a;
+ const box=$('#diffs');box.replaceChildren();
+ for(const k of DIFFS){const b=s.best[k],d=document.createElement('div');d.className='diff'+(k===diff?' on':'');
+  d.innerHTML=`<span class="caps">${k}</span>`;d.append(recEl(b?b[0]:0,46));
+  const tn=document.createElement('span');tn.className='tn';tn.textContent=b&&tierOf(b[0])?TIERS[tierOf(b[0])][0]:'No record';tn.style.color=tierColor(b?b[0]:0);d.append(tn);   // the record type between the record and the score (user)
+  const sc=document.createElement('span');sc.className='sc';sc.textContent=b?b[1].toLocaleString():'Not played';d.append(sc);
+  d.onclick=()=>{diff=k;place()};box.append(d)}
+ bgTarget=s.c.map(rgb);
+}
+$$('#viewseg button').forEach(b=>b.addEventListener('click',()=>{const l=b.dataset.view==='list';$('#car').style.display=l?'none':'block';$('#list').style.display=l?'block':'none'}));
+
+// ---- settings ----
+const SET={
+ game:[['Play on','seg',['Board','Tab'],0],['Board','seg',['3D','Flat','Arcade'],2],['Difficulty','seg',['Easy','Medium','Hard','Expert'],2],['Note speed','range',0.7,'×'],
+  ['Timing','seg',['Relaxed','Normal','Tight'],1],['Hand guide','sw',false,'A small neck: where your hand goes next'],['Virtual drop D','sw',false,'Drop D songs on a bass in standard'],['Big moments','sw',false,'Blasts of light on a chorus or drop']],
+ sound:[['Mistake sound','sw',true],['Hear myself','sw',true],["Match the song's tone",'sw',true],['Instrument','btn','Fender P · Manage'],['Instrument volume','range',0.55,' dB'],['Master volume','range',0.8,'%'],['Song volume','range',0.7,'%']],
+ setup:[['Tuner','btn','Open tuner'],['Timing','btn','Calibrate…'],['Strings','btn','Calibrate…'],['Record games for checking','sw',false],['Game checks','btn','Open'],['Light check','btn','Open']],
+};
+function buildSet(tab){
+ const body=$('#setbody');body.replaceChildren();
+ for(const [name,kind,a,b] of SET[tab]){const r=document.createElement('div');r.className='srow';
+  const lab=document.createElement('span');lab.textContent=name;if(kind==='sw'&&b){const s=document.createElement('small');s.textContent=b;lab.append(s)}r.append(lab);
+  if(kind==='seg'){const s=document.createElement('div');s.className='seg';s.innerHTML='<i class="knob"></i>'+a.map((x,i)=>`<button class="${i===b?'on':''}">${x}</button>`).join('');r.append(s)}
+  if(kind==='sw'){const s=document.createElement('div');s.className='sw'+(a?' on':'');s.onclick=()=>s.classList.toggle('on');r.append(s)}
+  if(kind==='btn'){const s=document.createElement('button');s.className='ghost';s.textContent=a;r.append(s)}
+  if(kind==='range'){const l=document.createElement('label');l.className='range';const i=document.createElement('input');i.type='range';i.min=0;i.max=1;i.step=0.01;i.value=a;const o=document.createElement('output');
+   const upd=()=>{i.style.setProperty('--p',i.value*100+'%');o.textContent=b==='×'?(0.25+i.value*2.25).toFixed(2).replace(/0$/,'')+'×':b==='%'?Math.round(i.value*100)+'%':'+'+Math.round(i.value*40)+' dB'};i.oninput=upd;upd();l.append(i,o);r.append(l)}
+  body.append(r)}
+ initSegs(body);
+}
+$$('#settabs button').forEach(b=>b.onclick=()=>{$$('#settabs button').forEach(x=>x.classList.toggle('on',x===b));buildSet(b.dataset.tab)});
+
+// segmented controls: a knob that slides to the picked one
+function moveKnob(s){const on=$('button.on',s),k=$('.knob',s);if(!on||!k)return;k.style.left=on.offsetLeft+'px';k.style.width=on.offsetWidth+'px'}
+function initSegs(root=document){$$('.seg',root).forEach(s=>{if(!s.dataset.ok){s.dataset.ok=1;$$('button',s).forEach(b=>b.addEventListener('click',()=>{$$('button',s).forEach(x=>x.classList.toggle('on',x===b));moveKnob(s)}))}moveKnob(s)})}
+// menus: the cursor line slides to the item under the mouse / arrow keys
+function moveCur(m){const on=$('button.on',m),c=$('.cur',m);if(!on)return;c.style.top=on.offsetTop+on.offsetHeight*0.18+'px';c.style.height=on.offsetHeight*0.64+'px'}
+$$('[data-menu]').forEach(m=>$$('button',m).forEach(b=>b.addEventListener('mouseenter',()=>{$$('button',m).forEach(x=>x.classList.toggle('on',x===b));moveCur(m)})));
+
+// ---- screens ----
+let screen='title',resAt=0,resVal=3.62,resPop=-9,resTier=0,tabBehind=true,clock=0,loadAt=0;
+const IDS={title:'t-title',select:'t-select',load:'t-load',res:'t-res',pause:'t-pause',set:'t-set'};
+let bgTarget=null;
+function go(s){screen=s;for(const k in IDS)$('#'+IDS[k]).classList.toggle('on',k===s);
+ $$('[data-go]',$('#bar')).forEach(b=>b.classList.toggle('on',b.dataset.go===s));
+ requestAnimationFrame(()=>{initSegs($('#'+IDS[s]));$$('[data-menu]').forEach(moveCur)});
+ if(s==='res'){resAt=clock;resTier=0;$('#newbest').classList.remove('on')}
+ if(s==='load')loadAt=clock;
+ if(s==='set')buildSet($('#settabs .on').dataset.tab);
+ bgTarget=s==='select'?SONGS[sel].c.map(rgb):s==='load'?SONGS[1].c.map(rgb):s==='res'?[rgb(TIERS[tierOf(resVal)][1][1]),rgb(TIERS[tierOf(resVal)][1][0])]:null;
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)go(b.dataset.go);
+ const tr=e.target.closest('[data-tier]');if(tr){$$('[data-tier]').forEach(x=>x.classList.toggle('on',x===tr));resVal=+tr.dataset.tier;go('res')}
+ if(e.target.closest('[data-replay]'))go('load')});
+$('[data-tab]').onclick=(e)=>{tabBehind=!tabBehind;e.target.classList.toggle('on',tabBehind)};$('[data-tab]').classList.add('on');
+$('#bar-toggle').onclick=()=>{const h=$('#bar').classList.toggle('hide');$('#bar-toggle').textContent=h?'Show bar':'Hide bar'};
+$$('[data-tier]').forEach(x=>x.classList.toggle('on',+x.dataset.tier===resVal));
+document.addEventListener('keydown',e=>{
+ const m=$('#'+IDS[screen]+' [data-menu]');
+ if(m&&(e.key==='ArrowDown'||e.key==='ArrowUp')){const bs=$$('button',m),i=bs.findIndex(b=>b.classList.contains('on')),j=(i+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length;bs.forEach((b,k)=>b.classList.toggle('on',k===j));moveCur(m);e.preventDefault()}
+ if(m&&e.key==='Enter'){$('button.on',m).click()}
+ if(screen==='select'&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){sel=Math.max(0,Math.min(SONGS.length-1,sel+(e.key==='ArrowRight'?1:-1)));place()}
+ if(screen==='select'&&e.key==='Enter')go('load');
+ if(e.key==='Escape')go(screen==='set'?'pause':screen==='pause'?'res':'title');
+});
+
+// ---- background: the Arcade board's colour mesh, its colours from the screen (the song's cover on song select and
+// loading, the record's metal on results); the title adds the tab gliding faintly under a still cursor ----
+const cv=$('#bg'),g=cv.getContext('2d'),MESH=Object.assign(document.createElement('canvas'),{width:48,height:30});
+let W=0,H=0,meshT=0,cols=[[245,230,211],[192,132,87],[120,80,60],[30,25,45]];
+const WARM=[[245,230,211],[192,132,87],[218,181,149],[60,40,50]];
+const GRAIN=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),d=x.createImageData(128,128);for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255}x.putImageData(d,0,0);return g.createPattern(c,'repeat')})();
+function resize(){W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;g.setTransform(DPR,0,0,DPR,0,0)}addEventListener('resize',()=>{resize();$$('.seg').forEach(moveKnob);$$('[data-menu]').forEach(moveCur)});resize();
+const STR=['#6ee7a8','#f8a1a1','#f6d878','#8fb8fa'];
+const TABN=Array.from({length:60},(_,i)=>({x:i*0.55+((i*0.37)%1)*0.25,s:(i*7+(i>>2))%4,f:[0,3,5,7,2,5,0,12,7,5,3,10][(i*5)%12]}));
+function board(t,alpha,moving){   // a still frame (pause) or the tab gliding (title), as on the Arcade board
+ const top=moving?H*0.78:H*0.36,th=moving?H*0.13:Math.min(H*0.5,400),L=W*0.06,R=W*0.97,cx=L+(R-L)*0.2,sp=th/4,u=moving?70:110,off=moving?t*1.6:14.2;
+ g.save();g.globalAlpha=alpha;
+ for(let s=0;s<4;s++){const y=top+sp*(3.5-s);g.strokeStyle=css(rgb(STR[s]),0.35);g.lineWidth=1;g.beginPath();g.moveTo(L,y);g.lineTo(R,y);g.stroke()}
+ const sz=Math.min(sp*0.62,30);g.font=`500 ${sz*0.62}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';
+ for(const n of TABN){let x=cx+(n.x-off%33)*u;if(x<cx-u*2)x+=33*u;if(x<L-20||x>R+20)continue;const y=top+sp*(3.5-n.s);
+  const a=x<cx?Math.max(0,1-(cx-x)/(u*1.5)):1;g.globalAlpha=alpha*a;
+  g.fillStyle='rgba(16,17,24,.9)';g.beginPath();g.roundRect(x-sz/2,y-sz/2,sz,sz,sz*0.22);g.fill();g.strokeStyle=css(rgb(STR[n.s]),0.7);g.lineWidth=1.2;g.stroke();
+  g.fillStyle='#f5f5f7';g.fillText(n.f,x,y+0.5)}
+ g.globalAlpha=alpha;g.strokeStyle='#fff';g.lineWidth=2;g.shadowColor=css(cols[0],0.9);g.shadowBlur=14;g.beginPath();g.moveTo(cx,top-10);g.lineTo(cx,top+th+10);g.stroke();
+ g.restore();
+}
+function frame(ms){
+ const dt=Math.min(0.05,ms/1000-clock);clock=ms/1000;
+ const target=bgTarget?[bgTarget[0],bgTarget[1],ease(bgTarget[0],bgTarget[1],0.5),ease(bgTarget[1],[20,20,40],0.4)]:WARM;
+ cols=cols.map((c,i)=>ease(c,target[i],Math.min(1,dt*1.5)));
+ document.documentElement.style.setProperty('--mood',cols[0].map(v=>v|0).join(','));
+ const beat=Math.exp(-((clock*2)%1)*6)*0.5;   // a gentle 120 bpm pulse (the game's comes from the song's light cues)
+ const m=MESH.getContext('2d'),mw=MESH.width,mh=MESH.height;meshT+=dt*0.3;
+ m.fillStyle='#05060a';m.fillRect(0,0,mw,mh);m.globalCompositeOperation='lighter';
+ for(let i=0;i<4;i++){const x=mw*(0.5+0.38*Math.sin(meshT*(0.21+i*0.07)+i*1.9)),y=mh*(0.5+0.36*Math.cos(meshT*(0.17+i*0.05)+i*2.7)),r=mw*(0.42+0.08*Math.sin(meshT*0.3+i));
+  const a=(0.2+0.03*beat)*(i===3?0.6:1),q=m.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(cols[i],a));q.addColorStop(1,css(cols[i],0));m.fillStyle=q;m.fillRect(0,0,mw,mh)}
+ m.globalCompositeOperation='source-over';
+ g.fillStyle='#06070b';g.fillRect(0,0,W,H);g.save();g.imageSmoothingQuality='high';g.globalAlpha=0.75;g.drawImage(MESH,0,0,W,H);g.restore();
+ g.fillStyle='rgba(5,6,10,.38)';g.fillRect(0,0,W,H);
+ if(screen==='title'&&tabBehind)board(clock,0.22,true);
+ if(screen==='pause'||screen==='set')board(clock,1,false);
+ g.save();g.globalAlpha=0.035;g.fillStyle=GRAIN;g.fillRect(0,0,W,H);g.restore();
+ const vg=g.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.95);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.5)');g.fillStyle=vg;g.fillRect(0,0,W,H);
+
+ // the records on this screen
+ const scr=$('#'+IDS[screen]);
+ for(const c of scr.querySelectorAll('canvas.rec'))if(c.id!=='res-rec')paintRec(c,clock);
+ if(screen==='res'){   // the record fills as the score counts up, popping at each tier it passes
+  const k=Math.min(1,Math.max(0,(clock-resAt-0.4)/2.6)),e=1-Math.pow(1-k,3),v=resVal*e,tr=tierOf(v);
+  if(tr>resTier){resTier=tr;resPop=clock}
+  paintRec($('#res-rec'),clock,v,resPop);
+  const final=Math.round(13320*resVal+ (resVal>=5?-5000:0));
+  $('#res-score').textContent=Math.round(final*e).toLocaleString();
+  const rt=$('#res-tier');rt.textContent=tierName(v);rt.style.color=tierColor(v);
+  $('#newbest').classList.toggle('on',k>=1&&final>44960);
+  const nt=tierOf(resVal),need=nt>=5?0:Math.round((1-(resVal-nt))*13320);
+  $('#next').style.opacity=k>=1?1:0;$('#next').style.transition='opacity .4s';
+  $('#next-txt').textContent=nt>=5?'Top record':need.toLocaleString()+' to '+TIERS[nt+1][0].toLowerCase().replace(/^./,c=>c.toUpperCase());
+  $('#next-bar').style.width=(nt>=5?100:(resVal-nt)*100)+'%';
+ }
+ if(screen==='select'){$('#lvl').style.width=(30+28*Math.abs(Math.sin(clock*3.1))*Math.abs(Math.sin(clock*1.3)))+'%'}
+ if(screen==='load'){$('#load-bar').style.width=Math.min(100,((clock-loadAt)/4)*100)+'%'}
+ requestAnimationFrame(frame);
+}
+buildSelect();go('title');requestAnimationFrame(frame);
+</script>

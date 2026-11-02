@@ -233,8 +233,8 @@ imported tabs stays bass only.
 The game, named **Encore**, as its own screen (`/game`, `arcadeOn`, `#arcade`; sidebar `#encore-btn`, Mac app `Encore.app`): title, song wall with covers
 (`/api/cover`, `.cover.<ext>`) and previews, song screen (instrument, difficulty, bests,
 input) -> `arcadePlay` -> `startGame`. Mac icon "Track Splitter Game" (`install_shortcut(game=True)`,
-`app.py --game`). Stars kept per best key (`STARS_KEY`). Menus: concert stage, song select
-carousel (`renderCarousel`). In-game look "clean and premium" (mockups in `design/game-mockups/`):
+`app.py --game`). Stars kept per best key (`STARS_KEY`), shown everywhere as records (`drawRecord`, `recordEl`). Menus in the Arcade
+look (`drawArcMesh`, mockup `ui.html`), song select carousel (`renderCarousel`), Settings in tabs. In-game look "clean and premium" (mockups in `design/game-mockups/`):
 `drawStage` mood background, `drawMultiplier` + `drawRingFire` by the score (`rbScore`); test
 streak `track-splitter-game-streak`. Phases 2-3 (scoring depth, practice mode) to come.
 Stage lights from the song: `GET /api/lights` (made at separation via `separate(keep=)`, else on first request;

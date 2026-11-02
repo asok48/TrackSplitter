@@ -2522,3 +2522,33 @@ Phase 1 redesign (same day):
   (`arcadeBoard.mileN` / `mileAt`, 64 px). The game keeps its own Classic HUD for 3D / Flat. Checked in a game on the
   library copy: plaque, call, cursor badge, x4, no console errors; the milestone (started at a 50 streak) had faded
   during the count-in before the screenshot, so it was only seen in the mockup. Song select / results still show stars.
+
+### Encore in the Arcade look; records instead of stars (2026-11-02)
+User: "How much work would it be to make the rest of the UI match this arcade mode?", then "can we replace stars with
+records before we do anything? should be everywhere", "do the mockup first, that will include this change", and after
+the mockup (`design/game-mockups/ui.html`: Title, Song select, Loading, Results, Pause, Settings) "Yes, build it".
+Mockup feedback built in: no record on the album covers on song select ("don't show the record on the album cover when
+selecting"); the record type between the record and the score on the difficulty cards; and progress as a ring round the
+outside instead of the next tier's metal sweeping over the disc ("instead of changing entire record color when
+progessing the new one, just do a ring on the outside").
+- Records: one drawing, `drawRecord(g, x, y, r, val, t, popAt)` (val = `starsFor`'s 0..5; tier = floor, the rest is the
+  ring), used by the Arcade plaque, the 3D / Flat HUDs (`hudRecordAt`, where the five stars were, tier name beside it),
+  results (190 px, filling as the score counts up over 1.6 s, popping at each tier; a finished run shows "N to Platinum"
+  in `#game-next`), pause (a plaque: record, score, tier, time), song select (difficulty cards: record, tier, best; list
+  rows: record), title (Jump back in: record, score, "GOLD RECORD · HARD"). Page records are small canvases
+  (`recordEl`, `paintRecord`). Saved data unchanged: `STARS_KEY` keeps the whole star count (0 = no record … 5 = Diamond),
+  so saved records show no ring.
+- Look: the CSS block "Encore in the Arcade board's look" near the end of the styles overrides the rock-stage rules
+  (kept above it): SF Pro, light weights for big text, small spaced capitals for labels, silver gradient numbers, white
+  pill buttons, hairline rows, segmented controls as pills, the cursor line as the focus mark on menus. It sits after
+  the older hover / Play-as-text rules on purpose (they outranked it before it moved). The stage (beams, truss) and the
+  cover wall are hidden; `#arc-mesh` / `drawArcMesh` draws the board's colour mesh behind the menus (~30 fps, stops while
+  a game runs or the window is hidden; `setInterval(startArcMesh)` restarts it) and on the title a faint tab gliding
+  under a still cursor. Song select / loading / results still blur the song's cover over it.
+- Settings: one centred panel with Game / Sound / Setup tabs (built at start from the `.set-group` headings, each group's
+  rows moved into a `.set-sec`) instead of two crowded columns (user: "can we improve the settings on the main page");
+  a Settings gear on song select (`#arc-select-settings`; "also have a settings button on the song select page").
+- Fixed while checking: Resume showed a white box on hover (the white-pill hover rule caught the pause menu; user).
+- Checked on the library copy (port 7873): title, song select (covers and list), settings (all tabs, from the title and
+  song select), an Arcade game, pause, quit → results; no console errors from the page (the only one is the existing
+  service worker fetch in the browser pane).
