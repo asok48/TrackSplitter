@@ -1932,3 +1932,526 @@ Phase 1 redesign (same day):
   (#tuner) into Settings (connecting the input if needed) and switches it on; closing puts it back and switches it off
   if Settings switched it on (`settingsTuner`).
 - "Match the song's tone" defaults to on in Encore (/game) for songs never set; switching it off is kept per song (0).
+- Cleanup batch (2026-10-31; user's list, easiest first):
+  - Song select slid up and off the right edge (list view "right side is getting cut off"): `.arcade` had
+    `overflow: hidden`, which still scrolls on focus / scrollIntoView (the blurred background reaches 80 px past the
+    edges), so it sat scrolled 68 px right, 72 down. Now `overflow: clip`.
+  - List view "too much empty space": the picked song's big cover tops the right panel (`#arc-now-art`, list mode
+    only) and rows have a best-score column (`.arc-row-best`).
+  - Long names "cut off in the cover menu": `fitText(node, min)` shrinks the song title (and Jump back in's) until no
+    line is hidden (2-line clamp kept below the minimum); drawn covers use a smaller font past 24 characters.
+  - Logo: the sidebar card is a dark card with the pick mark (inline SVG, `.encore-mark`) and the gold wordmark (was
+    a play button on a flat amber slab); the title screen uses the same mark without the app-icon tile.
+  - Note speed slider: value on the right ("1.25×", `#gs-speed-val`) like the other sliders, no Slow / Fast words;
+    double-click = 1×.
+  - In game, floating text ("no pills, transparent background with floating text"): score and stars without the
+    frosted panel, the multiplier as a bare ring (the call sits left of the score, measured), no box behind Resume /
+    Play again (an older `.game-screen .btn.primary` shadow), results stats without tiles.
+  - Bigger board tried (camera fit so the board spanned ~70% of the height, note speed scaled to what's on screen):
+    user: "I liked the board when it wasn't so huge", reverted.
+  - Picking, from the 41 game checks (no code change yet): in the recent games most misses are "plucked, but its
+    pitch was never heard" (820 of 1701 overall); of 462 since 10-26, 205 heard only the neighbouring notes (274 of
+    the 462 within 0.2 s of the next note), 206 other notes, 30 nothing. Tuning isn't it (readings median +3 to +27
+    cents). Look What Happened's swing (+88 ms early part, -81 ms later) is not the tab: its imported notes sit
+    within ±10 ms of the heard notes all song (only ~55% of them match a heard note at all, sync quality 0.37).
+  - Purple on hover in Encore ("why is there a purple background when i hover on things?"): the app's
+    `.btn.primary:hover:not(:disabled)` purple outranked the game screens' button styles (pause, results, settings,
+    calibration). Hover rules for `.game-screen` / `.arc-screen` buttons now stay amber / dark, and the full screens'
+    text buttons stay bare. Checked by copying every :hover rule as a class rule (the browser pane doesn't hover).
+  - Results: title, artist and run type on one left edge (the run type kept its old pill padding).
+  - Difficulty chips: stars and best moved a little lower; the max-height 820 rule no longer squeezes chips to 38 px.
+- Fast-note misses, tried and dropped (2026-10-31; user: "only keep it if the wrong-notes control stays clean"). Replay
+  kept in the repo this time: `tools/gamecheck_replay.py` (judge in Python on run.json + input.flac; reproduces every
+  game within 0-3 hits) and `tools/gamecheck_experiment.py` (pitch reader variants; control = tab moved +2/-1/+1/-2).
+  The frames' audio lines up at sample round(ctx * rate) - first_frame (49/50 readings identical). 24 games (8253 hits):
+  - A second reading from only the sound since the last attack (40-200 ms after it, from 20 ms before it, YIN clear
+    0.1), added beside the normal one: +29 real, control +2/+7/+4/+5. Stricter (60-200 ms) +8 vs +1/+4/+1/+1; looser
+    (clear 0.13) +47 vs +6/+15/+9/+10. Never inside the ±2 bar.
+  - A pick sets off several pluck signs per stroke (click, newest 20 ms, level), 20-70 ms apart, and `ownPitch` treats
+    them as "the next pluck", blocking the stroke's own pitch (the new Thank You for the Venom pick game, 511/549:
+    19 misses "pitch only heard before the pluck"). Not blocking within 30 ms: +27 real, control +26/+10/+11/+11;
+    70 ms: +48 vs +59/+34/+26/+28. Dropped.
+- Flower Power Madness "hard to read" ("this was more an issue in game mode"), 2026-10-31:
+  - Repeats: once a run's numbered note reached the pads, the rest were bare ticks with no fret on the board. Now the
+    tick right behind it carries the number (`lead` in game3d.js), so the coming fret is always shown.
+  - Bar lines (imported tabs, IMPORT_RULES 11): `_place_in_bars` shifted each bar's notes to fit what's heard but
+    left the bar line on the 50 ms sync grid, so a bar's first note sat up to ~100 ms before its line (drawn at the
+    end of the bar before; the same riff bar came out as 8 notes or 9). Bar lines now move with their notes. Flower
+    Power Madness: downbeat notes before their line 43 -> 1 of 83; every imported tab on the test copy 22-89 -> 0
+    (Number of the Beast 89 -> 33, Amsterdam 37 -> 4), median offset ~17 ms -> 0, notes unchanged.
+- Game performance ("can we also improve performance?"): the scene update takes ~1.5 ms; the frame rate was limited
+  by pixels drawn (browser pane, 1440x900 at 2x: 21 fps; a quarter of the pixels: 44). The glow pass now runs at a
+  quarter of the pixels, and the sharpness follows the frame rate (`keepPace`: steps of 0.25 down when frames average
+  slower than ~45 fps over 2 s, back up while at the screen's rate but never to a ratio that was too slow; first 3 s
+  ignored). Browser pane: settles in ~5 s at 46-50 fps. Not yet measured in Chrome on the M4.
+- Holds ("can we improve how held notes look? Also, I always lose it at the end"), 2026-10-31:
+  - Game checks: 431 held notes hit; the pitch was last read a median 62 ms before the end, a quarter 0.2 s+ early;
+    in the last 150 ms the non-matching readings were mostly unclear (1036) vs another note (297) / under the gate
+    (253). Now (`judge`, `game.hold`): a hold survives unclear readings up to `HOLD_GAP` 0.25 s, is lost on another
+    note or silence, and held into the last `HOLD_GRACE` 0.2 s (or quarter of the note) counts to the end. Replayed on
+    the frames: held to the end 261 -> 349 of 431.
+  - Look (game3d.js): the tail burns only while really held (`v.hold[k].lost` greys the rest), wider on long notes
+    (wider still while held), and an end cap (`cap`) marks where to let go, lighting up over the last 0.4 s. Not seen
+    with a real hold: a simulated input (the song's bass-only track fed in through a hooked AudioBufferSourceNode.start)
+    didn't register as playing in the browser pane.
+- Song select ("improve the look of the spotlight over the cover and change the play button so it matches the rest of
+  the UI"): the light triangle above the picked cover and its white + amber double ring became a fine edge, a warm glow
+  behind it and a pool of light under it (`.arc-carousel::before/::after`, so they stay put while covers slide). Play
+  (song select and Jump back in) is floating amber text with an arrow, like the pause menu.
+- Smoothness, 120 fps, the dark triangle, lights from the song (2026-10-31):
+  - "Skips for a tiny second": the shown clock (`audioNow`) never went back, so whenever the audio clock said it was a
+    little ahead it stood still; now it eases (up to 10% slower / faster) and only jumps when > 0.1 s off. game3d.js
+    also made textures mid-song (each bar number as it came into view; a note's grey number at the moment of a miss),
+    grew its note pool mid-song (6 new materials a note) and made a new mesh + material per spark; now `prewarm`
+    makes every bar / fret texture (also the grey ones) and 60 notes + 40 sparks before the first frame and compiles
+    the shaders with everything shown once; sparks are pooled; no per-frame colours.
+  - 120 fps ("can we make the game run at 120fps?"): `keepPace` aims for the screen's own refresh, measured once while
+    the menus are idle (`measureScreen`; during a game a 120 Hz screen showing frames a refresh late looks like 60 Hz);
+    steps sharpness down by 0.25 while frames run 15%+ slower than the screen, measured against where the steps began,
+    and goes back if the bottom gave no gain. Browser pane at 1440x900: settles in ~5 s at a steady 120 fps (frames
+    8.3 ms, slowest 9 ms) at pixel ratio 1.0 there; at 800x600 120 fps at full 2x. Not measured in Chrome on the M4.
+  - Dark triangle ("a weird dark static triangle going across the screen"): the far glow behind the board (z -80, ~96
+    from the camera) crossed the camera's far plane (100) and was cut along a straight diagonal; far plane now 300.
+  - Lights from the song ("could we use the songs audio track to queue flashing lights?"): `lightCues` reads the
+    version the game plays once (3 s of audio per slice) into 10 ms steps: kick hits (< ~150 Hz jumping over the last
+    50 ms, above the song's 90th-percentile jump, 6 dB min), snare / cymbal hits (the same on the sample-to-sample
+    change) and loudness; `cuesAt` per frame. game3d.js: kicks pulse the far glow and flash the front rig, snare hits
+    flash the other two rigs in turn, loud parts brighten the show; the tab-beat flashes are the fallback while the
+    cues are being read. Flower Power Madness: 332 kicks a beat apart (0.485 s at 123.7 bpm), 288 snare / hat hits on
+    beats and offbeats. Not yet seen while playing well (the pane's test games miss every note, so the show is dim).
+- Lights, more dynamic ("instead of going left to right everytime and make big moments look bigger"; "when things go
+  quite, dim the lights"), 2026-10-31:
+  - `PATTERNS` in game3d.js, one per bar (`pickPattern`, never the same twice running, weighted by loudness): sweeps
+    left / right, from / to the centre, front rig to back, sparkle (random lights on each hit), alternate (odd / even on
+    each hit), strobe (everything on the kicks; loud parts only). Rigs sway more when it's loud.
+  - Big moments: `lightCues` finds the loudness jumping 0.15+ (of the song's range, 2 s before vs 1 s after) into a
+    part louder than 60% of the song, strongest first, 15 s apart, one per 30 s at most, on the kick that starts it
+    (Hysteria from its first chorus at 0:59.6; a 0.2 bar into the top 45% found none in Flower Power Madness). Accents:
+    a kick and a crash together, both among the song's strongest. The game's own: the multiplier going up, streak
+    milestones (`moment`). On one, every light flares white and grows, the far glow floods and grows, the bloom swells
+    (`mats.bloom`), settling over ~1.5 s; accents are a smaller version.
+  - Quiet parts: the show is scaled 0.25 + level^1.2 (a quarter in near silence, half in a quiet verse, ~1.25 at the
+    loudest); the board's own lights unchanged.
+  - Checked: no errors, 119 fps in the browser pane. Not seen with real playing (the test games miss every note, so the
+    show sits in its dim "struggling" mood).
+- Pop and big notes ("louder moments to have some real pop"; "the end of flower power madness, those should be
+  considered big notes"; "I don't like the screen shake"), 2026-10-31:
+  - Loud parts (from ~0.55 of the song's loudness): each kick punches: a quick zoom (`pop`, fov -2.5%), lights flare
+    harder, the far glow and the bloom jump. Big moments add a 5% zoom punch, a warm white flash over everything (a
+    plane in front of the camera, ~0.15 s) and pyro (`pyro` / `updateEmbers`: four fountains of sparks behind the
+    board, ~1.6 s). A screen shake was tried and removed (user didn't like it).
+  - Big notes: stabs (a loud hit surging 5 dB+ over the 0.4 s before and falling 6 dB+ within 0.15-0.4 s, on 150 ms
+    averages: 10 ms steps called every drum hit a stab) count as accents: lights, bloom and zoom, not the white flash
+    (on every stab it washed the board grey). Flower Power Madness: its ending (3:03-3:05), intro and 1:37-1:51, 112 in
+    all. Full stops (a loud hit with near silence 0.6-2 s later, 12 dB+ down) are big moments: its last hit at 3:12.3
+    and a break at 1:02.6; none in Hysteria or American Idiot.
+  - Vocals ("sync it up with lyrics where they go oh ah"): not done; the game only has the no-bass mix, where singing
+    can't be told from guitars. Would need a vocals separation per song (see the session's question).
+- Light cues on the server (user: "separate the vocals once per song ... and sync the lights to the long sung notes";
+  "can we do all this during upload?"; "really, we should just take the whole songs track and look at that"),
+  2026-10-31: `lights.py` (module docstring has the method), saved per song as `.light-cues.json` (`LIGHTS_RULES`,
+  `VOCALS_RULES`). Made in `make_version` from the mix and the vocals the separation produced anyway
+  (`separate(keep=)`: any Demucs model's or RoFormer's vocals); otherwise `GET /api/lights` makes the song part on
+  the spot (~1 s; whole song = the original, else a version's two halves added up) and queues the vocals for
+  `vocals_worker` (htdemucs, ~1-2 min a song, one at a time; `gpu_lock` in `run_model` keeps it from running beside a
+  song being processed). The page asks when a song is picked in song select (`songLights`) and uses its own reading
+  of the no-bass version only until they arrive. Whole song vs no-bass version (Outside): kicks 1.0 vs 1.5 a second.
+  - Held vocal notes: YIN on the vocals (dip < 0.35; 0.15 gave a pitch to 27% of Flower Power Madness's sung frames,
+    0.35 56%), within a semitone (vibrato broke 0.6), 0.5 s+. Flower Power Madness has one, the high G at 2:24.4
+    (1.9 s); a pitch-free test (steady loud voice 0.6 s+) found the same and nothing else. Look: the back two rigs fill
+    with a gold wash spreading from the middle over the note, the far glow turns gold, a 0.4 s fade after; a vocal
+    phrase starting brings a soft glow from the middle. Upload path checked on a 30 s clip (vocals kept, the held note
+    found at the same place). The gold wash itself not yet seen (the test games sit in the dim mood).
+  - Calmer ("outside for example flashes way too much"): kick and snare flashes softer, a loud-part punch at most every
+    0.9 s, strobe only in the loudest parts and rarely, x4 white flashes on accents only.
+  - The board never moves ("I don't want the board to move at all during big moment, just the lighting"): the zoom
+    punch is gone; big moments keep the lighting, the white flash (softer, 0.2) and the pyro.
+- Quiet parts calm ("outside still flashes a ton the begining when it is a quiter part"), 2026-10-31: the cues were
+  calm there (Outside 25-65 s: loudness ~0.4, 1-8 hits per 5 s, no accents or big moments); the show wasn't. The
+  sparkle pattern (a flash on every hit) was the likeliest pick in quiet parts, and each of the player's notes flared a
+  front light at full strength. Now `drive` (0 below ~0.35 of the song's loudness, 1 from ~0.65) scales every hit
+  reaction (kick / snare flashes, the hit-driven patterns, the player's flares down to a quarter); quiet parts only get
+  slow, dim sweeps (sparkle / alternate / strobe have no weight there).
+- The vocals pass shared the GPU with the game: the board fell to 16 fps while Outside's vocals were separated. Encore's
+  5 s check-in now says when a game is on (`/api/ping?game=1`, also sent at the game's start), and `vocals_worker`
+  waits until no game for 12 s, pausing mid-song through the model's progress callback (`game_on`). Checked: during a
+  game the server sat at 0% CPU and the board at 81 fps (rising as it settled); after it, Outside's vocals finished
+  (9 held notes, e.g. 1:07.3 and 2:06.9 for 1.7 s, 5:02.2 for 2.4 s).
+- Big moments off for now ("can we just remove the big moments and come back to it later. makes it harder to play
+  right now"), 2026-10-31: `BIG_MOMENTS = false` in game3d.js turns off the blasts (song big moments, multiplier /
+  milestone moments), the white flash, the pyro and the stab accents; lights.py still saves `big` / `accent`, so
+  setting it back to true brings them back. The loud-part lighting punch, patterns, quiet dimming and vocal wash stay.
+- Light check page and a Big moments setting (user: "build the big-moments check page so I can rate them, and use my
+  ratings to tune the detection"; "make it a setting in the menu"), 2026-10-31:
+  - Settings › Big moments: On / Off (`#game-big`, `encore-big-moments`, off by default), passed to game3d.js as
+    `v.bigMoments` (replaces the `BIG_MOMENTS` constant). Settings › Light check › Open… opens the page.
+  - `static/lights-check.html`: pick a song; a timeline of its loudness with the detected big moments (gold), stabs
+    (violet), held sung notes (gold, along the bottom) and the user's missed marks (cyan); a list with Yes / No /
+    Bigger (stabs that should be big moments). Click a mark to hear 2.5 s before to 3 s after (the version's two halves
+    played together: the whole song without a 60 MB WAV); click elsewhere to play from there. Keys: Space, ← →, Y, N, B,
+    M (a missed one at the playhead), Delete. Saved as you go: `POST /api/lights/ratings` -> `<song>/.light-ratings.json`
+    (`GET` reads it back).
+  - Tuning: lights.py's thresholds are `lights.BIG` (jump, loud_pct, gap, per_s, stop_db, stab_fall, stab_rise);
+    `song_cues` = `features` (slow, ~0.1 s a song) + `decide` (4 ms). `tools/lights_tune.py` reads every rated song,
+    runs a grid of 2,187 settings and ranks them: wanted big moments found (yes / bigger / missed) minus unwanted
+    (no) minus half of each new unrated one, plus half the stab score. Checked with made-up ratings on one song (11 s);
+    no real ratings yet. Once there are some: run it, pick the best settings into `lights.BIG`, bump `LIGHTS_RULES`.
+- Cooler board, mockups (user: "can we make the board look cooler?", picked glass reflections, living strings and new
+  strike pads; "lets do mockups"), 2026-11-01: built straight into game3d.js behind `v.look` {reflect, strings, pads}
+  (all off in the game for now) and shown on `static/board-lab.html` (not linked from the app): the real board
+  auto-playing a made-up bass line at 120 bpm, switches for each look, Old / All, x4 and 5 strings; `?look=...&fire=1`.
+  - reflect: a coloured streak on the glass under each note (`refl`, fading away from it) and a pool of the pad's
+    light in front of each pad (`pool`), brighter on hits and as notes come in. Sprites, not a mirror pass (that draws
+    the scene twice).
+  - strings: in the strings' shader (`livingString`, 400 segments): a ripple travelling out from the pad when a note
+    lands (6 units/s, fading over ~1 s), and a pulse of light running down every string to reach the pads on each beat
+    (beat 1 brighter), blue at x4.
+  - pads: a glowing ring + soft core that fills with the string's colour over the last 0.6 s before a note (`coming`),
+    a ring of light bursting outward on a hit (`burst`), red on a miss, white for what you're playing; the old lens and
+    rim hidden.
+  - Browser pane, everything on vs the old look: 77 vs 79 fps. A first try declared `pulse` twice in `frame` and the
+    whole module failed to load (the game would have lost its 3D board): renamed `beatPulse`.
+- After the mockups ("I like the old pads, the strings are pretty distracting though. Can we make them look like real
+  strings?"), 2026-11-01: the new pads and the living strings (ripples running along, beat pulses) are removed;
+  `look.strings` is now real strings (`realString`): graded 0.075 -> 0.04 thick (low string ~2x the high one), nickel
+  (#9c968c, metalness 1, roughness 0.42, reflections at 0.55) with a round-wound bump map (`windTex`, 700 turns along
+  the string), the string's colour at 12% of its glow, and a short shimmer near the pad when a note is played (~0.4 s;
+  a bright #d8d2c8 finish set off the glow pass and read as white neon). The lab page now has Reflections / Real
+  strings. Not yet in the game (`v.look` isn't passed there).
+- Minimal look (user: "the strings look a little weird. Would a minimalist design work better?"), 2026-11-01:
+  `look.minimal` in game3d.js: strings as thin flat matte lines (`lanes.lines`, 0.04 -> 0.028 wide, the string's
+  colour at 80%; the tubes hidden), a moment brighter when played and while held, blue at x4; a plain matte board
+  (#0c0c10, no texture, no light edges, lane bands at 1-3%); flat matte notes (roughness 0.9, no clearcoat, the
+  string's colour at 80%). Old pads kept. Lab page: Reflections / Real strings / Minimal (one string style at a time).
+- Reading along (user: "I'm still struggling with reading along while playing"; picked fret numbers, not enough
+  warning, fast runs / shifts), 2026-11-01:
+  - Fret numbers drawn upright on the HUD (`v.hudNumbers`, `Game3D.labels()`, drawn in `drawRockHud`): each note's
+    number projected to the screen, outlined white (open strings in the string's colour, misses grey), 17-34 px by
+    the note's on-screen width; the flat numbers on the notes are hidden (squashed by the board's lean, tiny far off).
+  - Look-ahead 3.4 s at 1x note speed (was 2.6: `Z` in drawGame3D); notes reach full opacity within 1.8 units of
+    coming on (FADE was 3.5: far notes stayed faint).
+  - Hand moves: `handMoves` also keeps `d.handTargets` (the fret starting each move, up or down); the HUD shows
+    "↑ 6" / "↓ 3" in amber above the dashed line before each move.
+  - Checked in a game (Flower Power Madness): 11 numbers on screen, all readable to the far end; "↑ 6" over the line
+    before the move to the 6th fret. Not yet tried with real playing.
+- Hand guide (user: "mock up the hand-position guide (a small neck by the pads showing where my hand should be and
+  sliding before a shift)"), 2026-11-01: `drawHandGuide` in the HUD, bottom left under the board: a neck to one fret
+  past the song's highest (16-24), frets narrowing like a real neck, inlays at 3 5 7 9 12 15..., low string at the
+  bottom; an amber box over the four frets the hand covers (`d.handPos` from `handMoves`: [time, first fret]); the next
+  1.5 s of notes as dots in their string's colour (fading with time, the next one ringed white); within 1.5 s of a
+  shift a dashed box at the new place with an arrow, the box sliding over in the last 0.25 s. Settings › Hand guide
+  On / Off (`encore-hand-guide`, on). Checked in a game: box and dots follow (frets 3-6, then 10-13 for the high
+  part); the slide itself not caught on screen. Not yet tried with real playing.
+- Hand guide off by default ("I don't like it, sort of distracting"; then "make these all settings" / "no, the hand
+  position"): Settings › Hand guide On / Off (`#game-hand`, `encore-hand-guide`, off), next to Big moments. A short-lived
+  Settings › Board group (strings style, reflections, fret numbers, move labels) was undone: upright numbers and move
+  labels stay always on, the board looks stay on the lab page.
+- Choppiness again + pick (user: "getting some choppyness again, can we optimize? Also, using a pick is still
+  inconsistent. fingers work much better"), 2026-11-01:
+  - Measured in a game: the HUD's upright numbers cost 0.09 ms a frame (21 text calls), the 3D frame ~1 ms; the
+    hitches were the sharpness steps at the start of every song (each resizes the drawing buffers, ~40-70 ms, up to four
+    of them) and the warm-up (`prewarm`, ~350 ms) landing on the count-in's "3". Now the settled pixel ratio is kept
+    (`encore-pixel-ratio`) and the next game starts there, and `startGame` draws the board's first frame before the
+    count-in. Checked: the warm-up now lands 0.4 s after the game screen appears, before "3".
+  - Pick, tried on the replay (all 25 games, wrong-notes control +2/-1/+1/-2), both dropped:
+    - a cool-down on click plucks (like `plucked`'s 90 ms): real hits 9124 -> 9119 / 9105 / 9084 at 60 / 90 / 120 ms,
+      Venom (pick) 508 -> 505; the clicks are often the real pluck.
+    - a quieter sign within 0.12 s of a pluck not counting as "the next pluck" (a pick's rattle): Venom 509 -> 510,
+      Fireman (pick) unchanged, control up as much as real hits (1 dB: +32 real, +59/+34/+21/+29 control).
+    In the pick games a stroke makes 4-5 pluck signs over ~100 ms and the pitch reads clearly only after; nothing in the
+    recorded frames tells that rattle from a real next note. Next step: a pick game and a fingers game of the same song,
+    recorded for checking, to compare the input itself. `tools/gamecheck_replay.py` gained `quieter` / `settle`.
+- Pick vs fingers on the same song (user played Outside, pick first: game checks 2026-11-01 10:49 (8 s restart),
+  10:50 pick, 10:51 fingers), 2026-11-01. Over the 143 notes both judged (first 30 s): pick 137 hits, fingers 140; pluck
+  signs per note 3.6 vs 3.4; own pitch read a median 80 vs 78 ms after the first sign; pick plucks 3 dB quieter (median
+  -12.0 vs -8.9 dB) with the same spread (6 dB); pick timing tighter (middle half 47 vs 57 ms wide, Perfect 108 vs 102
+  of the hits). The 6 notes only the pick missed: two its own timing (one 176 ms late), the rest scattered. The 10:49
+  restart's "too soft" misses were signs at ~-58 dB at the start, not strokes. Thank You for the Venom (pick, 10-31):
+  its 21 "no pluck in the window" misses have almost no attack in the recorded input (biggest 2 ms level jump in the
+  window ~1-2 dB, hits ~10 dB), so not strokes the detector missed. No code change; next comparison would be Venom with
+  fingers (fast repeated notes, where the pick games lose most).
+- Pick vs fingers, Thank You for the Venom (game checks 2026-11-01 10:55 pick, 10:56 fingers): whole games 468/479 vs
+  472/492; over the 479 notes both judged, pick 468, fingers 462; repeated notes 396 vs 389 of 401, fast notes
+  (< 0.2 s apart) 418 vs 414 of 429. The pick's own trace: 5.0 pluck signs a note vs 4.2, and its pitch read later
+  after the first sign (median 58 vs 21 ms), behind its 7 "pitch only heard before the pluck" misses (fingers 3).
+  Misses only one way: pick 10 (5 of those, and 4 at the very end where the game stopped), fingers 16 (a run of 10 at
+  notes 458-467, pitch never heard). Timing the same (median -25 vs -23 ms, calibration -18 ms in use); Perfect 252 vs
+  271. With Outside (pick 137 vs fingers 140 of 143): no sign the detection favours fingers. No code change.
+- Faster hit response and a fingering fix (user: "it would be nice if the response on the game notes being hit was
+  faster and more responsive. Also, in places like thank you for the venom, it makes no sense to switch around playing
+  2 on the A and 7 on the E"), 2026-11-01:
+  - Pluck response: in `gameListen`, an attack while a note is due (inside its timing window; a chord's notes within
+    30 ms together) sets `game.laneTapMs[string]`; game3d.js dips and lights that pad at once (0.85 of a hit's dip,
+    0.6 of its light, fading over 160 ms). The hit itself (burst, score) still waits for the note's pitch: ~20 ms after
+    the pluck with fingers, ~60 ms with a pick (the Venom comparison). Not seen with real plucks (test input is silent).
+  - Venom's B1s: the tab file keeps them on A2, but a "make repeats match" choice ({35 x 8} -> E7) moved only its
+    group's bars, so runs of B1 switched between E7 and A2 at group edges (31.45 -> 31.58 s). `same_note_same_place`
+    (end of `unified_notes`): the very next note played, the same pitch, 0.03-0.6 s later, stays where the run began.
+    Venom: back-to-back switches 1 -> 0 as the game gets it; B1 now E7 319, A2 11 (isolated ones).
+  - The pluck response lit the note before as well ("Like a E7 triggers the A"): that note was often still waiting for
+    its pitch, so still "due". Now only the note nearest the pluck in time lights, with any struck within 30 ms of it.
+  - "it thinks I'm playing the A string when I'm not" (playing E7, the same B as A2): the board's "what you're
+    playing" string came from string detection first (overtones, the calibration), which took E7 for A2. In a game
+    (`showNote`, `trustTab`) a note matching one due now is shown on the tab's string (the game scores by pitch), and
+    the "same note, other string" amber flag is off then; outside a game the readout still names the string it heard.
+- Repeats written differently by mistake (user: "look at fireman and dancer, there's parts towards the end that are
+  different when they shouldn't be"), 2026-11-01, IMPORT_RULES 12: the differences were in the Guitar Pro file (read
+  straight from it: the same 106 bars and late variations), not the sync. Against the song's bass track: bars 83 and
+  87 (2:18, 2:24) are written G1 G1 A1 B1 D2 G2 G2 E2 D#2 (E3 E3 E5 E7 A5 ...), the song plays bar 28's G1 G1 A#1 D2
+  ... (an A#1 heard at 0.46 s where bar 28 has it); bars 78-79 (the fill at 2:11) really differ and the tab's notes
+  fit. `tabimport._repair_repeats` (after placing a timed tab): a bar that's a near-copy of an earlier one (same length,
+  up to 4 notes each way, both with notes of their own) takes the copy's notes when, among bars written the same way,
+  the tab's own differing notes are never heard and in one of them at least half the copy's are (one at least) with the
+  shared notes heard 70%+ (tolerance 0.1 s). Saved as "repaired" [{bar, from, at}] in the import. Tried first and
+  tightened: copying a repair to every identical bar (Outside: 37 bars, many where the tab's notes were heard) and
+  repairs that only add notes; then requiring half the copy's notes heard (Wow! Wow! Wow!'s bar 52, 1 of 3, left as
+  written). Across the 24 imported tabs only Fireman & Dancer's bars 83 and 87 change (679 notes, was 681).
+- Virtual drop D (user: "keep the E tuning, but it would come out as a D in the app"; "build the virtual drop D
+  experiment (shift my E-string notes down a whole step in Hear myself and score them as D)"), 2026-11-01: Settings ›
+  Virtual drop D On / Off (`#game-vdrop`, `encore-virtual-dropd`, off: it would break scoring for someone really tuned
+  down). Applies when the tab's tuning is drop D with the other strings standard (`isDropTuning`: open[0] = open[1] - 7,
+  open[1..] = 33 38 43; Amsterdam's [27, 34, 39, 44] isn't covered) and the tab is bass.
+  - Scoring: `playOpens(d)` / `playNames` (judge, chordPluck, checkWrong, tuneCheck, tabNotesNow, the board's string
+    names, the game check's run.json): in a game the low string counts as a standard E (open = open[1] - 5), so the
+    tab's frets played on a standard E string score (fret 4 -> G#1 32 instead of F#1 30). run.json keeps it
+    (`open`, `strings`, `virtual_drop`). The tab view still shows the real tuning.
+  - Hear myself: a pitch shifter (AudioWorklet from a Blob, `SHIFT_WORKLET`, `input.monShift`, before the monitor's
+    input gain) lowers the signal by 2 semitones (`VDROP_RATIO`) on low-string notes: in a game switched from the tab
+    (`updateMonShift`: the latest note starting within the next 50 ms, its pitch on a standard E gives the period),
+    outside a game from the pitch heard (below A1). TD-PSOLA: slices two periods long laid down 1/ratio periods apart;
+    delay while shifting about two periods (~48 ms on a low E, ~32 ms on a B), dry otherwise; ~10 ms fade in and out.
+    A delay-line shifter was tried first and smeared bass (E1 41.2 Hz in, 35 Hz peak, the wanted 36.7 Hz 18-24 dB
+    down). Measured offline (sawtooth through a 900 Hz low-pass): E1 41.2 -> 36.72 Hz (D1 36.71), G1 49 -> 43.65, B1
+    61.74 -> 54.99, E2 82.41 -> 73.40, the original 33-42 dB down; a period 1% off still lands right.
+  - Checked on a library copy (port 7891): American Idiot (drop D, 118 of 365 notes on the low string) started with the
+    setting on and Hear myself on: the shifter loaded in the live monitor, the game note "Virtual drop D: play the low
+    string's frets on your E string (Hear myself lowers them to D)", run.json open [28, 33, 38, 43] / E A D G; the
+    setting off by default; no console errors; the main app loads. Not heard with the user's real bass: how the shift
+    sounds and feels (the extra ~30-50 ms on those notes) needs trying. The monitor's latency note only mentions the
+    extra delay if Hear myself was switched on after a drop D tab loaded.
+    User's first try (2026-11-01): "it doesn't work very well", "it seems to only work for the open D and there's lag".
+    The lag is the shifter's (two periods); they then asked for a tuner on song select instead.
+- Song select tuner (user: "can we just add the tuner into the song select screen and it shows up what the tuning is
+  and if each string is in tune?"), 2026-11-01: a Tuning row under the input on song select (`#arc-tune`, chips
+  `.arc-tune-s` per string). `songTuning(song, instrument)` asks `/api/tab` with the song's saved tuning pick and
+  source (bass: the picked source, else imported; guitar: imported) and shows its label and strings; Standard when
+  there's no tab ("no tab yet"), a half-step-down song that's raised ("song raised ½ step"), or a drop D tab with
+  Virtual drop D on. Cached per song + instrument.
+  - Reading: `listen()` sets `input.tunerSemis` on song select from the fixed gate (`GATE_DB`, like Settings' tuner),
+    since the adaptive gate learns a ringing open string as background and then reads nothing. `readTuner()` (from
+    `mirrorInput`, wrapped so an error can't stop the loop) takes the pitch every 20 ms; 8 in a row within 0.15
+    semitone, within 2.5 semitones of an open string or an octave either side (closest wins), mark that string:
+    ✓ green within 5 cents, amber within 20, red beyond with ± cents; the ringing string shows live (`.live`).
+    Marks stay while the tuning stays the same.
+  - Checked by feeding the page's `readTuner` the pitch of the user's open A, D, G (from
+    .bass-recordings/take-20261023-232440.flac, Input 2; YIN every 20 ms): A +7, D +4, G +4 cents, each pluck starting
+    ~+15-19 sharp and settling, ending ✓ ✓ ✓, E left blank. Before the octave-down check, the D string read an octave
+    low for 0.3 s marked E −198. The live test in the browser pane couldn't run (the pane was off screen, ~2 frames a
+    second); not yet tried with the real bass live, and the low E string isn't in that recording.
+- Full glass look, mockup (user: "I think we could improve the game UI by going with a full glass look", "please mockup
+  first"), 2026-11-01: `design/game-mockups/glass.html`, nothing in the game changed. Song select, in-game HUD, pause and
+  results with every panel, button and chip as frosted glass (backdrop blur 28 px + saturate, a bright top edge, a soft
+  sheen, deep shadow; amber kept as the accent); sliders for frost and tint; on the in-game screen a "Cheap glass"
+  switch (the same panels with no real blur, which the HUD canvas could draw every frame). The notes and fret numbers stay
+  off glass. Asked whether it would help performance: no; real blur over the moving 3D board costs GPU every frame
+  (the frame rate is limited by pixels drawn, see Game performance), so in-game it would be the cheap kind; the menus,
+  pause and results can use real blur (nothing moves behind them). Note this goes against earlier picks ("no pills,
+  transparent background with floating text", "I don't like the pill look", settings "without a box around it").
+- Highway looks (user: "I like the menus as they are now. can we improve the look of the highway?"), 2026-11-01:
+  three more switches on `/board-lab.html` (keys 4 5 6, "All three"), `v.look` {depth, strike, gems} in game3d.js, all
+  off in the game:
+  - depth: the glass lit near the pads and falling into the dark (`depthTex`, a gradient along the board), each lane's
+    colour brightest at the pads (`bandTex`; 0.15 read as coloured stripes, now 0.055-0.075), a groove with a faint lit
+    near edge between lanes (`lanes.grooves`).
+  - strike: a strike line through the pads with a soft glow (brighter on hits, blue at x4; `lanes.strike`,
+    `strikeGlow`), faint beat lines between bar lines (four to a bar, `lanes.beats`), bar and beat lines lighting up
+    as they cross it (bar lines now have their own material each).
+  - gems: notes in the string's full colour (0.9), clearcoat 1, a soft glow of their own (0.22) and a lit underside
+    (the skirt in the string's colour, glowing) instead of the dark skirt.
+  - Checked in the lab: no console errors, each look on / off and at x4. The browser pane kept serving the old
+    game3d.js from its cache (the strike line seemed missing): test the lab from a server that sends no-store.
+- Fast notes hard to read (user, 2026-11-01: "the gems are too hard to reach when it is fast. Sometimes they are on top of
+  eacother, other times it's just hard to track along", "maybe a different way to display notes"; the highway looks are
+  parked: "lets circle back on this later"):
+  - Why: the board's speed (game3d.js `speed`) spaces notes for the 10th-percentile gap between different notes on a
+    string (`d.distinctLaneGap`, index.html) and is capped at 1.6x, so the fastest tenth can touch; the HUD fret numbers
+    are at least 17 px, so far off they can run into each other. Measured on the library's 54 tabs (auto + imported):
+    14 have any overlapping pairs, 0.5-8% of their note pairs (Baby 8%, Cry Baby Cry 4%, Helena 4%), mostly under
+    100 ms apart. Wow! Wow! Wow!'s chromatic walk A0-1-2 is 0.12 s a note: 0.63 board units against a 0.56-wide note.
+  - Mockup `design/game-mockups/note-styles.html` (+ `note-styles-data.js`: 24 s of Wow! Wow! Wow!, Flower Power Madness
+    and Baby from the imported tabs), animated at real speed on a board drawn like the game's: 1 Now (box + number
+    above), 2 Number tiles (the number is the note, repeats as dots), 3 Runs (notes within 0.36 s on a string joined by a
+    bar, a number only where the fret changes, repeats as notches), 4 Tab lines (big numbers on bright string lines, a
+    timing tick under each); S Spread fast runs (the board's speed follows the notes: stretched so distinct notes on a
+    string are NOTE_W + 0.6 apart, held over ±0.4 s and eased over ±0.4 s, up to 2.2x; notes still land on time).
+    Tiles sized to the note width read small up close. Serve it from a server (the pane's file snapshot can't load the data file).
+  - User picked 4 Tab lines ("some version of 4 would be the best. The numbers are pretty big"). Mockup: a Number size
+    slider (0.6-1.8x, `?size=`) for tiles / runs / tab lines; the string gaps behind tab numbers are drawn before any
+    number (one number's gap had cut into its neighbour in "1 0"). Not in the game yet.
+- "I would like the tab to be slow enough to read easily but can still be understood. It doesn't have to be the same style
+  ... open to other ideas": moving numbers are the hard part, so the mockup got a Motion switch (keys 7 8 9, `?motion=`):
+  Scroll (as now); Bar steps (the board holds at the bar's start while an amber cursor sweeps the bar, then slides one
+  bar on in 0.22 s; played notes dim; the next bar always in view); Pages (two flat lines of tab, 2 bars each, the
+  playing line on top with a cursor, the next note glowing amber, the next line sliding up in 0.3 s; Tab lines numbers).
+  Play on Tab (Game settings › Play on: Tab, `tabGameFrame`) already plays the game on the still Lines view, in the
+  older look; Pages is that idea in Encore's style.
+- "Some version of the static tab could work, but it's boring": Pages got a live layer, each part switchable (Rings,
+  Hits, Strings, Lights, x4, Plain; `live` in the mockup): rings closing in on the next two notes over 0.7 s (on every
+  coming note they cluttered fast runs); hits that flare, ring, throw 7 sparks and stay lit in the string's colour; the
+  string vibrating out from the note played (~0.5 s); stage lights drifting behind and pulsing on the beat (beat 1
+  most), bar lines flashing as the cursor crosses, a glowing trail behind the cursor; x4 turns it blue. The numbers
+  never move. Hits are simulated (every note counts as hit).
+- "It's very arcady now. I still think it's boring how the tabs just move down a level ... otherwise I probably wont come
+  back. I don't know how to make it more exciting": Pages line changes (`change` in the mockup, Slide / Fly / Cards /
+  Reel, `?change=`): Fly (coming lines wait smaller in the distance, 3 ahead; the camera flies forward, the finished line
+  sweeping past and fading), Cards (the finished line flips off to the left, the next snaps up with a small overshoot),
+  Reel (lines on a drum, rolling with an overshoot). Each starts 0.28 s early (`LEAD`) so the new line lands on the
+  downbeat, with Punch (3% zoom + an edge flash on the downbeat) and Cascade (the line coming into view: numbers pop in
+  30 ms apart). The playing line (cursor, hits) is the one containing now (`rPlay`), the moved-to line `r`.
+- "I think the fly is cool, I think one hard thing about it is that you need to read the end of the tab and then shift
+  back over constantly": Strip line change (`?change=strip`, `stripV`): one continuous line showing 0.3 bar before the
+  playing bar to 2.2 bars after; at each bar (0.28 s early, LEAD) it slides one bar left in 0.35 s with a small
+  overshoot and the downbeat punch, so the next bar arrives where the eyes already are; the far right fades out over its
+  last 20%. Bar lines are now drawn for every bar in a line's time span (rows and strip).
+- "That has the same problem with jumping back and forth. I think that's the main problem to solve": anything that holds
+  still makes the eyes follow a cursor and come back (a line in Pages, a bar in Strip), so the only way to keep them
+  still is a still cursor with the tab moving. Suspected reason the game's board is hard to follow: its 45-degree lean
+  makes notes grow and speed up as they come in. Flow (`?change=flow`): the flat tab lines glide under a fixed cursor
+  20% in at one steady speed (0.25 board lengths behind, 1 ahead, via `warp`, so Note speed and Spread apply), a punch
+  on every bar, the ends clipped. With Spread the Wow! Wow! Wow! 0-1-2 run spreads out.
+- "I like this idea [Flow] more with a slower speed. I would like to make the notes different, something easier to
+  understand at a glance": note looks in Pages / Flow (`noteLook`, `?look=`, plus `?speed=`): Numbers (as before), Pills
+  (a capsule in the string's colour with a dark number, as long as the note rings, stopping 6 px before the next note on
+  that string, `nextOn`; repeats are short pills without a number; open strings hollow), Discs (a round badge with the
+  number; repeats small dots), Pills + shifts (an amber outline and ▲/▼ on notes where a 4-fret hand has to move along
+  the neck, `shifts`, a simple guess, not the tab's `handMoves`).
+- "I'm not big on any of these to be honest. I think maybe the numbers, but I would like to make it more exciting
+  somehow": energy switches for the numbers (`energy`, all on in the mockup): Neon (a white core with a glow in the
+  string's colour, brightening from 55% as the note comes within ~1.7 s of the cursor; 30% was too dim to read ahead),
+  Bounce (numbers ahead and strings pulse on each beat, beat 1 strongest), Heat (a simulated streak meter filling over
+  18 s: light streaks rush past behind the flowing tab, played notes throw embers, full = ON FIRE x4 blue), Shatter (a
+  played number breaks into four pieces with +100 rising and is gone, its string gap too). Wow! Wow! Wow!'s excerpt has a
+  rest from ~13 s to ~20 s (73 notes in 24 s), so Flower Power Madness shows heat best.
+- "Or how about, looks flash gamey" (read as: the 2D Flow mockup looks flash-gamey, as the drawn 2D board once did): Flow on
+  the real 3D board, `look.flow` in game3d.js + Flow / Slow on `/board-lab.html` (`?look=flow&slow=1`; Slow = Z 4.5 s
+  ahead instead of 2.6): the board turned to face the camera (`world.rotation.x` 1.42 instead of 45 degrees, no camera
+  yaw), so notes glide at one steady speed to the pads; notes shown as their fret number (1.7x, the body hidden; quick
+  repeats keep their slim tick), no rise-in from the distance; the glass darker (#040508, facing the stage lights it
+  washed out grey) and the x4 wash at 40%. Not in the game (`v.look` isn't passed there). No console errors in the lab.
+- Arcade mode, premium (user: "the shatter and score popup are distracting and repeated notes are hard to read", "make it
+  more premium", "the energy around the game could use improving"; on joining repeats with a line: "the line to me means
+  hold the note"): a separate focused mockup `design/game-mockups/arcade.html` (Flow only, the older note-styles page left
+  as it was). Numbers in SF (700, no outline) on dark keycaps with a rim in the string's colour (brightening as the note
+  comes due, open strings rimmed full colour with a coloured 0); a repeat is the number again at 78% size and ~60%
+  opacity, never a line (lines only for notes ringing 0.3 s+); played notes fade to ~30%; a hit fills the keycap with the
+  string colour for 0.2 s with a soft glow, no sparks or popups. Softer string colours, thin strings brightening when
+  played, the track a dark glass panel (played side darker), hairline bar lines and beat ticks along the bottom, a slim
+  cursor with a soft column of light. Around the track, each switchable: Light pools (drifting, brighter with the streak,
+  how busy the music is and the beat), Edge glow (top / bottom in the mood colour, swelling on beat 1), Dust (motes
+  drifting left behind the panel), Milestone sweep (one soft band of light along the track when the multiplier goes up),
+  Score (light 40 px score, small multiplier ring, streak). Mood colour per multiplier (warm white, amber, orange-rose,
+  blue) from a simulated streak (every note hit). Spread makes room for the keycap's width (up to 3.5x), and a keycap
+  still too close to a neighbour on its string shrinks (not below 70%). Speed 0.7x by default.
+- "It's hard to read when it speeds up super fast" (Spread up to 3.5x): Spread capped at 1.35x and held / eased over
+  ±0.8 s; keycaps can shrink to 60%. Result at 0.7x: no surges, but 16ths at ~0.12 s are ~15 px apart, so fast runs
+  (Wow! Wow! Wow!'s 2-2-2-1-0, its open-E 0s) shrink and crowd. The limit: slow speed, fast notes and full-size numbers
+  can't all fit; one has to give (a faster base speed, shorter marks for quick repeats, or gentle spread + smaller).
+- "In flower power madness, numbers are on top of each other" (keycaps shrank against one neighbour at a time, min
+  60%): sizes now set per string from both neighbours at once (`lay`): each pair of keycaps scaled so their half-widths
+  fit the gap less 4 px (not below 50%); a quick repeat (within 0.25 s) is a thin timing mark on the string, not a keycap
+  (slower repeats keep the smaller number). Flower Power Madness at 4, 10, 17 s: nothing overlaps.
+- "It says notes are repeats when they are not": the mockup compared each note only with the previous note on its
+  string, so A5 E0 A5 counted. Now the game's rule: the very next note played (notes struck together skipped), same
+  string and fret, within 2.5 s. Flower Power Madness's excerpt: 10 repeats of 97 notes.
+- Still overlapping ("baby has overlapping notes", "the small 10 and 12s next to each other") and "I also liked the more
+  arcade feel it had before when playing": a left-to-right pass per string guarantees room (a keycap that still runs into
+  the one before becomes just the number, then a mark, then is merged; Baby's tab has notes 34 ms apart); keycaps at least
+  8 px apart (Baby's repeated 10s at 0.27 s had 3 px and read as jammed); a repeat that would shrink below 85% becomes a
+  timing mark (the first stays big). Checked every 0.25 s through all three passages (`window.__lay`): no keycaps or
+  numbers touching; Baby hides 35 of its doubled notes. Arcade feel back as switches: Rings (closing in on the next two
+  notes), Hit sparks (a ring + 6 sparks), String wave (the string vibrates out from the cursor when played).
+- "I'm liking this. I feel like the repeat notes could look cooler": Repeats switch in arcade.html (`repStyle`, `?rep=`):
+  Pips (default; glowing diamonds with a facet of light), Echoes (small outlined keycaps, no number, faintly filled),
+  Chevrons (‹ pointing the way the tab moves), Bars (the thin marks before). Each brightens and grows a little over the
+  last 0.6 s and flashes white for 0.18 s when played; layout room follows the style's width (`markW`). Slower repeats
+  keep the smaller number.
+- "Echos is cool, what other looks could we do with that?": Echo looks under Repeats › Echoes (`echo`, `?echo=`; Echoes
+  now the default): Outline (as before), Mini number (the fret tiny inside the echo), Fading (each repeat in a row
+  smaller and fainter, `repN`, to 55%), Ripple (a fainter outer outline widening as the note comes due), Glass (frosted,
+  a light top edge). "Can we give it an effect on hit? Maybe more subtle": echoes no longer flash white or grow 1.5x; on a
+  hit the echo fills gently with its string's colour, swells 12% and a thin outline ripples out and fades over 0.35 s.
+  - User picked Mini number ("I like the mini number"): now the default (echoes + mini).
+  - "Actually number could get crowded, give me other options": more echo looks: Simile (the % repeat sign inside the
+    echo, "play the same again"), Dot (one bright dot), Auto (the mini number only when the echo has room: neighbours on
+    its string more than 2.4 echo-widths away, `it.room`; else plain). Mini number stays the default until the user picks.
+  - "What about like a diamond?": Diamond echo look (the echo turned 45 degrees at 92%, a faint fill, a small facet of
+    light; its hit ripple is a diamond too).
+- "I want the repeats to be smaller to create less clutter": Repeat size slider (`repSize`, default 0.7) scales the
+  echo marks, and every repeat is now an echo (before, slower repeats showed a smaller number; shrinking those let more
+  of them fit as numbers, more clutter). Only fret changes carry a number; same-fret notes with another string played
+  between keep theirs (not repeats by the game's rule).
+- "Can we make zero like the other numbers?": open strings in arcade.html now drawn like any fret (white digit, the same
+  rim that brightens as the note comes due); they had a full-colour rim and a coloured 0.
+- "Can we make an effect even on the repeat notes?": echoes get the numbered notes' effects at their size (following the
+  Rings / Hit sparks switches): a ring closing in when the echo is one of the next two notes, and on a hit a soft glow
+  with 4 small sparks (0.3 s), on top of the subtle fill-and-ripple pulse.
+- "It's easier to read when the numbers aren't huge": Size defaults to 0.75x (slider 0.5-1.5); Spread's room follows it.
+- "How could we make the background better?" then "I want it to look premium": Background switch in arcade.html
+  (`bgStyle`, `?bg=`): Studio (default), Stage, Aurora, Landscape, Pools; the old "Light pools" switch is now
+  "Background" (on/off). Studio: colour falling softly from above, 14 large lens-blur lights (flat inside with a faint rim,
+  barely drifting, `BOKEH`), a haze band behind the track, the track's light as a faint reflection on a polished floor.
+  Stage: three rows of soft out-of-focus lights flashing in turn on the beats, a wave across each row per bar (its hard
+  bright cores removed: they looked cheap). Aurora: slow ribbons of light (additive). Landscape: a silhouette of how busy
+  the song is (`dens`, smoothed note density), scrolling with the tab. All styles now get a soft vignette and fine film
+  grain (`GRAIN`, 3.5%). A first build failed to load (`-x**2` is a syntax error in JS).
+- "Still looks cheap" / "I want it to be dynamic with the song": Mesh background (default now; `MESH`, a 48x30 canvas of 4
+  huge radial colour clouds stretched over the screen, so no edge shows, then a 28% dark overlay): brighter on every
+  beat (beat 1 most), brighter and drifting faster with how busy the music is (`busy`, notes in the last second), the
+  colours trading places every 4 bars (eased over the phrase's first bar), a swell when it suddenly gets busier than its
+  running average (`busyAvg`), colours from the multiplier. In the game these should come from the song's light cues
+  (`/api/lights`: kicks, snares, loudness, big moments) rather than the tab. Dust and Edge glow now off by default (the
+  clutter read as cheap).
+  - "A bit too flashy": Mesh calmer: clouds 0.16 + 0.16 busy + 0.05 beat + 0.14 swell (were 0.22 / 0.3 / 0.18 / 0.35),
+    drawn at 70% under a 42% dark overlay (85% / 28%), drifting slower (0.2 + 0.6 busy).
+- x4 and sizes (user: "can we improve the 4x look?", "the changing note sizes is tough", "I liked when the board turned
+  blue before", "not sure how I feel about the line going around" / "we could make an outline, just cooler", "I still
+  want to see the stars", "make stars similar to other theme"), arcade.html:
+  - x4 (eased in over ~0.5 s, `x4k`; x4 preview switch `fx.x4`, `?x4=1`): the board turns blue (a wash strongest at the
+    cursor, like the 3D board's), strings and keycap rims tinted blue, glowing caps on the cursor, soft blue flame
+    rising off the multiplier ring (`FLAMES`, white -> cyan -> indigo, 0.7 s). x4 outline (on): the board's whole edge
+    glowing, colour shimmering slowly along it (cyan / blue / violet), breathing on the beat, a faint inner line. The
+    travelling glint is its own switch, off.
+  - One note size per song (`songFit`: 80% of the gaps between numbered notes on a string fit a keycap + 8 px, not
+    below 80%; at 90% / 60% Flower Power Madness came out tiny); no per-note shrinking. When two numbered notes are too
+    close both drop their keycaps (bare numbers, same size); a run still too tight is staggered alternately above /
+    below the string (`dy`, 0.22 of the string spacing); an echo right before a numbered note merges if needed. Only
+    repeats are ever merged. Checked every 0.2 s on all three passages: no fret change hidden (before: Baby 13 of 58,
+    Flower Power Madness 15 of 87, Wow! Wow! Wow! 6 of 34), nothing touching.
+  - Stars under the score as in the game's HUD (`drawRockHud`): 17 px, #f5b70a, warm empty stars, a glow when full;
+    filling with the score toward a perfect run's.
+  - "Remove fire effect on the multiplier": the flame off the ring at x4 removed (the ring keeps its glow).
+- Arcade board in Encore (user: "I'm good with this for now, implement"), 2026-11-02: Game settings › Board: 3D | Flat |
+  Arcade (`track-splitter-game-board` = `arcade`; the Fretboard row only shows for 3D). `drawGame` calls `drawArcade`
+  (index.html, before `drawGame`); guitar chord charts (`game.members`) fall back to the 2D board. A port of
+  design/game-mockups/arcade.html with its defaults, on the game's own state: `game.result` (hit / miss: misses grey),
+  `game.hitAt` (hit glow / ring / sparks), `game.laneHitMs` (string brighten + wave), `game.score`, `game.streak`,
+  `multiplier()`, `starsFor`, the latest call (Perfect / Good / Miss / Wrong + what was played) right of the streak, the
+  count-in. Speed = 0.7 x the Note speed setting (`hwSpeed`); room for fast runs up to 1.35x. `arcadePrep` caches per
+  song + window size + speed in `d.arcadeLayout`: the position warp, repeats (the game's rule), neighbours, the song's
+  note size (`fit`). The background mesh follows the song's light cues (`cuesAt`: kick / snare pulses, loudness as how
+  busy, `big` moments as swells), falling back to note density. State in `arcadeBoard` (`arcade` is already the Encore
+  screens' state: a first build declared `const arcade` again and the whole page failed to load). Echo look: mini number.
+  - Tested on a library copy (Baby + Flower Power Madness, port 7873, silent simulated input): song select -> game,
+    notes gliding, misses grey with the Miss call, held-note lines, staggered pairs; x4 via `track-splitter-game-streak`
+    35 (blue board, outline, cursor caps, 4x ring) during the count-in; pause, Settings (Board switch, Fretboard row
+    hidden for Arcade / shown for 3D, saved), restart, quit; the normal app at / (song list, player bar) clean. Not yet
+    played with a real bass: hits, sparks and the string wave were only checked in the mockup.
+- "I like the idea of putting the numbers on different sides of the line, I just feel like we could make it easier to
+  read": Stagger switch in arcade.html (`stagger`, `?stagger=`; mockup only, the game still floats them): Stems (default;
+  a dot on the string where the note falls, a thin stem in the string's colour to the number, which keeps a small
+  keycap), Flags (a keycap beside the line with a small pointer touching it), Float (as in the game). Stems / Flags sit a
+  little further off the line (0.3 of the string spacing, was 0.22). The dots also show which of a staggered pair is
+  first.
+  - User picked Stems; ported into the game's `drawArcade` (staggered runs 0.3 of the string spacing off the line, a dot
+    on the string + a stem to a small keycap). Tested in a game on the library copy (Baby, 2:08 in): staggered 10 / 12
+    and 12 / 8 pairs show their dots and stems, no console errors.

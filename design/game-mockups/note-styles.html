@@ -1,0 +1,347 @@
+<!doctype html><meta charset="utf-8"><title>Encore note styles</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Ways to show notes so fast passages are easier to follow (user: "the gems are too hard to read when it is fast.
+     Sometimes they are on top of each other, other times it's just hard to track along", "maybe a different way to
+     display notes"). Real passages from the user's imported tabs, played at real speed on a board drawn like the
+     game's (sideways, low E at the bottom, mild perspective). Not wired to the game. -->
+<style>
+:root{color-scheme:dark}
+html,body{margin:0;height:100%;background:#070504;color:#f5f0e8;font:600 14px -apple-system,system-ui,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.bar{position:fixed;top:16px;left:20px;right:20px;z-index:2;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.bar b{font:900 italic 22px "Avenir Next Condensed",system-ui;letter-spacing:.04em;text-transform:uppercase;color:#fcd34d;margin-right:4px}
+.bar button{border:0;background:none;padding:4px 0;color:rgba(255,245,230,.5);font:800 15px "Avenir Next Condensed",system-ui;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent}
+.bar button.on{color:#fff;border-bottom-color:#f59e0b}
+.bar .sep{width:1px;height:16px;background:rgba(255,245,230,.2)}
+.bar label{display:flex;gap:8px;align-items:center;color:rgba(255,245,230,.7);font:700 13px system-ui}
+.bar input[type=range]{accent-color:#f59e0b;width:110px}
+.desc{position:fixed;left:20px;bottom:18px;right:20px;z-index:2;text-shadow:0 1px 6px #000;color:rgba(255,245,230,.7);font-size:14px;line-height:1.45;max-width:880px}
+.desc small{display:block;color:rgba(255,245,230,.4);font-size:12px;margin-top:4px}
+</style>
+<canvas id="cv"></canvas>
+<div class="bar" id="bar">
+ <b>Note styles</b>
+ <button data-style="now">1 Now</button><button data-style="tiles">2 Number tiles</button><button data-style="runs">3 Runs</button><button data-style="tab">4 Tab lines</button>
+ <span class="sep"></span>
+ <button data-spread>S Spread fast runs</button>
+ <span class="sep"></span>
+ <button data-motion="scroll">7 Scroll</button><button data-motion="steps">8 Bar steps</button><button data-motion="pages">9 Pages</button>
+ <span id="live-bar" style="display:contents"><span class="sep"></span><button data-live="rings">Rings</button><button data-live="hits">Hits</button><button data-live="strings">Strings</button><button data-live="lights">Lights</button><button data-live="punch">Punch</button><button data-live="cascade">Cascade</button><button data-live="x4">x4</button><button data-plain>Plain</button>
+ <span class="sep"></span><button data-change="slide">Slide</button><button data-change="fly">Fly</button><button data-change="cards">Cards</button><button data-change="reel">Reel</button><button data-change="strip">Strip</button><button data-change="flow">Flow</button>
+ <span class="sep"></span><button data-look="num">Numbers</button><button data-look="pill">Pills</button><button data-look="disc">Discs</button><button data-look="shift">Pills + shifts</button>
+ <span class="sep"></span><button data-energy="neon">Neon</button><button data-energy="bounce">Bounce</button><button data-energy="heat">Heat</button><button data-energy="shatter">Shatter</button></span>
+ <span class="sep"></span>
+ <span id="songs"></span>
+ <span class="sep"></span>
+ <label>Note speed <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1"><span id="speedv">1×</span></label>
+ <label>Number size <input type="range" id="tsize" min="0.6" max="1.8" step="0.05" value="1"><span id="tsizev">1×</span></label>
+ <button data-pause>Pause</button>
+</div>
+<div class="desc" id="desc"></div>
+<script src="note-styles-data.js"></script>
+<script>
+const COL=['#4ade80','#f87171','#facc15','#60a5fa'], NAMES=['E','A','D','G'];
+const F='"Avenir Next Condensed","Avenir Next",system-ui,sans-serif';
+const DESC={
+ now:'What the game does now: a box per note, the fret number floating above it.',
+ tiles:'The number is the note: a coloured tile the size of the number, with nothing above it. A repeat of the same fret is a small dot, so there is less to read.',
+ runs:'Notes close together on one string are joined into a run (a bar in the string\'s colour), and a number shows only where the fret changes. Repeats are notches on the bar, so a riff reads as one shape instead of many separate notes.',
+ tab:'No boxes, like reading a tab: large numbers sitting on bright string lines, with a short tick under each one to mark the timing.',
+};
+const MOTION={   // how the tab moves (user: "slow enough to read easily but can still be understood ... open to other ideas")
+ scroll:'',
+ steps:'Bar steps: the board holds still while you play a bar and a cursor sweeps across it, then it slides one bar on (0.22 s). You read still numbers, not moving ones, and the next bar is always in view.',
+ pages:'Pages: the numbers stay put while everything around them moves (switch each effect off to compare). Line change: Slide, Fly (the camera flies forward to the next line), Cards (the finished line flips away), Reel (the lines roll on a drum), Strip (one line sliding a bar left each bar) or Flow (the cursor stays put and the flat tab glides under it at one steady speed: your eyes never move back; Note speed and Spread apply). Each lands on the downbeat with a punch, and the coming line cascades in.',
+};
+const cv=document.getElementById('cv'),g=cv.getContext('2d');
+let energy={neon:true,bounce:true,heat:true,shatter:true},noteLook='num',nextOn=new Map(),shifts=new Map(),stripV={to:null},change='fly',live={rings:true,hits:true,strings:true,lights:true,punch:true,cascade:true,x4:false},motion='scroll',step={to:null,from:0,at:0},page={r:0,at:-9},tileScale=1,style='now',spread=false,paused=false,song=Object.keys(PASSAGES)[0],speedSet=1,W=0,H=0;
+let notes,bars,warp,clock=0,last=performance.now();
+const NW=0.56,VIS=17.5;                       // the game's note width and visible length (board units)
+
+// Spread fast runs: the board moves faster through dense parts and slower through sparse ones, so distinct notes on a
+// string are always at least `need` apart; notes still reach the strike line on time. W(t) = board units at time t.
+function makeWarp(base){
+ const step=0.01,T=26,need=NW+0.6,want=new Float32Array(Math.ceil(T/step)).fill(1),last={};
+ for(const n of notes){const p=last[n[2]];if(p&&p[3]!==n[3]){const gap=n[0]-p[0];if(gap>0.03){const s=Math.min(2.2,Math.max(1,need/(gap*base)));for(let i=Math.floor(p[0]/step);i<n[0]/step&&i<want.length;i++)want[i]=Math.max(want[i],s)}}last[n[2]]=n}
+ const R=40,held=new Float32Array(want.length),sm=new Float32Array(want.length);   // held ±0.4 s (so the run keeps its spacing), then eased over ±0.4 s so the board never jerks
+ for(let i=0;i<want.length;i++){let m=1;for(let j=Math.max(0,i-R);j<=Math.min(want.length-1,i+R);j++)m=Math.max(m,want[j]);held[i]=m}
+ for(let i=0;i<want.length;i++){let a=0,c=0;for(let j=Math.max(0,i-R);j<=Math.min(want.length-1,i+R);j++){a+=held[j];c++}sm[i]=a/c}
+ const cum=new Float32Array(want.length+1);for(let i=0;i<want.length;i++)cum[i+1]=cum[i]+sm[i]*base*step;
+ return t=>{const x=Math.max(0,Math.min(want.length-1,t/step)),i=Math.floor(x);return cum[i]+(cum[i+1]-cum[i])*(x-i)+(t<0?t*base:0)};
+}
+function load(){
+ ({notes,bars}=PASSAGES[song]);
+ const base=VIS/(3.4/speedSet);               // the game's 3.4 s ahead at 1×
+ warp=spread?makeWarp(base):(t=>t*base);
+ // For the note looks: where the next note on the same string starts (a pill stops before it), and the notes where the
+ // hand moves along the neck (a 4-fret hand: a fretted note outside it moves the hand there).
+ nextOn=new Map();shifts=new Map();const after={};
+ for(let k=notes.length-1;k>=0;k--){const n=notes[k];nextOn.set(n,after[n[2]]??n[1]+1);after[n[2]]=n[0]}
+ let hand=null;for(const n of notes){const f=n[3];if(!f)continue;if(hand===null){hand=Math.max(1,f-1);continue}
+  if(f<hand||f>hand+3){const to=f<hand?f:f-3;shifts.set(n,to>hand?'up':'down');hand=Math.max(1,to)}}
+}
+function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;g.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',resize);resize();
+
+function frame(ms){
+ if(!paused)clock+=(ms-last)/1000;last=ms;
+ const t=clock%24;
+ if(motion==='pages'){drawPages(t);requestAnimationFrame(frame);return}
+ const nearX=W*0.12,farX=W*1.02,midY=H*0.55,dd=VIS*3,rowH=Math.min(H*0.13,110);
+ const depth=u=>dd/(u+dd),sx=u=>nearX+(farX-nearX)*((u*(VIS+dd))/(VIS*(u+dd))),laneY=(s,u)=>midY-(s-1.5)*rowH*depth(u),edge=(sd,u)=>midY+sd*2*rowH*depth(u);
+ let now=warp(t),lead=0,cursorU=null;
+ if(motion==='steps'){                         // the board holds at the bar's start (eased over 0.22 s when the bar changes)
+  let bi=-1;for(let i=0;i<bars.length;i++)if(bars[i]<=t)bi=i;
+  const target=bi<0?t:bars[bi];
+  if(bi<0||t<step.to-0.01){step={to:target,from:target,at:clock}}
+  else if(target!==step.to){step={from:step.shown??target,to:target,at:clock}}
+  const e=Math.min(1,(clock-step.at)/0.22),ee=e*e*(3-2*e);step.shown=step.from+(step.to-step.from)*ee;
+  now=warp(step.shown);lead=1.2;cursorU=warp(t)-now+lead;
+ }
+ const U=tt=>warp(tt)-now+lead;                // board position of a time
+ // background + board
+ g.fillStyle='#070504';g.fillRect(0,0,W,H);
+ const glow=g.createRadialGradient(W*.6,H*.1,0,W*.6,H*.1,H);glow.addColorStop(0,'rgba(255,140,40,.16)');glow.addColorStop(1,'transparent');g.fillStyle=glow;g.fillRect(0,0,W,H);
+ const u0=-0.8,u1=VIS;
+ g.fillStyle='#0b0d13';g.beginPath();g.moveTo(sx(u0),edge(-1,u0));g.lineTo(sx(u1),edge(-1,u1));g.lineTo(sx(u1),edge(1,u1));g.lineTo(sx(u0),edge(1,u0));g.fill();
+ for(let s=0;s<4;s++){g.fillStyle=COL[s]+(s%2?'0c':'07');g.beginPath();const a=laneY(s,u0)-rowH*.47*depth(u0),b=laneY(s,u1)-rowH*.47*depth(u1),c=laneY(s,u1)+rowH*.47*depth(u1),e=laneY(s,u0)+rowH*.47*depth(u0);g.moveTo(sx(u0),a);g.lineTo(sx(u1),b);g.lineTo(sx(u1),c);g.lineTo(sx(u0),e);g.fill()}
+ // bar lines
+ bars.forEach((b,i)=>{const u=U(b);if(u<u0||u>u1)return;g.strokeStyle='rgba(255,233,201,.16)';g.lineWidth=2*depth(u);g.beginPath();g.moveTo(sx(u),edge(-1,u));g.lineTo(sx(u),edge(1,u));g.stroke()});
+ // strings
+ for(let s=0;s<4;s++){g.strokeStyle=COL[s]+(style==='tab'?'cc':'77');g.lineWidth=style==='tab'?3.5-s*.5:2-s*.25;g.beginPath();g.moveTo(sx(u0),laneY(s,u0));g.lineTo(sx(u1),laneY(s,u1));g.stroke()}
+ // pads
+ for(let s=0;s<4;s++){const y=laneY(s,0),h=rowH*.5,w=h*.85;if(motion==='scroll'){g.beginPath();g.roundRect(nearX-w/2,y-h/2,w,h,8);g.fillStyle='#100c0a';g.fill();g.lineWidth=2.5;g.strokeStyle=COL[s];g.stroke()}
+  g.font=`900 20px ${F}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=COL[s];g.fillText(NAMES[s],nearX-w/2-26,y+1)}
+
+ // which notes are repeats (same fret again on the string within 2.5 s, nothing between), and runs
+ const vis=[];const prevOn={};
+ for(let k=0;k<notes.length;k++){const n=notes[k],p=prevOn[n[2]];const rep=p&&p[3]===n[3]&&n[0]-p[0]<2.5;const run=p&&n[0]-p[0]<0.36;prevOn[n[2]]=n;
+  const u=U(n[0]);if(u>u1||u<-0.6)continue;vis.push({n,u,rep,run,pu:p?U(p[0]):null})}
+ const alpha=u=>Math.max(0,Math.min(1,(u1-u)/1.8))*(cursorU!==null?(u<cursorU-0.05?0.35:1):(u<0?Math.max(0,1+u/0.5):1));   // bar steps: played notes dim
+
+ if(style==='runs'){                               // beams first, under the numbers
+  for(const v of vis){if(!v.run||v.pu===null)continue;const s=v.n[2],a=Math.max(v.pu,-0.3),b=v.u;if(b<a)continue;
+   g.globalAlpha=alpha(b);g.strokeStyle=COL[s];g.lineCap='round';g.lineWidth=rowH*.22*depth(b);g.beginPath();g.moveTo(sx(a),laneY(s,a));g.lineTo(sx(b),laneY(s,b));g.stroke();g.globalAlpha=1}
+ }
+ if(style==='tab')for(const v of vis){if(v.rep)continue;const k=depth(v.u),x=sx(v.u),y=laneY(v.n[2],v.u),sz=Math.round(Math.max(14,rowH*.48*k*tileScale));   // a gap in the string line, as in a printed tab (all first, so none cuts into a neighbour's number)
+  g.font=`900 ${sz}px ${F}`;const tw=g.measureText(String(v.n[3])).width;g.globalAlpha=alpha(v.u);g.fillStyle='#0b0d13';g.fillRect(x-tw/2-5,y-sz*.42,tw+10,sz*.84);g.globalAlpha=1}
+ for(const v of vis.slice().reverse()){
+  const{n,u,rep}=v,s=n[2],f=n[3],k=depth(u),x=sx(u),y=laneY(s,u),open=f===0;g.globalAlpha=alpha(u);
+  const wBox=Math.max(6,sx(u+NW/2)-sx(u-NW/2)),hBox=rowH*.5*k;
+  if(style==='now'){
+   g.beginPath();g.roundRect(x-(rep?wBox*.12:wBox/2),y-hBox/2,rep?wBox*.24:wBox,hBox,6*k);
+   if(open){g.fillStyle='#120e0b';g.fill();g.lineWidth=3*k;g.strokeStyle=COL[s];g.stroke()}else{g.fillStyle=shade(COL[s],.6);g.fill();g.lineWidth=1.5;g.strokeStyle='rgba(0,0,0,.5)';g.stroke()}
+   if(!rep)outlined(String(f),x,y-hBox*.95,Math.round(Math.max(17,Math.min(34,wBox*1.05))),open?COL[s]:'#fff');
+  }else if(style==='tiles'||style==='runs'){
+   if(rep||(style==='runs'&&v.run&&v.pu!==null&&prevFretSame(n))){g.fillStyle=style==='runs'?'#0b0d13':COL[s];g.beginPath();g.arc(x,y,Math.max(3,rowH*.07*k),0,7);g.fill();if(style==='runs'){g.lineWidth=2;g.strokeStyle=COL[s];g.stroke()}}
+   else{const sz=Math.round(Math.max(14,Math.min(rowH*.42*k,wBox*1.15)*tileScale));g.font=`900 ${sz}px ${F}`;const tw=g.measureText(String(f)).width,w=Math.max(tw+sz*.45,sz*.8),h=sz*1.02;
+    g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,h*.28);
+    if(open){g.fillStyle='#0b0d13';g.fill();g.lineWidth=3;g.strokeStyle=COL[s];g.stroke();g.fillStyle=COL[s]}else{g.fillStyle=COL[s];g.fill();g.fillStyle='#0b0805'}
+    g.textAlign='center';g.textBaseline='middle';g.fillText(String(f),x,y+sz*.05)}
+  }else if(style==='tab'){
+   g.strokeStyle=COL[s];g.lineWidth=2;g.beginPath();g.moveTo(x,y+rowH*.22*k);g.lineTo(x,y+rowH*.4*k);g.stroke();
+   if(!rep){const sz=Math.round(Math.max(14,rowH*.48*k*tileScale));g.font=`900 ${sz}px ${F}`;const tw=g.measureText(String(f)).width;
+    g.textAlign='center';g.textBaseline='middle';g.fillStyle=open?COL[s]:'#fff';g.fillText(String(f),x,y+sz*.05)}
+   else{g.fillStyle=COL[s];g.beginPath();g.arc(x,y,4*k+1,0,7);g.fill()}
+  }
+  g.globalAlpha=1;
+ }
+ // strike line, or the bar steps' cursor
+ if(cursorU===null){g.strokeStyle='rgba(255,241,214,.5)';g.lineWidth=2;g.beginPath();g.moveTo(nearX,edge(-1,0)-4);g.lineTo(nearX,edge(1,0)+4);g.stroke()}
+ else{const x=sx(cursorU);g.shadowColor='#f59e0b';g.shadowBlur=14;g.strokeStyle='#fbbf24';g.lineWidth=3;g.beginPath();g.moveTo(x,edge(-1,cursorU)-6);g.lineTo(x,edge(1,cursorU)+6);g.stroke();g.shadowBlur=0}
+ requestAnimationFrame(frame);
+}
+// Pages: two flat lines of tab (2 bars each), the playing one on top, a cursor; the next line slides up when one ends.
+// Live (user: "some version of the static tab could work, but it's boring"): the numbers stay put, everything around
+// them moves: rings closing in on notes as they come due, hits that pop and stay lit, strings that vibrate from the
+// note played, stage lights pulsing on the beat and a glowing trail behind the cursor; x4 turns it blue.
+// Energy (user: "I think maybe the numbers, but I would like to make it more exciting somehow"): Neon (numbers light up
+// like neon as they near the cursor), Bounce (numbers and strings pulse with the beat), Heat (a streak meter, simulated
+// here filling over 18 s: light streaks rush past behind the tab and played notes throw embers; full = x4 blue),
+// Shatter (a played number breaks apart and flies off with +100, clearing the track behind you).
+function drawPages(t){const heat=energy.heat?Math.min(1,(t%24)/18):0,was=live.x4;if(heat>=1)live.x4=true;try{drawPagesInner(t,heat)}finally{live.x4=was}}
+function drawPagesInner(t,heat){
+ const per=2,ed=[...bars];if(ed[0]>0.05)ed.unshift(ed[0]-(ed[1]-ed[0]));   // a pickup bar before the first line
+ const barLen=ed[1]-ed[0],beatLen=barLen/4,at=i=>i<ed.length?ed[i]:ed[ed.length-1]+(i-ed.length+1)*barLen;
+ const ph=((t-ed[0])/beatLen)%1,beatN=Math.floor((t-ed[0])/beatLen)%4,beat=live.lights?Math.exp(-ph*5)*(beatN===0?1:0.55):0;
+ const HOT=live.x4?'#38bdf8':'#f59e0b',HOT2=live.x4?'#e0f2fe':'#fde68a',bp=energy.bounce?Math.exp(-ph*7)*(beatN===0?1:0.6):0;
+ g.fillStyle=live.x4?'#04070d':'#070504';g.fillRect(0,0,W,H);
+ const glow=(x,y,r,c,a)=>{const q=g.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,c);q.addColorStop(1,'transparent');g.globalAlpha=a;g.fillStyle=q;g.fillRect(x-r,y-r,r*2,r*2);g.globalAlpha=1};
+ glow(W*.6,H*.1,H,live.x4?'rgba(56,189,248,.18)':'rgba(255,140,40,.12)',1);
+ if(live.lights){                                  // soft stage lights drifting, brighter on the beat (beat 1 most)
+  for(let i=0;i<6;i++){const x=W*(0.1+0.16*i)+Math.sin(clock*0.3+i*1.7)*W*0.03,y=H*(0.12+0.05*Math.sin(i*2.3)),c=i%2?HOT:(live.x4?'#818cf8':'#e11d48');
+   glow(x,y,H*0.22,c,0.1+0.22*beat)}
+ }
+ const LEAD=0.28;                                 // the change starts this early, so the new line lands on the downbeat
+ const rowOf=tt=>{let b=0;for(let i=0;i<ed.length;i++)if(ed[i]<=tt)b=i;return Math.floor(b/per)};
+ const r=rowOf(t+LEAD),rPlay=rowOf(t),flow=change==='flow',strip=change==='strip'||flow;
+ // Flow (user: Strip "has the same problem with jumping back and forth. I think that's the main problem to solve"):
+ // anything that holds still makes the eyes follow a cursor and come back, so here the cursor stays put and the tab
+ // glides under it, flat and at one steady speed (the tilted 3D board makes notes grow and speed up as they come in,
+ // which is harder to follow). Note speed and Spread apply.
+ // Strip (user: with Fly "you need to read the end of the tab and then shift back over constantly"): one continuous
+ // line, ~2 bars in view; each bar the strip slides one bar left on the downbeat, so the eyes never jump back.
+ let bTo=0;for(let i=0;i<ed.length;i++)if(ed[i]<=t+LEAD)bTo=i;
+ const target=at(bTo);
+ if(stripV.to===null||target<stripV.to-0.01){stripV={from:target,to:target,at:-9}}
+ else if(target!==stripV.to){stripV={from:stripV.shown??target,to:target,at:clock}}
+ if(r!==page.r){page={r,at:r>page.r?clock:-9}}
+ const dur={slide:0.3,fly:0.5,cards:0.45,reel:0.5,strip:0.35}[change],e=Math.min(1,(clock-page.at)/dur);
+ const back=x=>1+2.2*(x-1)**3+1.2*(x-1)**2,ease=change==='cards'||change==='reel'?back(e):e*e*(3-2*e),k=1-ease;
+ const es=Math.min(1,(clock-stripV.at)/0.35);stripV.shown=stripV.from+(stripV.to-stripV.from)*back(es);
+ let since=clock-(strip?stripV.at:page.at)-LEAD,punch=live.punch&&(strip?stripV.at:page.at)>0&&since>0?Math.exp(-since/0.15):0;   // on the downbeat
+ if(flow){let b0=at(0);for(let i=0;i<ed.length;i++)if(ed[i]<=t)b0=ed[i];punch=live.punch&&t>=b0?Math.exp(-(t-b0)/0.15)*0.7:0}   // flow: a punch on every bar
+ const L=W*0.1,R=W*0.95,rowH4=Math.min(H*0.26,240),sp=rowH4/4,topY=Math.max(H*0.22,document.getElementById('bar').getBoundingClientRect().bottom+30),gapY=rowH4+H*0.1;
+ const sz=Math.round(Math.max(14,sp*0.78*tileScale)),cx=(L+R)/2,cy=topY+rowH4/2,ahead=change==='fly'?3:change==='reel'?2:1;
+ g.save();g.translate(W/2,H/2);g.scale(1+0.03*punch,1+0.03*punch);g.translate(-W/2,-H/2);
+ // where each line is: pos 0 = playing, 1 = next, below 0 = leaving
+ const place=pos=>{
+  if(change==='fly'){const cyB=Math.max(cy,H*0.62),hz=topY;if(pos>=0){const sc=1/(1+0.6*pos);return{x:0,y:cyB-(1-sc)*(cyB-hz)*1.45,sc,sy:1,rot:0,a:pos>2.2?Math.max(0,1-(pos-2.2)/0.8):1}}
+   const sc=1-pos*0.9;return{x:0,y:cyB-pos*H*0.55,sc,sy:1,rot:0,a:Math.max(0,1+pos*2.2)}}
+  if(change==='cards'){if(pos>=0)return{x:pos*W*0.015,y:cy+pos*gapY,sc:1-0.1*Math.min(pos,1.5),sy:1,rot:pos*0.02,a:1};
+   return{x:pos*W*0.9,y:cy+pos*gapY*0.35,sc:1,sy:1,rot:pos*0.3,a:Math.max(0,1+pos*1.4)}}
+  if(change==='reel'){const ang=pos*0.8,mid=Math.max(cy,H*0.5);return{x:0,y:mid+Math.sin(ang)*gapY*1.05,sc:1,sy:Math.max(0.02,Math.cos(ang)),rot:0,a:Math.max(0,Math.cos(ang))**1.5}}
+  return{x:0,y:cy+pos*gapY,sc:1,sy:1,rot:0,a:Math.max(0,Math.min(1,1+pos*1.6))};
+ };
+ if(heat>0.05&&change==='flow'){                  // heat: light streaks rushing past behind the tab
+  const n=Math.round(28*heat);
+  for(let i=0;i<n;i++){const y=H*0.3+((i*97)%100)/100*H*0.5,spx=W*0.45*(1+(i%3)*0.6),len=60+(i%4)*45,x=R-((clock*spx+i*331)%(W*1.4))+W*0.2;
+   const q=g.createLinearGradient(x,0,x+len,0);q.addColorStop(0,i%3?HOT:'#ffffff');q.addColorStop(1,'transparent');g.globalAlpha=(0.08+0.06*(i%3))*heat;g.fillStyle=q;g.fillRect(x,y,len,2);g.globalAlpha=1}
+ }
+ const rows=[];if(strip)rows.push({rr:-1,pos:0});else for(let rr=r-2;rr<=r+ahead+1;rr++)if(rr>=0)rows.push({rr,pos:rr-r+k});
+ rows.sort((p,q)=>q.pos-p.pos);                  // far ones first
+ for(const{rr,pos}of rows){
+  const pl=strip?{x:0,y:Math.max(cy,H*0.5),sc:1,sy:1,rot:0,a:1}:place(pos);if(pl.a<=0.01||pos>ahead+0.99)continue;
+  const fa=VIS*0.25,fb=VIS,wt=warp(t);            // flow: 0.25 of the board's length behind the cursor, the board's length ahead
+  const t0=flow?t-3:strip?stripV.shown-barLen*0.3:at(rr*per),t1=flow?t+9:strip?stripV.shown+barLen*2.2:at(rr*per+per),cur=strip||rr===rPlay;
+  const X=flow?(tt=>L+(warp(tt)-wt+fa)/(fa+fb)*(R-L)):(tt=>L+(tt-t0)/(t1-t0)*(R-L));
+  const fade=pl.a*(cur?1:rr<rPlay?0.35:rr===r?0.85:0.55),y0=topY,sy=s=>y0+(3-s)*sp+sp/2;
+  const newRow=live.cascade&&page.at>0&&rr===r+ahead;   // the line coming into view: its numbers drop in one by one
+  g.save();g.translate(cx+pl.x,pl.y);g.rotate(pl.rot);g.scale(pl.sc,pl.sc*pl.sy);g.translate(-cx,-cy);
+  if(strip){g.beginPath();g.rect(L-60,0,R-L+65,H*2);g.clip()}   // strip / flow: nothing drawn past the ends
+  const prevOn={},rowNotes=[];
+  for(const n of notes){const p=prevOn[n[2]];const rep=p&&p[3]===n[3]&&n[0]-p[0]<2.5;prevOn[n[2]]=n;if(n[0]>=t0&&n[0]<t1)rowNotes.push({n,rep})}
+  g.globalAlpha=fade;
+  // strings: a wave running out from the last note played on each, dying away in ~0.5 s
+  for(let s=0;s<4;s++){
+   const lastHit=cur&&live.strings?rowNotes.filter(v=>v.n[2]===s&&v.n[0]<=t).pop():null,a=lastHit?t-lastHit.n[0]:9;
+   g.strokeStyle=COL[s]+(a<0.5?'ff':'cc');g.lineWidth=(3-s*.4)+(a<0.5?1.5*(1-a/0.5):0)+1.5*bp;g.beginPath();
+   if(a<0.5){const hx=X(lastHit.n[0]),amp=sp*0.12*Math.exp(-a*7);
+    for(let x=L;x<=R;x+=6){const d=Math.abs(x-hx),y=sy(s)+amp*Math.exp(-d/(W*0.18))*Math.sin(d*0.06-a*70);x===L?g.moveTo(x,y):g.lineTo(x,y)}}
+   else{g.moveTo(L,sy(s));g.lineTo(R,sy(s))}
+   g.stroke();
+   g.font=`900 20px ${F}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=COL[s];g.fillText(NAMES[s],L-30,sy(s)+1)}
+  for(let i=0;i<ed.length+4;i++){const tb=at(i);if(tb<t0-0.01||tb>t1+0.01)continue;const x=X(tb),on=cur&&live.lights&&Math.abs(t-at(i))<0.15;g.strokeStyle=on?HOT2:'rgba(255,233,201,.35)';g.lineWidth=on?3:2;g.beginPath();g.moveTo(x,sy(3)-sp*.3);g.lineTo(x,sy(0)+sp*.3);g.stroke()}
+  // the cursor's trail, under the numbers
+  if(cur&&live.lights){const x=X(t),w=Math.min(X(t)-L,W*0.12),q=g.createLinearGradient(x-w,0,x,0);q.addColorStop(0,'transparent');q.addColorStop(1,live.x4?'rgba(56,189,248,.28)':'rgba(245,158,11,.22)');g.fillStyle=q;g.fillRect(x-w,y0-4,w,rowH4+8)}
+  const nextAt=cur?Math.min(...rowNotes.filter(v=>v.n[0]>t).map(v=>v.n[0])):null;
+  const ringed=new Set(rowNotes.filter(v=>v.n[0]>t).slice(0,2).map(v=>v.n));   // rings on the next two notes only (more cluttered fast runs)
+  g.font=`900 ${sz}px ${F}`;
+  if(noteLook==='num')for(const{n,rep}of rowNotes){if(rep||(energy.shatter&&cur&&n[0]<t-0.03))continue;const tw=g.measureText(String(n[3])).width;g.globalAlpha=fade;g.fillStyle=live.x4?'#04070d':'#070504';g.fillRect(X(n[0])-tw/2-5,sy(n[2])-sz*.42,tw+10,sz*.84)}
+  rowNotes.forEach(({n,rep},idx)=>{
+   const x=X(n[0]),y=sy(n[2]),age=t-n[0],played=cur&&age>0.03,next=cur&&n[0]===nextAt,col=live.x4?'#7dd3fc':COL[n[2]];
+   const cas=newRow?Math.max(0,Math.min(1,(clock-page.at-idx*0.03)/0.22)):1;if(cas<=0)return;
+   const ex=strip?Math.max(0,Math.min(1,(R-x)/((R-L)*0.2)))*Math.max(0,Math.min(1,(x-L)/((R-L)*0.04))):1;if(ex<=0)return;   // strip: fading out at the far right
+   g.globalAlpha=fade*cas*ex*(played&&!live.hits?0.35:played?0.8:1);
+   // a ring closing in over the last 0.7 s
+   if(cur&&live.rings&&ringed.has(n)&&age<0&&age>-0.7){const k=-age/0.7,rad=sz*0.55+k*sz*1.5;g.globalAlpha=fade*(1-k)*0.9;g.strokeStyle=col;g.lineWidth=2.5+2*(1-k);g.beginPath();g.arc(x,y,rad,0,7);g.stroke();g.globalAlpha=fade}
+   if(noteLook==='num'){g.strokeStyle=COL[n[2]];g.lineWidth=2;g.beginPath();g.moveTo(x,y+sz*.45);g.lineTo(x,y+sz*.62);g.stroke()}
+   const pop=cur&&live.hits&&age>=0&&age<0.35?1-age/0.35:0;
+   if(pop){                                        // a hit: flare, ring, a few sparks
+    glow(x,y,sz*1.6,col,0.55*pop);
+    g.strokeStyle=col;g.lineWidth=2;g.globalAlpha=fade*pop;g.beginPath();g.arc(x,y,sz*(0.6+1.1*(1-pop)),0,7);g.stroke();
+    if(!energy.shatter)for(let k=0;k<7;k++){const ang=k*0.9+idx*1.3,d=sz*(0.5+1.6*(1-pop));g.fillStyle=k%2?HOT2:col;g.beginPath();g.arc(x+Math.cos(ang)*d,y+Math.sin(ang)*d,2.5*pop+0.5,0,7);g.fill()}
+    g.globalAlpha=fade;
+   }
+   if(played&&heat>0.2&&age<1.2){                  // heat: embers rising off played notes
+    const m=Math.round(heat*6);for(let i=0;i<m;i++){const ea=age*(0.8+0.15*i),exx=x+Math.sin(idx*7+i*2.1)*sz*0.45+ea*sz*0.25,ey=y-ea*sz*(1.1+(i%3)*0.45);
+     g.globalAlpha=fade*ex*Math.max(0,1-age/1.2)*heat;g.fillStyle=i%2?HOT:HOT2;g.beginPath();g.arc(exx,ey,2.2,0,7);g.fill()}
+    g.globalAlpha=fade*cas*ex;
+   }
+   const sc0=(cas<1?back(cas):1)*(1+0.35*pop)+(next&&live.rings?0.06*Math.sin(clock*12):0);
+   if(noteLook==='pill'||noteLook==='shift'){        // a capsule in the string's colour, as long as the note rings
+    const h=sz*0.95*Math.min(1.15,sc0),x0=x-h/2,end=Math.min(X(n[1]),X(nextOn.get(n))-6),x1=Math.max(x0+(rep?h*0.7:h),end),open=n[3]===0;
+    const shift=noteLook==='shift'&&shifts.get(n);
+    if(next||pop){g.shadowColor=pop?col:HOT;g.shadowBlur=pop?24:14}
+    g.beginPath();g.roundRect(x0,y-h/2,x1-x0,h,h/2);
+    if(open){g.fillStyle=live.x4?'#04070d':'#070504';g.fill();g.lineWidth=3;g.strokeStyle=col;g.stroke()}
+    else{const q=g.createLinearGradient(0,y-h/2,0,y+h/2);q.addColorStop(0,pop?'#fff':col);q.addColorStop(1,shade(live.x4?'#38bdf8':COL[n[2]],0.7));g.fillStyle=q;g.fill()}
+    g.shadowBlur=0;
+    if(shift){g.lineWidth=3;g.strokeStyle='#fbbf24';g.beginPath();g.roundRect(x0-4,y-h/2-4,x1-x0+8,h+8,h/2+4);g.stroke();
+     g.fillStyle='#fbbf24';g.font=`900 ${Math.round(h*0.55)}px ${F}`;g.textAlign='center';g.textBaseline='middle';g.fillText(shift==='up'?'▲':'▼',x0-h*0.45,y)}
+    if(!rep){g.font=`900 ${Math.round(h*0.8)}px ${F}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=open?col:'#0b0805';g.fillText(String(n[3]),x,y+h*0.05)}
+    return;
+   }
+   if(noteLook==='disc'){                            // a round badge in the string's colour
+    const rad=(rep?sz*0.22:sz*0.62)*sc0,open=n[3]===0;
+    if(next||pop){g.shadowColor=pop?col:HOT;g.shadowBlur=pop?24:14}
+    g.beginPath();g.arc(x,y,rad,0,7);
+    if(open){g.fillStyle=live.x4?'#04070d':'#070504';g.fill();g.lineWidth=3;g.strokeStyle=col;g.stroke()}else{g.fillStyle=pop?'#fff':col;g.fill()}
+    g.shadowBlur=0;
+    if(!rep){g.font=`900 ${Math.round(sz*0.85*sc0)}px ${F}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=open?col:'#0b0805';g.fillText(String(n[3]),x,y+sz*0.05)}
+    return;
+   }
+   if(rep){g.fillStyle=played&&live.hits?col:COL[n[2]];g.beginPath();g.arc(x,y,4+3*pop,0,7);g.fill();return}
+   if(energy.shatter&&played){                     // shatter: four pieces flying apart, +100 rising; then gone
+    const a2=Math.min(1,age/0.5);if(a2>=1)return;
+    g.font=`900 ${sz}px ${F}`;g.textAlign='center';g.textBaseline='middle';const tw=g.measureText(String(n[3])).width;
+    for(let q=0;q<4;q++){const dx=q%2?1:-1,dy=q<2?-1:1;g.save();g.translate(x+dx*a2*sz*1.3,y+dy*a2*sz+a2*a2*sz*0.9);g.rotate(dx*a2*1.3);
+     g.globalAlpha=fade*ex*(1-a2);g.beginPath();g.rect(dx<0?-tw/2-3:0,dy<0?-sz/2:0,tw/2+3,sz/2);g.clip();g.shadowColor=col;g.shadowBlur=14;g.fillStyle=a2<0.15?'#fff':col;g.fillText(String(n[3]),0,sz*.05);g.restore()}
+    g.globalAlpha=fade*ex*(1-a2);g.font=`900 ${Math.round(sz*0.5)}px ${F}`;g.fillStyle=HOT2;g.fillText('+100',x,y-sz*0.8-a2*sz*1.3);g.globalAlpha=1;
+    return;
+   }
+   const ign=energy.neon&&cur?(played?Math.max(0.3,1-age/0.6):Math.max(0.55,Math.min(1,1-(n[0]-t-0.3)/1.4))):1;   // neon: lights up as it nears the cursor
+   g.save();g.translate(x,y);const sc=((cas<1?back(cas):1)*(1+0.35*pop)+(next&&live.rings?0.06*Math.sin(clock*12):0))*(played?1:1+0.12*bp);g.scale(sc,sc);
+   if(energy.neon){g.globalAlpha=fade*cas*ex*ign;g.shadowColor=n[3]===0?COL[n[2]]:col;g.shadowBlur=26*ign}
+   if(next){g.shadowColor=HOT;g.shadowBlur=energy.neon?30:16}
+   if(pop){g.shadowColor=col;g.shadowBlur=24}
+   g.textAlign='center';g.textBaseline='middle';
+   g.fillStyle=pop?'#fff':played&&live.hits?col:n[3]===0?COL[n[2]]:next?HOT2:'#fff';g.fillText(String(n[3]),0,sz*.05);
+   if(energy.neon&&ign>0.6&&!played){g.shadowBlur=0;g.globalAlpha*=0.5;g.fillStyle=n[3]===0?COL[n[2]]:col;g.fillText(String(n[3]),0,sz*.05)}   // a coloured tube over the white core
+   g.restore();
+  });
+  g.globalAlpha=1;
+  if(cur){const x=X(t);g.shadowColor=HOT;g.shadowBlur=14+12*beat;g.strokeStyle=live.x4?'#7dd3fc':'#fbbf24';g.lineWidth=3+1.5*beat;g.beginPath();g.moveTo(x,y0-6);g.lineTo(x,y0+rowH4+6);g.stroke();g.shadowBlur=0}
+  g.restore();
+ }
+ g.restore();
+ if(energy.heat){                                 // the streak meter (simulated), top right
+  const mw=200,mx=W-mw-28,my=Math.max(H*0.2,document.getElementById('bar').getBoundingClientRect().bottom+14);
+  g.font=`800 13px ${F}`;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle='rgba(255,245,230,.6)';g.fillText(heat>=1?'ON FIRE · x4':'STREAK HEAT',mx,my);
+  g.fillStyle='rgba(255,255,255,.1)';g.fillRect(mx,my+6,mw,6);g.shadowColor=HOT;g.shadowBlur=10*heat;g.fillStyle=HOT;g.fillRect(mx,my+6,mw*heat,6);g.shadowBlur=0}
+ if(punch>0.02){                                  // the downbeat flash: the edges light up
+  const q=g.createRadialGradient(W/2,H/2,Math.min(W,H)*0.35,W/2,H/2,Math.max(W,H)*0.75);q.addColorStop(0,'transparent');q.addColorStop(1,live.x4?'rgba(56,189,248,.5)':'rgba(245,158,11,.4)');
+  g.globalAlpha=punch;g.fillStyle=q;g.fillRect(0,0,W,H);g.globalAlpha=1}
+}
+function prevFretSame(n){const k=notes.indexOf(n);for(let j=k-1;j>=0;j--)if(notes[j][2]===n[2])return notes[j][3]===n[3];return false}
+function shade(hex,k){const c=parseInt(hex.slice(1),16);return `rgb(${(c>>16)*k|0},${((c>>8)&255)*k|0},${(c&255)*k|0})`}
+function outlined(t,x,y,sz,fill){g.font=`900 ${sz}px ${F}`;g.textAlign='center';g.textBaseline='middle';g.lineWidth=sz*.2;g.lineJoin='round';g.strokeStyle='rgba(8,6,4,.92)';g.strokeText(t,x,y);g.fillStyle=fill;g.fillText(t,x,y)}
+
+// controls
+const bar=document.getElementById('bar'),songsEl=document.getElementById('songs');
+songsEl.innerHTML=Object.keys(PASSAGES).map(s=>`<button data-song="${s}">${s}</button>`).join(' &nbsp; ');
+function show(){
+ bar.querySelectorAll('[data-style]').forEach(b=>b.classList.toggle('on',b.dataset.style===style));
+ bar.querySelectorAll('[data-song]').forEach(b=>b.classList.toggle('on',b.dataset.song===song));
+ bar.querySelector('[data-spread]').classList.toggle('on',spread);
+ bar.querySelectorAll('[data-motion]').forEach(b=>b.classList.toggle('on',b.dataset.motion===motion));
+ bar.querySelectorAll('[data-live]').forEach(b=>{b.classList.toggle('on',live[b.dataset.live]);b.style.display=motion==='pages'?'':'none'});
+ bar.querySelectorAll('[data-change]').forEach(b=>{b.classList.toggle('on',b.dataset.change===change);b.style.display=motion==='pages'?'':'none'});
+ bar.querySelectorAll('#live-bar .sep').forEach(x=>x.style.display=motion==='pages'?'':'none');
+ bar.querySelectorAll('[data-look]').forEach(b=>{b.classList.toggle('on',b.dataset.look===noteLook);b.style.display=motion==='pages'?'':'none'});
+ bar.querySelectorAll('[data-energy]').forEach(b=>{b.classList.toggle('on',energy[b.dataset.energy]);b.style.display=motion==='pages'?'':'none'});
+ bar.querySelector('[data-plain]').style.display=motion==='pages'?'':'none';bar.querySelector('#live-bar .sep').style.display=motion==='pages'?'':'none';
+ bar.querySelector('[data-plain]').classList.toggle('on',!live.rings&&!live.hits&&!live.strings&&!live.lights);
+ bar.querySelector('[data-pause]').textContent=paused?'Play':'Pause';
+ document.getElementById('desc').innerHTML=(MOTION[motion]||DESC[style])+(spread?'<small>Spread fast runs: the board speeds up through busy parts and slows down in quiet ones, so notes on a string never crowd. Every note still reaches the pads on time.</small>':'<small>Space pauses · 1-4 styles · S spread · a real passage from your imported tab, looping.</small>');
+}
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.energy)energy[b.dataset.energy]=!energy[b.dataset.energy];else if(b.dataset.look)noteLook=b.dataset.look;else if(b.dataset.change)change=b.dataset.change;else if(b.dataset.live)live[b.dataset.live]=!live[b.dataset.live];else if('plain' in b.dataset){const on=!live.rings&&!live.hits&&!live.strings&&!live.lights;live.rings=live.hits=live.strings=live.lights=live.punch=live.cascade=on}else if(b.dataset.motion){motion=b.dataset.motion;step={to:null,from:0,at:0}}else if(b.dataset.style)style=b.dataset.style;else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();if('789'.includes(k)&&k)motion=['scroll','steps','pages'][+k-7];else if('1234'.includes(k)&&k)style=['now','tiles','runs','tab'][+k-1];else if(k==='s'){spread=!spread;load()}else if(k===' '){paused=!paused;e.preventDefault()}else return;show()});
+const sp=document.getElementById('speed');sp.oninput=()=>{speedSet=+sp.value;document.getElementById('speedv').textContent=speedSet+'×';load()};
+sp.ondblclick=()=>{sp.value=1;sp.oninput()};
+const ts=document.getElementById('tsize');ts.oninput=()=>{tileScale=+ts.value;document.getElementById('tsizev').textContent=tileScale+'×'};   // tiles / runs: 1x = the game's note width; tab lines: 1x = about half a lane
+ts.ondblclick=()=>{ts.value=1;ts.oninput()};
+const q=new URLSearchParams(location.search);if(q.get('style'))style=q.get('style');if(q.get('motion'))motion=q.get('motion');if(q.get('x4'))live.x4=true;if(q.get('change'))change=q.get('change');if(q.get('look'))noteLook=q.get('look');if(q.get('speed')){sp.value=q.get('speed');speedSet=+sp.value;document.getElementById('speedv').textContent=speedSet+'×'}if(q.get('spread'))spread=true;if(q.get('t'))clock=+q.get('t');if(q.get('pause'))paused=true;if(q.get('size')){ts.value=q.get('size');ts.oninput()}
+load();show();requestAnimationFrame(frame);
+</script>

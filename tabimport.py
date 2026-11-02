@@ -12,6 +12,7 @@ written (time signature, tempo changes, repeat signs, notes with string and fret
 tab's own tempo, and `sync()` maps those times onto the recording.
 """
 
+import bisect
 import re
 import zipfile
 from dataclasses import dataclass, field, replace
@@ -847,15 +848,16 @@ def sync(track, heard, beat=None):
         # Bars from the overall fit are a little rough on a noisy separated track (77% of
         # notes within 50 ms end to end on a test song); placing notes inside each bar like
         # text tabs do (matched in order, guided by the exact rhythm) fixes that.
-        out, matched = _place_in_bars(track, notes, playable, heard, list(bar_audio), bar_starts, ends,
-                                      lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=track.rhythm,
-                                      bar_audio_end=bar_audio_end)
+        out, matched, lines = _place_in_bars(track, notes, playable, heard, list(bar_audio), bar_starts, ends,
+                                             lambda b: (ends[b] - bar_starts[b]) * scale, keep_lengths=track.rhythm,
+                                             bar_audio_end=bar_audio_end)
         # Bars left out (not in this recording) drop their notes; the tab file keeps them.
-        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], notes[k][6] or ""] for k, n in enumerate(out)
-                          if bar_audio[notes[k][5]] is not None],
-                "bars": [round(float(x), 3) for x in bar_audio if x is not None],
+        placed = [(n, notes[k][5], notes[k][6]) for k, n in enumerate(out) if bar_audio[notes[k][5]] is not None]
+        placed, repaired = _repair_repeats(track, notes, out, placed, bar_starts, ends, lines, heard)
+        return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:5], leg or ""] for n, _, leg in placed],
+                "bars": [round(float(x), 3) for x in lines if x is not None],
                 "quality": round(matched / max(1, sum(1 for k in playable if bar_audio[notes[k][5]] is not None)), 2),
-                "found": matched / len(playable)}
+                "found": matched / len(playable), "repaired": repaired}
     # Order only (text tab): spacing inside a bar isn't reliable, and matching the whole
     # pitch sequence slips by a riff repetition (60% right on a test line). So bars are
     # placed by their notes' content (which pitches, not where), at the song's own bar
@@ -967,11 +969,100 @@ def _sync_text(track, notes, playable, tab_p, heard, beat):
                     near = [(x, sc) for x, sc in ahead if x0 <= x <= x0 + 0.6]
                     expected = max(near, key=lambda e: e[1])[0]
         bar_audio[b] = prev = expected
-    out, matched = _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends,
-                                  lambda b: length, keep_lengths=False)
+    out, matched, _ = _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_ends,
+                                     lambda b: length, keep_lengths=False)
     return {"notes": [[round(n[0], 3), round(n[1], 3), *n[2:]] for n in out],
             "bars": [round(float(x), 3) for x in bar_audio], "quality": round(matched / max(1, len(playable)), 2),
             "found": matched / max(1, len(playable))}
+
+
+REPAIR_TOL = 0.1    # s: a differing note counts as heard within this of a heard note of the same pitch
+
+
+def _repair_repeats(track, notes, out, placed, bar_starts, bar_ends, lines, heard):
+    """Bars the tab writes slightly differently from an earlier copy of the same bar, where the recording plays the
+    earlier copy's way: replaced by that copy (user: "look at fireman and dancer, there's parts towards the end that
+    are different when they shouldn't be": its tab file writes bars 83 and 87 as G1 G1 A1 B1 D2..., the song plays the
+    chorus's G1 G1 A#1 D2..., an A#1 heard just where the earlier copy has it).
+
+    A bar is a near-copy of an earlier one when it's the same length and up to 4 notes differ (by time in the bar and
+    pitch) each way, at most a third of them, and both have notes of their own (a copy with extra notes isn't one: that
+    would add notes on one heard note). Only the differing notes decide: each version's own ones placed on this bar in
+    the recording, heard when a heard note of that exact pitch starts within REPAIR_TOL. Bars written the same way are
+    judged together: if the tab's own notes are heard in any of them, all keep the tab's notes; otherwise one clear
+    case (at least half the copy's own notes heard, at least one, and the notes both share heard 70%+, so the recording is clear enough there for a
+    missing note to mean something) repairs every one of them that's heard at least half. (Repairing one bar and then
+    copying it to every identical bar went wrong on Outside: 37 bars, many where the tab's notes were heard.)
+    Fireman & Dancer: bars 83 and 87 repaired; 78 and 79 (a fill the song really plays) keep the tab's notes. On the
+    other 23 imported tabs nothing changes (Wow! Wow! Wow!'s bar 52 had 1 of the copy's 3 notes heard: left as written).
+    Returns the notes and [{bar, from, at}]."""
+    heard_by = {}
+    for h in heard:
+        heard_by.setdefault(int(h[2]), []).append(h[0])
+    for v in heard_by.values():
+        v.sort()
+    def is_heard(p, t):
+        ts = heard_by.get(int(p), [])
+        k = bisect.bisect_left(ts, t - REPAIR_TOL)
+        return k < len(ts) and ts[k] <= t + REPAIR_TOL
+    content = {}                                      # bar -> [(offset in the bar, pitch, k)] of played notes
+    for k, n in enumerate(notes):
+        if not n[4]:
+            content.setdefault(n[5], []).append((round(n[0] - bar_starts[n[5]], 3), track.pitch(n[2], n[3]), k))
+    def differ(a, b):
+        sa, sb = {(o, p) for o, p, _ in content[a]}, {(o, p) for o, p, _ in content[b]}
+        return [x for x in content[a] if (x[0], x[1]) not in sb], [x for x in content[b] if (x[0], x[1]) not in sa]
+    by_bar = {}
+    for item in placed:
+        by_bar.setdefault(item[1], []).append(item)
+    repaired, new_bar, cands = [], {}, []
+    order = sorted(b for b in content if b < len(lines) and lines[b] is not None)
+    for i, b in enumerate(order):
+        length = bar_ends[b] - bar_starts[b]
+        best = None
+        for a in order[:i]:
+            if abs((bar_ends[a] - bar_starts[a]) - length) > 0.01 * length:
+                continue
+            mine, theirs = differ(b, a)
+            if mine and theirs and max(len(mine), len(theirs)) <= 4 and len(mine) + len(theirs) <= max(len(content[a]), len(content[b])) * 2 / 3:
+                if best is None or len(mine) + len(theirs) < best[0]:
+                    best = (len(mine) + len(theirs), a, mine, theirs)
+        if best is None:
+            continue
+        _, a, mine, theirs = best
+        nxt = next((lines[x] for x in range(b + 1, len(lines)) if lines[x] is not None), None)
+        rate = ((nxt - lines[b]) / length) if nxt is not None and nxt > lines[b] else 1.0
+        at = lambda off: lines[b] + off * rate
+        shared = [x for x in content[b] if x not in mine]
+        cands.append({"b": b, "a": a, "key": (tuple((o, p) for o, p, _ in content[b]), a),
+                      "own": sum(is_heard(p, at(o)) for o, p, _ in mine), "copy": sum(is_heard(p, at(o)) for o, p, _ in theirs), "theirs": len(theirs),
+                      "shared": sum(is_heard(p, at(o)) for o, p, _ in shared) / max(1, len(shared))})
+    # Bars written the same way are judged together: the tab's version heard in any of them keeps them all; else one
+    # clear case (the copy's note heard, the rest of the bar heard well) repairs them all.
+    groups = {}
+    for c in cands:
+        groups.setdefault(c["key"], []).append(c)
+    for group in groups.values():
+        if any(c["own"] for c in group) or not any(c["copy"] >= max(1, (c["theirs"] + 1) // 2) and c["shared"] >= 0.7 for c in group):
+            continue
+        for c in group:
+            if c["shared"] >= 0.5:
+                new_bar[c["b"]] = c["a"]
+                repaired.append({"bar": c["b"] + 1, "from": c["a"] + 1, "at": round(float(lines[c["b"]]), 2)})
+    if not new_bar:
+        return placed, repaired
+    result = [item for item in placed if item[1] not in new_bar]
+    for b, a in new_bar.items():
+        nxt = next((lines[x] for x in range(b + 1, len(lines)) if lines[x] is not None), None)
+        length = bar_ends[b] - bar_starts[b]
+        rate = ((nxt - lines[b]) / length) if nxt is not None and nxt > lines[b] else 1.0
+        for k, n in enumerate(notes):                    # the copy's notes, at their places in the bar, on this bar
+            if n[5] != a:
+                continue
+            t = lines[b] + (n[0] - bar_starts[a]) * rate
+            result.append(([t, t + (n[1] - n[0]) * rate, n[2], n[3], n[4]], b, n[6]))
+    result.sort(key=lambda item: item[0][0])
+    return result, repaired
 
 
 STEADY_MAX = 0.08   # how far (s) a bar may be shifted to fit what's heard (see _place_in_bars)
@@ -1005,8 +1096,14 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
     (much of that the nudge itself moving notes onto noisy heard times).
 
     Text tabs: unmatched notes placed in order between their matched neighbours, each lasting
-    until the next (hand-typed spacing is too sloppy to trust: 72% vs 82% on a test)."""
+    until the next (hand-typed spacing is too sloppy to trust: 72% vs 82% on a test).
+
+    Also returns the bar lines: with rhythm, each moved by the shift its notes get at the bar's
+    start. They stayed on the 50 ms sync grid while the notes moved, so a bar's first note often
+    sat up to ~100 ms before its line and was drawn at the end of the bar before (user: "make
+    the tab easier to read" on Flower Power Madness: the same riff bar came out as 9 notes or 8)."""
     out = [[float(n[0]), float(n[1]), n[2], n[3], n[4]] for n in notes]
+    lines = list(bar_audio)
     matched, bars = 0, []
     for b in range(len(bar_audio)):
         a0 = bar_audio[b]
@@ -1069,6 +1166,7 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
             if not bar:
                 continue
             a0, a1, rate, ks, expected, _ = bar
+            lines[b] = a0 + seq[2 * b]
             for i, k in enumerate(ks):
                 t = expected[i] + float(np.interp(expected[i], [a0, a1], [seq[2 * b], seq[2 * b + 1]]))
                 out[k][0], out[k][1] = t, t + (notes[k][1] - notes[k][0]) * rate
@@ -1076,4 +1174,4 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
         for k in range(len(out)):   # each note lasts until the next one starts
             nxt = next((out[j][0] for j in range(k + 1, len(out)) if out[j][0] > out[k][0]), out[k][0] + 0.3)
             out[k][1] = min(nxt, out[k][0] + 1.0)
-    return out, matched
+    return out, matched, lines

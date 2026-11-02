@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board lab · Encore</title>
+<style>
+  /* Mockups for a cooler board (user: "can we make the board look cooler?" -> glass reflections, living strings, new
+     strike pads; "lets do mockups"): the real 3D board (game3d.js) auto-playing a made-up bass line, each new look
+     switched on and off here. Not linked from the app. */
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #070504; overflow: hidden; font: 600 14px -apple-system, BlinkMacSystemFont, sans-serif; color: #f5f0e8; }
+  .game3d { position: fixed; inset: 0; background: #070504; }
+  .game3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .game3d::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 45% 55%, transparent 55%, rgba(5, 3, 2, .75) 100%); }
+  .bar { position: fixed; top: 18px; left: 22px; z-index: 2; display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+  .bar b { font: 900 italic 22px "Avenir Next Condensed", system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fcd34d; margin-right: 6px; }
+  .bar button { border: 0; background: none; padding: 4px 0; color: rgba(255, 245, 230, .5); font: 800 15px "Avenir Next Condensed", system-ui, sans-serif; letter-spacing: .08em;
+    text-transform: uppercase; cursor: pointer; border-bottom: 2px solid transparent; }
+  .bar button.on { color: #fff; border-bottom-color: #f59e0b; }
+  .bar .sep { width: 1px; height: 16px; background: rgba(255, 245, 230, .2); }
+  .note { position: fixed; left: 22px; bottom: 18px; z-index: 2; color: rgba(255, 245, 230, .45); font-size: 12.5px; }
+</style>
+<script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js"}}</script>
+<script type="module" src="/game3d.js"></script>
+</head>
+<body>
+<div class="game3d" id="wrap"></div>
+<div class="bar" id="bar">
+  <b>Board lab</b>
+  <button type="button" data-look="reflect">Reflections</button>
+  <button type="button" data-look="strings">Real strings</button>
+  <button type="button" data-look="minimal">Minimal</button>
+  <span class="sep"></span>
+  <button type="button" data-look="depth">Depth</button>
+  <button type="button" data-look="strike">Strike line</button>
+  <button type="button" data-look="gems">Gems</button>
+  <button type="button" data-all="new">All three</button>
+  <span class="sep"></span>
+  <button type="button" data-look="flow">Flow</button>
+  <button type="button" data-slow>Slow</button>
+  <span class="sep"></span>
+  <button type="button" data-all="off">Old</button>
+  <button type="button" data-all="on">All</button>
+  <span class="sep"></span>
+  <button type="button" data-fire>x4</button>
+  <button type="button" data-strings>5 strings</button>
+</div>
+<div class="note">The real game board playing itself, a made-up bass line. Keys: 1-6 switch the looks · 0 old · A all</div>
+<script type="module">
+  // Wait for the board module.
+  while (!window.Game3D) await new Promise((r) => setTimeout(r, 30));
+  const COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa', '#fb923c', '#c084fc'];
+  const look = { reflect: false, strings: false, minimal: false, depth: false, strike: false, gems: false, flow: false };   // flow: the board facing you, numbers gliding at one speed   // depth / strike / gems: "can we improve the look of the highway?"
+  let fire = false, n = 4, slow = false;
+
+  // A made-up bass line at 120 bpm: 8ths with octave jumps, quick repeats, a few held notes, a fill now and then.
+  const BPM = 120, beat = 60 / BPM, notes = [], bars = [];
+  function makeSong() {
+    notes.length = 0; bars.length = 0;
+    const riff = [[0, 3], [2, 5], [0, 3], [2, 5], [0, 5], [2, 7], [1, 3], [1, 5]];
+    for (let bar = 0; bar < 120; bar++) {
+      const t0 = 1 + bar * 4 * beat;
+      bars.push(t0);
+      if (bar % 8 === 7) {                                // a held note to end the phrase
+        notes.push([t0, t0 + 3 * beat, 1, 5, false, '']);
+        notes.push([t0 + 3 * beat, t0 + 3.5 * beat, 2, 7, false, '']); notes.push([t0 + 3.5 * beat, t0 + 4 * beat, 3, 4, false, '']);
+        continue;
+      }
+      riff.forEach(([s, f], i) => {
+        const t = t0 + i * beat / 2, ss = Math.min(s + (bar % 4 === 2 ? 1 : 0), n - 1);
+        notes.push([t, t + beat / 2, ss, f + (bar % 4 === 3 ? 2 : 0), false, '']);
+        if (bar % 2 === 1 && i === 6) notes.push([t + beat / 4, t + beat / 2, ss, f + (bar % 4 === 3 ? 2 : 0), false, '']);   // a quick repeat
+      });
+    }
+    notes.sort((a, b) => a[0] - b[0]);
+  }
+  makeSong();
+  const prev = () => { const last = {}, out = notes.map(() => -1); notes.forEach(([, , s], k) => { if (last[s] !== undefined) out[k] = last[s]; last[s] = k; }); return out; };
+  let prevArr = prev();
+
+  // Auto-play: every note hit (an odd one missed), bursts and holds like a real game.
+  const wrap = document.getElementById('wrap');
+  window.Game3D.mount(wrap);
+  const start = performance.now(), result = [], laneHitMs = {}, laneMissMs = {}, sustain = {}, bursts = [], hold = {};
+  function frame() {
+    const ms = performance.now(), t = (ms - start) / 1000;
+    for (let k = 0; k < notes.length && notes[k][0] <= t; k++) {
+      if (result[k]) continue;
+      const miss = k % 23 === 11;
+      result[k] = miss ? 'miss' : 'hit';
+      if (miss) laneMissMs[notes[k][2]] = ms; else { laneHitMs[notes[k][2]] = ms; bursts.push({ s: notes[k][2], at: ms, perfect: true, k }); }
+    }
+    notes.forEach(([ns, ne, s], k) => { if (result[k] === 'hit' && ne - ns > 0.4 && t > ns && t < ne) sustain[s] = ms; });
+    while (bursts.length && ms - bursts[0].at > 700) bursts.shift();
+    window.Game3D.frame({
+      t, notes, n, colors: COLORS, names: ['E', 'A', 'D', 'G', 'B', 'E'].slice(0, n).map((x, i) => (n === 5 ? ['B', 'E', 'A', 'D', 'G'][i] : x)),
+      Z: slow ? 4.5 : 2.6, quickGap: 0.25, prev: prevArr, result, laneHitMs, laneMissMs, sustain, bursts, onFire: fire, mood: fire ? 1 : 0.6,
+      fretboard: 'glass', bars, bpm: BPM, playing: true, mult: fire ? 4 : 2, moves: [], inputLane: null, cues: null, moment: 0,
+      bigMoments: false, hold, look,
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // The switches.
+  const bar = document.getElementById('bar');
+  function show() {
+    bar.querySelectorAll('[data-look]').forEach((b) => b.classList.toggle('on', look[b.dataset.look]));
+    bar.querySelector('[data-all="off"]').classList.toggle('on', !Object.values(look).some(Boolean));
+    bar.querySelector('[data-all="new"]').classList.toggle('on', look.depth && look.strike && look.gems);
+    bar.querySelector('[data-all="on"]').classList.toggle('on', look.reflect && look.strings);
+    bar.querySelector('[data-fire]').classList.toggle('on', fire);
+    bar.querySelector('[data-strings]').classList.toggle('on', n === 5);
+    bar.querySelector('[data-slow]').classList.toggle('on', slow);
+  }
+  const all = (on) => { for (const k in look) look[k] = false; look.reflect = look.strings = on; show(); };
+  bar.querySelectorAll('[data-look]').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.look; look[k] = !look[k];
+    if (look[k] && k === 'minimal') look.strings = false; else if (look[k] && k === 'strings') look.minimal = false;   // one string style at a time
+    show();
+  }));
+  bar.querySelector('[data-all="off"]').addEventListener('click', () => all(false));
+  bar.querySelector('[data-all="on"]').addEventListener('click', () => all(true));
+  bar.querySelector('[data-all="new"]').addEventListener('click', () => { const on = !(look.depth && look.strike && look.gems); look.depth = look.strike = look.gems = on; show(); });
+  bar.querySelector('[data-fire]').addEventListener('click', () => { fire = !fire; show(); });
+  bar.querySelector('[data-slow]').addEventListener('click', () => { slow = !slow; show(); });
+  bar.querySelector('[data-strings]').addEventListener('click', () => { n = n === 4 ? 5 : 4; makeSong(); prevArr = prev(); result.length = 0; show(); });
+  addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    if (k === '1') look.reflect = !look.reflect; else if (k === '2') { look.strings = !look.strings; look.minimal = false; } else if (k === '3') { look.minimal = !look.minimal; look.strings = false; }
+    else if (k === '4') look.depth = !look.depth; else if (k === '5') look.strike = !look.strike; else if (k === '6') look.gems = !look.gems;
+    else if (k === '0') return all(false); else if (k === 'a') return all(true); else return;
+    show();
+  });
+  const q = new URLSearchParams(location.search);     // ?look=reflect,strings&fire=1 (for screenshots)
+  for (const x of (q.get('look') || '').split(',')) if (x in look) look[x] = true;
+  fire = q.get('fire') === '1'; slow = q.get('slow') === '1';
+  show();
+</script>
+</body>
+</html>

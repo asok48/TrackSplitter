@@ -1,0 +1,190 @@
+<!doctype html><meta charset="utf-8"><title>Encore glass mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--amber:#f5b70a;--amber2:#f59e0b;--ink:#fff;--soft:rgba(255,245,230,.62);--faint:rgba(255,245,230,.38);
+ --glass:rgba(255,255,255,.075);--glass-hi:rgba(255,255,255,.14);--edge:rgba(255,255,255,.16);--edge-top:rgba(255,255,255,.34);
+ --blur:28px;--F:-apple-system,"SF Pro Display",system-ui,sans-serif;--C:"Avenir Next Condensed","Avenir Next",var(--F)}
+*{box-sizing:border-box}
+body{margin:0;background:#0b0a0e;color:#ddd;font:15px var(--F);padding:20px 16px 60px}
+h2{font:700 20px var(--F);margin:34px auto 6px;max-width:1200px;color:#fff} p.note{margin:0 auto 12px;color:#9a948c;max-width:1200px;line-height:1.45}
+.bar{max-width:1200px;margin:0 auto 10px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;color:#bbb}
+.bar label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.screen{position:relative;max-width:1200px;margin:0 auto;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:#07060a;font-family:var(--C);color:#fff;isolation:isolate}
+.cover{border-radius:12px;background:var(--c,linear-gradient(135deg,#f97316,#7c3aed));position:relative;overflow:hidden}
+.cover::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.35),transparent 45%),repeating-linear-gradient(45deg,rgba(0,0,0,.12) 0 10px,transparent 10px 22px)}
+.bgblur{position:absolute;inset:-80px;background:var(--c);filter:blur(60px) brightness(.45) saturate(1.4);z-index:-1}
+/* The glass: frosted fill, a bright top edge, a soft specular sheen, deep shadow */
+.glass{background:linear-gradient(180deg,var(--glass-hi),var(--glass) 40%,rgba(255,255,255,.04));
+ backdrop-filter:blur(var(--blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.6);
+ border:1px solid var(--edge);border-top-color:var(--edge-top);border-radius:22px;
+ box-shadow:0 20px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.18),inset 0 -1px 0 rgba(0,0,0,.25)}
+.glass.thin{border-radius:14px}
+.glass.on{background:linear-gradient(180deg,rgba(245,183,10,.36),rgba(245,158,11,.16));border-color:rgba(252,211,77,.55);border-top-color:rgba(255,236,170,.8);
+ box-shadow:0 14px 40px rgba(245,158,11,.28),inset 0 1px 0 rgba(255,240,200,.5)}
+.btn{font:800 17px var(--C);letter-spacing:.08em;text-transform:uppercase;color:#fff;padding:14px 22px;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn.primary{color:#1a0f05;background:linear-gradient(180deg,rgba(253,224,120,.95),rgba(245,158,11,.92));border:1px solid rgba(255,236,170,.9);box-shadow:0 14px 34px rgba(245,158,11,.35),inset 0 1px 0 #fff6d0}
+.stars{color:var(--amber);letter-spacing:2px} .stars i{font-style:normal;color:rgba(255,245,230,.22)}
+.k{font:600 12px var(--F);color:var(--faint);letter-spacing:.04em}
+
+/* ---------- 1. Song select ---------- */
+#sel .top{position:absolute;left:28px;right:28px;top:22px;display:flex;align-items:center;gap:14px}
+#sel .top .title{font-size:30px;font-weight:900;letter-spacing:.06em}
+#sel .tools{margin-left:auto;display:flex;gap:6px;padding:5px}
+#sel .tools span{padding:8px 14px;border-radius:10px;font:700 14px var(--F);color:var(--soft)}
+#sel .tools span.on{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+#sel .search{width:220px;padding:11px 16px;font:500 14px var(--F);color:var(--faint)}
+#sel .car{position:absolute;left:0;right:0;top:92px;height:250px;display:flex;justify-content:center;align-items:center;perspective:900px}
+#sel .car .cover{position:absolute;width:210px;height:210px;box-shadow:0 30px 60px rgba(0,0,0,.55)}
+#sel .panel{position:absolute;left:28px;right:28px;bottom:26px;top:372px;display:grid;grid-template-columns:1fr 1.05fr;gap:18px}
+#sel .now{padding:22px 26px;display:flex;flex-direction:column;gap:8px}
+#sel .now h1{margin:0;font-size:44px;font-weight:900;line-height:1}
+#sel .now .artist{font-size:20px;font-weight:700;color:var(--soft)}
+#sel .inst{display:flex;gap:6px;margin-top:6px} #sel .inst span{padding:7px 14px;font:700 14px var(--F)}
+#sel .tune{margin-top:auto;display:flex;gap:6px;align-items:center}
+#sel .tune b{width:44px;text-align:center;padding:5px 0;font-size:18px} #sel .tune small{display:block;font:700 11px var(--F);color:#4ade80}
+#sel .diffs{display:flex;flex-direction:column;gap:8px}
+#sel .diff{display:grid;grid-template-columns:10px 1fr auto auto;align-items:center;gap:14px;padding:11px 18px;border-radius:14px}
+#sel .diff .dot{width:10px;height:10px;border-radius:50%;background:var(--dc);box-shadow:0 0 12px var(--dc)}
+#sel .diff b{font-size:18px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+#sel .diff .best{font:700 14px var(--F);color:var(--soft);font-variant-numeric:tabular-nums}
+#sel .go{display:flex;gap:10px;margin-top:2px} #sel .go .primary{flex:1;font-size:22px;padding:15px}
+
+/* ---------- 2. In game ---------- */
+#game canvas{position:absolute;inset:0;width:100%;height:100%;z-index:-1}
+#game .hud{position:absolute;right:26px;top:24px;display:flex;align-items:center;gap:14px}
+#game .score{padding:12px 22px 10px;text-align:right;min-width:230px}
+#game .score .num{font-size:44px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+#game .score .stars{font-size:17px;margin-top:4px}
+#game .call{position:absolute;right:380px;top:44px;font-size:28px;font-weight:900;color:#fcd34d;letter-spacing:.04em;text-shadow:0 2px 14px rgba(0,0,0,.6)}
+#game .mult{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;position:relative}
+#game .mult svg{position:absolute;inset:8px}
+#game .mult b{font-size:30px;font-weight:900;color:#60a5fa;text-shadow:0 0 16px rgba(96,165,250,.7)}
+#game .mult small{position:absolute;bottom:-22px;left:0;right:0;text-align:center;font:800 12px var(--C);letter-spacing:.12em;color:var(--soft)}
+#game .guide{position:absolute;left:26px;bottom:22px;padding:10px 14px 12px;width:330px}
+#game .guide .neck{height:44px;border-radius:6px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.14) 0 1px,transparent 1px 20px);position:relative;margin-top:6px}
+#game .guide .neck::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.18) 0 1px,transparent 1px 11px)}
+#game .guide .hand{position:absolute;left:100px;width:80px;top:-3px;bottom:-3px;border-radius:7px;background:rgba(245,183,10,.25);border:2px solid var(--amber)}
+#game .names{position:absolute;left:96px;top:0;bottom:0}
+#game .names span{position:absolute;left:0;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:11px;display:grid;place-items:center;font-size:18px;font-weight:900}
+/* "Cheap glass": what the HUD canvas can draw itself every frame with no real blur behind */
+.cheap .glass{backdrop-filter:none;-webkit-backdrop-filter:none;background:linear-gradient(180deg,rgba(40,36,48,.72),rgba(20,18,26,.62))}
+.cheap .glass.on{background:linear-gradient(180deg,rgba(120,84,10,.75),rgba(70,46,8,.65))}
+
+/* ---------- 3. Pause ---------- */
+#pause .frozen{position:absolute;inset:0;z-index:-1;filter:blur(18px) brightness(.55)}
+#pause .frozen canvas{width:100%;height:100%}
+#pause .card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:440px;padding:30px 30px 26px;display:flex;flex-direction:column;gap:10px}
+#pause .card h1{margin:0 0 2px;font-size:46px;font-weight:900;letter-spacing:.04em}
+#pause .card .sub{font:600 15px var(--F);color:var(--soft);margin-bottom:10px}
+#pause .card .btn{justify-content:flex-start;padding:14px 20px;border-radius:14px}
+#pause .card .btn.quit{color:#fca5a5}
+#pause .progress{height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:6px;overflow:hidden}#pause .progress i{display:block;height:100%;width:42%;background:var(--amber)}
+
+/* ---------- 4. Results ---------- */
+#res .wrap{position:absolute;inset:34px;display:grid;grid-template-columns:300px 1fr;gap:26px;align-items:center}
+#res .art{width:300px;height:300px;box-shadow:0 30px 70px rgba(0,0,0,.6)}
+#res .main{padding:28px 30px;display:flex;flex-direction:column;gap:14px}
+#res h1{margin:0;font-size:40px;font-weight:900;line-height:1} #res .artist{font-size:19px;font-weight:700;color:var(--soft)}
+#res .big{font-size:88px;font-weight:900;line-height:.95;font-variant-numeric:tabular-nums}
+#res .big .stars{font-size:30px;vertical-align:middle;margin-left:14px}
+#res .new{display:inline-block;padding:5px 12px;font:800 12px var(--C);letter-spacing:.14em;color:#1a0f05;background:var(--amber);border-radius:8px;margin-left:8px;vertical-align:middle}
+#res .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#res .stat{padding:12px 14px} #res .stat b{display:block;font-size:30px;font-weight:900;font-variant-numeric:tabular-nums} #res .stat span{font:700 12px var(--F);color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+#res .acts{display:flex;gap:10px} #res .acts .btn{flex:1;border-radius:14px}
+
+@media (max-width:820px){.screen{aspect-ratio:auto;min-height:760px}}
+</style>
+
+<h2>Encore · full glass look</h2>
+<p class="note">Every panel, button and chip as frosted glass over the song's blurred cover (or the board): a bright top edge, a soft sheen and a deep shadow, amber kept as the accent. Static mockup: nothing here is wired to the game. Use the switches to compare.</p>
+<div class="bar">
+ <label><input type="range" id="blur" min="0" max="50" value="28"> Frost <span id="blurv">28</span> px</label>
+ <label><input type="range" id="tint" min="2" max="20" value="8"> Tint <span id="tintv">8</span>%</label>
+</div>
+
+<h2>1 · Song select</h2>
+<p class="note">Tools, the song panel, difficulty rows and the input all on glass. The covers carousel stays as it is.</p>
+<div class="screen" id="sel" style="--c:linear-gradient(135deg,#ef4444,#7c2d12 60%,#1e1b4b)">
+ <div class="bgblur"></div>
+ <div class="top"><span class="glass thin btn" style="padding:9px 12px">‹</span><span class="title">SONGS</span>
+  <div class="tools glass thin"><span class="on">Recent</span><span>A–Z</span><span>Artist</span></div>
+  <div class="tools glass thin"><span class="on">Covers</span><span>List</span></div>
+  <div class="search glass thin">Search 28 songs</div></div>
+ <div class="car" id="car"></div>
+ <div class="panel">
+  <div class="now glass"><h1>Hysteria</h1><div class="artist">Muse</div>
+   <div class="inst"><span class="glass thin on">Bass</span><span class="glass thin">Guitar</span></div>
+   <div class="tune"><span class="k" style="margin-right:auto">STANDARD · TUNED</span><b class="glass thin">E<small>+2</small></b><b class="glass thin">A<small>0</small></b><b class="glass thin">D<small>−1</small></b><b class="glass thin">G<small>+3</small></b></div>
+  </div>
+  <div class="diffs">
+   <div class="diff glass" style="--dc:#4ade80"><i class="dot"></i><b>Easy</b><span class="stars">★★★★★</span><span class="best">48,120</span></div>
+   <div class="diff glass" style="--dc:#facc15"><i class="dot"></i><b>Medium</b><span class="stars">★★★★<i>★</i></span><span class="best">71,900</span></div>
+   <div class="diff glass on" style="--dc:#f97316"><i class="dot"></i><b>Hard</b><span class="stars">★★★<i>★★</i></span><span class="best">96,450</span></div>
+   <div class="diff glass" style="--dc:#ef4444"><i class="dot"></i><b>Expert</b><span class="stars"><i>★★★★★</i></span><span class="best">—</span></div>
+   <div class="go"><span class="glass thin btn" style="font:600 14px var(--F);text-transform:none;letter-spacing:0">🎛 Scarlett · Input 1</span><span class="btn glass primary">Play</span></div>
+  </div>
+ </div>
+</div>
+
+<h2>2 · In game</h2>
+<p class="note">Score, multiplier, string names and the hand guide on glass. The notes and their fret numbers stay as they are (no glass over the board, so it stays readable).</p>
+<div class="bar"><label><input type="checkbox" id="cheap"> Cheap glass (no real blur: what the game could draw every frame for free)</label></div>
+<div class="screen" id="game">
+ <canvas id="board"></canvas>
+ <div class="call">PERFECT</div>
+ <div class="hud"><div class="score glass"><div class="num">124,560</div><div class="stars">★★★<i>★★</i></div></div>
+  <div class="mult glass"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="6"/><circle cx="40" cy="40" r="34" fill="none" stroke="#60a5fa" stroke-width="6" stroke-linecap="round" stroke-dasharray="214 214" transform="rotate(-90 40 40)" style="filter:drop-shadow(0 0 6px #60a5fa)"/></svg><b>4x</b><small>38 STREAK</small></div></div>
+ <div class="names" id="names"></div>
+ <div class="guide glass thin"><span class="k">HAND · FRETS 5–8 · ↑ 7 NEXT</span><div class="neck"><div class="hand"></div></div></div>
+</div>
+
+<h2>3 · Pause</h2>
+<p class="note">The frozen game blurred behind one glass card, instead of floating text.</p>
+<div class="screen" id="pause">
+ <div class="frozen"><canvas id="board2"></canvas></div>
+ <div class="card glass"><h1>PAUSED</h1><div class="sub">Hysteria · Muse · Hard · 1:42 of 3:47<div class="progress"><i></i></div></div>
+  <div class="btn primary" style="border-radius:14px">▶ Resume</div>
+  <div class="btn glass thin">↺ Restart</div><div class="btn glass thin">⚙ Settings</div><div class="btn glass thin">◎ Calibrate timing</div><div class="btn glass thin quit">✕ Quit to songs</div></div>
+</div>
+
+<h2>4 · Results</h2>
+<p class="note">Cover on the left, one glass panel with the score, stat tiles as smaller glass.</p>
+<div class="screen" id="res" style="--c:linear-gradient(135deg,#ef4444,#7c2d12 60%,#1e1b4b)">
+ <div class="bgblur"></div>
+ <div class="wrap"><div class="cover art" style="--c:linear-gradient(135deg,#ef4444,#7c2d12 60%,#1e1b4b)"></div>
+  <div class="main glass"><div><h1>Hysteria</h1><div class="artist">Muse · Hard</div></div>
+   <div class="big">124,560<span class="stars">★★★★<i>★</i></span><span class="new">NEW BEST</span></div>
+   <div class="stats"><div class="stat glass thin"><b>91%</b><span>Notes hit</span></div><div class="stat glass thin"><b>212</b><span>Best streak</span></div><div class="stat glass thin"><b>148</b><span>Perfect</span></div><div class="stat glass thin"><b>9</b><span>Missed</span></div></div>
+   <div class="acts"><div class="btn primary">Play again</div><div class="btn glass thin">Songs</div></div></div></div>
+</div>
+
+<script>
+const COL=['#4ade80','#f87171','#facc15','#60a5fa'],NAMES=['E','A','D','G'];
+const NOTES=[[0.3,1,5],[0.6,1,7],[0.95,0,0],[1.25,0,0],[1.5,2,7],[1.8,1,5],[2.1,1,7],[2.35,3,5],[2.65,0,0],[2.9,2,7],[3.15,1,5],[3.45,0,3]];
+function board(cv,withNames){
+ const r=cv.getBoundingClientRect(),dpr=2,W=r.width,H=r.height;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);
+ const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#081022');bg.addColorStop(1,'#0b0a18');g.fillStyle=bg;g.fillRect(0,0,W,H);
+ for(const[x,c]of[[.3,'rgba(59,130,246,.35)'],[.85,'rgba(139,92,246,.25)']]){const q=g.createRadialGradient(W*x,H*.15,0,W*x,H*.15,H);q.addColorStop(0,c);q.addColorStop(1,'transparent');g.fillStyle=q;g.fillRect(0,0,W,H)}
+ const n=4,nearX=W*.11,farX=W*.99,midY=H*.55,Z=3.6,dd=Z*3,rowH=H*.12,depth=z=>dd/(z+dd),sx=z=>nearX+(farX-nearX)*((z*(Z+dd))/(Z*(z+dd))),laneY=(s,z)=>midY-(s-1.5)*rowH*depth(z),edge=(sd,z)=>midY+sd*2*rowH*depth(z);
+ g.fillStyle='rgba(10,12,20,.85)';g.beginPath();g.moveTo(sx(-.1),edge(-1,-.1));g.lineTo(sx(Z),edge(-1,Z));g.lineTo(sx(Z),edge(1,Z));g.lineTo(sx(-.1),edge(1,-.1));g.fill();
+ const wash=g.createLinearGradient(nearX,0,farX,0);wash.addColorStop(0,'rgba(96,165,250,.18)');wash.addColorStop(1,'transparent');g.fillStyle=wash;g.fill();
+ for(let b=0;b<Z;b+=.3){const z=b+.1,maj=Math.round(b/.3)%4===0;g.strokeStyle=maj?'rgba(255,255,255,.2)':'rgba(255,255,255,.05)';g.lineWidth=maj?2:1;g.beginPath();g.moveTo(sx(z),edge(-1,z));g.lineTo(sx(z),edge(1,z));g.stroke()}
+ for(let s=0;s<n;s++){g.strokeStyle=COL[s]+'aa';g.lineWidth=2.5*depth(0);g.beginPath();g.moveTo(sx(-.1),laneY(s,-.1));g.lineTo(sx(Z),laneY(s,Z));g.stroke()}
+ const gh=H*.07,gw=gh*1.25;
+ for(let s=0;s<n;s++){const y=laneY(s,0);g.beginPath();g.roundRect(nearX-gw/2,y-gh/2,gw,gh,gh/2);g.fillStyle=s===1?'#60a5fa':'rgba(255,255,255,.05)';if(s===1){g.shadowColor='#60a5fa';g.shadowBlur=26}g.fill();g.shadowBlur=0;g.lineWidth=2.5;g.strokeStyle=s===1?'#bfdbfe':'#60a5fa';g.stroke()}
+ g.textAlign='center';g.textBaseline='middle';
+ for(const[t,s,f]of[...NOTES].reverse()){const k=depth(t),w=gw*k,h=gh*k,x=sx(t),y=laneY(s,t);g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,h/2.4);
+  if(f===0){g.lineWidth=3*k;g.strokeStyle=COL[s];g.stroke()}else{g.fillStyle=COL[s];g.fill();g.lineWidth=1.5;g.strokeStyle='rgba(147,197,253,.7)';g.stroke()}
+  const sz=Math.max(17,34*k);g.font=`900 ${sz}px "Avenir Next Condensed",system-ui`;g.lineWidth=sz*.2;g.lineJoin='round';g.strokeStyle='rgba(8,6,4,.92)';g.strokeText(f,x,y-h*.95);g.fillStyle=f===0?COL[s]:'#fff';g.fillText(f,x,y-h*.95)}
+ if(withNames){const el=document.getElementById('names');el.style.left=(nearX-gw/2-30)+'px';el.innerHTML=NAMES.map((N,s)=>`<span class="glass thin" style="top:${laneY(s,0)}px;color:${COL[s]}">${N}</span>`).join('')}
+}
+const car=document.getElementById('car'),hues=[[220,280],[150,200],[20,340],[0,25],[40,10],[260,190],[300,220]];
+[-3,-2,-1,0,1,2,3].forEach((o,i)=>{const d=document.createElement('div');d.className='cover';const[h1,h2]=hues[i];d.style.setProperty('--c',`linear-gradient(135deg,hsl(${h1} 80% 55%),hsl(${h2} 70% 22%))`);
+ if(o===0)d.style.setProperty('--c','linear-gradient(135deg,#ef4444,#7c2d12 60%,#1e1b4b)');
+ d.style.transform=`translateX(${o*190}px) translateZ(${-Math.abs(o)*170}px) rotateY(${-o*28}deg) scale(${o?0.82:1.08})`;d.style.zIndex=10-Math.abs(o);d.style.filter=o?`brightness(${1-Math.abs(o)*.18})`:'none';car.appendChild(d)});
+const draw=()=>{board(document.getElementById('board'),true);board(document.getElementById('board2'),false)};draw();addEventListener('resize',draw);
+const root=document.documentElement;
+blur.oninput=()=>{root.style.setProperty('--blur',blur.value+'px');blurv.textContent=blur.value};
+tint.oninput=()=>{const t=tint.value/100;root.style.setProperty('--glass',`rgba(255,255,255,${t})`);root.style.setProperty('--glass-hi',`rgba(255,255,255,${t*1.8})`);tintv.textContent=tint.value};
+cheap.onchange=()=>document.getElementById('game').classList.toggle('cheap',cheap.checked);
+</script>

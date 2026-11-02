@@ -61,6 +61,7 @@ from send2trash import send2trash
 import tab
 import tabimport
 import tone
+import lights
 
 HOST, PORT = "127.0.0.1", 7860
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -216,10 +217,11 @@ def encode_mp3(audio, samplerate, dest):
     subprocess.run(cmd, input=pcm, check=True)
 
 
-def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=None: None, fast=False):
+def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=None: None, fast=False, keep=None):
     """Return the chosen instruments summed together, same shape as mix.
 
     on_progress(fraction, step): how far along (0-1, or None) and what it's doing now.
+    keep: a dict that gets "vocals" (the vocals the model separated anyway, for Encore's light cues).
     """
     wav = torch.from_numpy(mix)
     ref = wav.mean(0)
@@ -249,6 +251,8 @@ def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=No
             out = run_model(lambda device: run_roformer(mix, progress, device, fast), progress)
             for stem in wanted:
                 parts[stem] = out[ROFORMER_SOURCES.index(stem)]
+            if keep is not None:
+                keep["vocals"] = out[ROFORMER_SOURCES.index("vocals")]
             continue
 
         def callback(d):
@@ -262,6 +266,8 @@ def separate(mix, stems, high_quality, on_progress=lambda fraction=None, step=No
         out = run_model(demucs, progress)
         for stem in wanted:
             parts[stem] = (out[model.sources.index(stem)] * std).numpy()
+        if keep is not None and "vocals" in model.sources and "vocals" not in keep:
+            keep["vocals"] = (out[model.sources.index("vocals")] * std).numpy()
 
     if GUITAR_PARTS & set(stems):
         on_progress(1.0, "Splitting lead and rhythm guitar")
@@ -297,8 +303,16 @@ def center_of(stereo):
     return torch.istft(center, 4096, 1024, window=window, length=x.shape[1]).numpy()
 
 
+gpu_lock = threading.Lock()   # one model at a time (the job worker and the background vocals pass)
+
+
 def run_model(fn, on_progress=lambda fraction=None, step=None: None):
     """fn(device) on the GPU, retried on the CPU if the Apple GPU lacks an operation."""
+    with gpu_lock:
+        return _run_model(fn, on_progress)
+
+
+def _run_model(fn, on_progress):
     try:
         return fn(DEVICE)
     except (RuntimeError, NotImplementedError):
@@ -546,7 +560,8 @@ job_queue = queue.Queue()
 def make_version(source, song_dir, stems, level, high_quality, on_progress, fast=False):
     on_progress(0.0, "Reading the song")
     mix = decode(source, SAMPLERATE)
-    removed = separate(mix, stems, high_quality, on_progress, fast)
+    keep = {}
+    removed = separate(mix, stems, high_quality, on_progress, fast, keep=keep)
     on_progress(1.0, "Saving")
     # Subtracting the separated parts from the original keeps everything else untouched.
     without = mix - removed * (1.0 - level / 100.0)
@@ -566,6 +581,11 @@ def make_version(source, song_dir, stems, level, high_quality, on_progress, fast
     meta = read_meta(song_dir)
     meta.setdefault("versions", {})[version_key(song_dir, version)] = {"level": level, "fast": fast}
     write_meta(song_dir, meta)
+    try:                                              # Encore's light cues while the song and its vocals are at hand
+        on_progress(1.0, "Finding the light cues")
+        make_lights(song_dir, mix, keep.get("vocals"))
+    except Exception as e:  # never costs the version
+        print(f"Light cues for {song_dir.name}: {e}", flush=True)
     return version
 
 
@@ -682,7 +702,11 @@ IMPORT_FILE = ".bass-tab-imported.json"
 #    times the usual notes counts as several bars.
 # 10: pasted text tabs without count lines take their rhythm from the spacing (a strummed
 #    chorus's steady 8ths had come out 0.03-0.8 s apart). (Made as 8 on the guitar branch.)
-IMPORT_RULES = 10
+# 11: bar lines move with their notes (they stayed on the 50 ms sync grid, so a bar's first
+#    note often sat before its line and showed at the end of the bar before).
+# 12: bars the tab writes a little differently from an earlier copy, where the recording plays
+#    the copy's way, take the copy's notes (tabimport._repair_repeats; "repaired" in the import).
+IMPORT_RULES = 12
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 INSTRUMENTS_WITH_TABS = ("bass", "guitar")
 # Guitar tabs (imported only, for now) live beside the bass ones under their own names
@@ -827,7 +851,7 @@ def import_tab(song_dir, source, report, instrument="bass", track_index=None):
     prefix = import_prefix(instrument)
     out = {"name": "Pasted tab" if source.name == f"{prefix}.txt" else source.name.replace(f"{prefix} - ", ""),
            "track": track.name, "track_index": track_index, "instrument": instrument, "capo": track.capo,
-           "made": time.time(), "quality": synced["quality"], "tuning": key or "custom",
+           "made": time.time(), "quality": synced["quality"], "repaired": synced.get("repaired", []), "tuning": key or "custom",
            "label": label, "strings": names, "open": opens, "notes": synced["notes"], "lines": lines, "bpm": bpm,
            "rules": IMPORT_RULES, **({"heard_rules": GUITAR_HEARD_RULES} if instrument == "guitar" else {})}
     write_import(song_dir, out)
@@ -2085,6 +2109,19 @@ def unified_notes(imported, skip=None):
                 for i, p in zip(idx, pitches):
                     if p in fmap:
                         notes[i][2], notes[i][3] = fmap[p]
+    return same_note_same_place(notes, import_opens(imported))
+
+
+def same_note_same_place(notes, opens):
+    """A note repeated back to back (the very next note played, under 0.6 s later) stays where the run began. A
+    "make repeats match" choice moves only the bars of its group, so a run of one note could switch strings where a
+    group began or ended: Thank You for the Venom went eight B1s on the E string's 7th fret, then on to the A string's
+    2nd (user: "it makes no sense to switch around playing 2 on the A and 7 on the E")."""
+    prev = None
+    for n in sorted((n for n in notes if not n[4]), key=lambda n: n[0]):
+        if prev is not None and n[0] - prev[0] < 0.6 and n[0] - prev[0] > 0.03 and opens[n[2]] + n[3] == opens[prev[2]] + prev[3]:
+            n[2], n[3] = prev[2], prev[3]
+        prev = n
     return notes
 
 
@@ -2509,6 +2546,150 @@ def game_check_audio(check_id: str):
 # (user: "I have 3 different basses that all sound different, would be nice to pick which
 # I am playing", "it should work for any instrument"), one picked per type; for bass,
 # every DI recording in the library pooled ("recordings") is there until one is captured.
+# --- Encore's light cues (lights.py) ----------------------------------------------------
+# Per song in <song>/.light-cues.json: kicks, snares, loudness, big moments, accents from the whole song, and held
+# vocal notes from its vocals. Made when a version is made (the vocals come free from the separation), else on the
+# first GET /api/lights (the song part takes ~1 s; the vocals then come from a one-time background pass).
+LIGHTS_FILE = ".light-cues.json"
+LIGHTS_RULES = 1        # bump when lights.song_cues changes (song cues are made again; vocals kept)
+VOCALS_RULES = 1        # bump when lights.vocal_cues or how the vocals are separated changes
+lights_lock = threading.Lock()
+vocals_queue, vocals_waiting = queue.Queue(), set()
+
+
+def to_light_rate(audio):
+    """Mono at lights.RATE (half of 44.1 kHz: pairs averaged) from a (channels, samples) array at SAMPLERATE."""
+    mono = np.asarray(audio, dtype=np.float32).mean(axis=0)
+    mono = mono[: len(mono) // 2 * 2]
+    return mono.reshape(-1, 2).mean(axis=1)
+
+
+def whole_song(song_dir):
+    """The whole song, (2, samples) at SAMPLERATE: the original, else a version's two halves added back up."""
+    src = original_file(song_dir)
+    if src:
+        return decode(src, SAMPLERATE)
+    for without in sorted(song_dir.glob("* (no *).mp3"), key=lambda p: HQ_TAG not in p.name):
+        only = without.with_name(NO_RE.sub(r" (\1 only)", without.stem) + ".mp3")
+        if only.exists():
+            a, b = decode(without, SAMPLERATE), decode(only, SAMPLERATE)
+            n = min(a.shape[1], b.shape[1])
+            return a[:, :n] + b[:, :n]
+    return None
+
+
+def read_lights(song_dir):
+    try:
+        return json.loads((song_dir / LIGHTS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def make_lights(song_dir, mix=None, vocals=None):
+    """Light cues from the whole song (mix: (2, n) at SAMPLERATE, read if not given) and, when given, its vocals.
+    Vocals cues already saved are kept when no vocals are given."""
+    with lights_lock:
+        old = read_lights(song_dir) or {}
+        if mix is None:
+            mix = whole_song(song_dir)
+            if mix is None:
+                return None
+        out = {"rules": LIGHTS_RULES, **lights.song_cues(to_light_rate(mix))}
+        if vocals is not None:
+            out["vocals"] = {"rules": VOCALS_RULES, **lights.vocal_cues(to_light_rate(vocals))}
+        elif (old.get("vocals") or {}).get("rules") == VOCALS_RULES:
+            out["vocals"] = old["vocals"]
+        (song_dir / LIGHTS_FILE).write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
+        return out
+
+
+def vocals_worker():
+    """Songs added before light cues: their vocals separated once (htdemucs, the standard model), in the background,
+    one at a time, only while no song is being processed (the GPU lock) and never during a game: it shares the GPU
+    with the game's 3D board (the board fell to 16 fps beside it), so it waits for the game to end and pauses
+    mid-song while one is played (the model's progress callback holds still)."""
+    def hold(fraction=None, step=None):
+        while game_on():
+            time.sleep(1)
+    while True:
+        song_dir = vocals_queue.get()
+        try:
+            got = read_lights(song_dir)
+            if song_dir.is_dir() and not ((got or {}).get("vocals") or {}).get("rules") == VOCALS_RULES:
+                hold()
+                mix = whole_song(song_dir)
+                if mix is not None:
+                    vocals = separate(mix, ["vocals"], False, on_progress=hold)
+                    make_lights(song_dir, mix, vocals)
+        except Exception as e:  # a missing file, the GPU busy elsewhere...: tried again next time it's asked for
+            print(f"Vocals for light cues, {song_dir.name}: {e}", flush=True)
+        finally:
+            vocals_waiting.discard(song_dir)
+
+
+def queue_vocals(song_dir):
+    if song_dir not in vocals_waiting:
+        vocals_waiting.add(song_dir)
+        vocals_queue.put(song_dir)
+
+
+@api.get("/api/lights")
+def get_lights(song: str):
+    """A song's light cues for Encore, made now from the whole song if missing (~1 s); vocals follow later."""
+    song_dir = library_path(song, 2)
+    if not song_dir.is_dir():
+        raise HTTPException(404, "That song doesn't exist.")
+    got = read_lights(song_dir)
+    if not got or got.get("rules") != LIGHTS_RULES:
+        got = make_lights(song_dir)
+        if not got:
+            raise HTTPException(404, "This song has no audio to read light cues from.")
+    if (got.get("vocals") or {}).get("rules") != VOCALS_RULES:
+        queue_vocals(song_dir)
+    return got
+
+
+# Ratings from the light check page (static/lights-check.html, user: "build the big-moments check page so I can rate
+# them, and use my ratings to tune the detection"): per song in <song>/.light-ratings.json, each mark a time, what it
+# was (a detected big moment or stab, or a spot the user says was missed) and the verdict. tools/lights_tune.py scores
+# lights.py's settings against them.
+LIGHT_RATINGS = ".light-ratings.json"
+
+
+class LightMark(BaseModel):
+    t: float
+    kind: str        # "big" / "stab" (detected) or "missed" (added by the user)
+    verdict: str     # "yes", "no", "bigger" (a stab that should be a big moment), "missed"
+
+
+class LightRatings(BaseModel):
+    song: str
+    marks: list[LightMark]
+
+
+@api.get("/api/lights/ratings")
+def get_light_ratings(song: str):
+    song_dir = library_path(song, 2)
+    try:
+        return json.loads((song_dir / LIGHT_RATINGS).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"marks": []}
+
+
+@api.post("/api/lights/ratings")
+def save_light_ratings(req: LightRatings):
+    song_dir = library_path(req.song, 2)
+    if not song_dir.is_dir():
+        raise HTTPException(404, "That song doesn't exist.")
+    marks = [m.model_dump() if hasattr(m, "model_dump") else m.dict() for m in req.marks]
+    bad = [m for m in marks if m["kind"] not in ("big", "stab", "missed") or m["verdict"] not in ("yes", "no", "bigger", "missed")]
+    if bad:
+        raise HTTPException(400, "Unknown mark.")
+    data = {"marks": sorted(marks, key=lambda m: m["t"]), "updated": time.time(), "lights_rules": LIGHTS_RULES}
+    (song_dir / LIGHT_RATINGS).write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return {"ok": True, "count": len(marks)}
+
+
 TONE_FILE = ".tone.json"
 TONE_RULES = 3          # bump when tone.profile / tone.sections change: songs' spectra are measured again
 TONE_AUDIO = ".instrument-tones"   # (library root) each capture's audio, FLAC, by instrument id
@@ -3309,9 +3490,19 @@ _last_ping = [time.time() + 45]
 
 
 @api.post("/api/ping")
-def ping(bye: int = 0):
+def ping(bye: int = 0, game: int = 0):
     _last_ping[0] = time.time() - (12 if bye else 0)   # a goodbye: stop in ~3 s unless another page is open
+    if game:
+        _game_ping[0] = time.time()                    # a game on: the background vocals pass waits (vocals_worker)
     return {"ok": True}
+
+
+_game_ping = [0.0]
+
+
+def game_on():
+    """A game was being played in the last 12 s (Encore says so in its 5 s check-in)."""
+    return time.time() - _game_ping[0] < 12
 
 
 def auto_quit_watch():
@@ -3713,6 +3904,7 @@ def main(port=PORT, open_browser=True, page="", auto_quit=False):
     threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=learner, daemon=True).start()
     threading.Thread(target=cover_worker, daemon=True).start()
+    threading.Thread(target=vocals_worker, daemon=True).start()
     if auto_quit:
         threading.Thread(target=auto_quit_watch, daemon=True).start()
     queue_learning()   # tabs imported before the app learned fingering, or removed by hand

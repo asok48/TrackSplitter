@@ -74,10 +74,14 @@ in use. Ground rules agreed so far (kept here so every computer's session has th
   syncing to the recording. See "Imported tabs".
 - `tone.py`: "Match the song's tone" (an EQ for Hear myself). Module docstring has the
   method and measurements; see "Match the song's tone" under My tab.
+- `lights.py`: Encore's light cues (kicks, snares, loudness, big moments, accents from the whole song; held vocal
+  notes from its vocals), saved as `.light-cues.json`; see "Game screen" in NOTES.md.
 - `basicpitch/`: Spotify's Basic Pitch model (`nmp.onnx`, 230 KB) + its LICENSE/NOTICE
   (Apache 2.0). The pip package needs TensorFlow (no Python 3.13 build on Mac), so
   `tab.py` runs the ONNX model with onnxruntime and reimplements its note decoding in
   numpy (no librosa/scipy).
+- `tools/gamecheck_replay.py`, `tools/gamecheck_experiment.py`: replay recorded game checks (judging, pitch reader
+  variants, wrong-notes control); see NOTES.md.
 - `track-splitter.zip`: an email-sized copy of the app (git-ignored). Email filters
   block `.bat`, so inside the zip it is `start.bat.txt`; never commit that name.
 
@@ -166,7 +170,7 @@ shifts them, `POST /api/tab/bars`, `bar_shift`), fingers (hand-position Viterbi;
 standard, drop D, half step down, 5-string, with a suggestion) and saves
 `.bass-tab.json`. `GET /api/tab?song&tuning` returns lines and notes.
 - Version constants in app.py: bump `NOTES_RULES` (notes), `BARS_RULES`, `TUNING_RULES`,
-  `LEARN_RULES`, `IMPORT_RULES`, `MINE_RULES`, `TONE_RULES` when that output changes, so
+  `LEARN_RULES`, `IMPORT_RULES`, `MINE_RULES`, `TONE_RULES`, `LIGHTS_RULES` / `VOCALS_RULES` when that output changes, so
   saved data is redone or flagged.
 - Learning from imported tabs (`learn_from_imports()`, `<library>/.learned-from-tabs.json`):
   fingering costs (`tab.learn_style`), note settings (`tab.NOTES` / `tab.NOTE_CHOICES`)
@@ -201,7 +205,8 @@ tab's heard notes (`_tempo_fit`, `_sync_timed` Viterbi placing/skipping bars,
 `_place_in_bars`; text via `_sync_text`; text without count lines: rhythm from the
 spacing, `spaced`, unless order-only finds more, `SPACING_TRUST`). Stored as `imported-tab - <name>.<ext>` /
 `imported-tab.txt` + `.bass-tab-imported.json`; `POST /api/tab/import`,
-`GET /api/tab?source=imported`, `POST /api/tab/import/remove`. Bump `IMPORT_RULES` when
+`GET /api/tab?source=imported`, `POST /api/tab/import/remove`; bars written differently from an earlier copy that
+the song plays the copy's way are repaired (`_repair_repeats`, `repaired`). Bump `IMPORT_RULES` when
 syncing changes (`get_tab` re-syncs via `resync_import`).
 - Other tunings: re-fingered with the learned fingering, `easiest_tunings()`.
 - Make repeats match / Other ways to play (`repeat_groups`, `other_ways`,
@@ -232,6 +237,18 @@ input) -> `arcadePlay` -> `startGame`. Mac icon "Track Splitter Game" (`install_
 carousel (`renderCarousel`). In-game look "clean and premium" (mockups in `design/game-mockups/`):
 `drawStage` mood background, `drawMultiplier` + `drawRingFire` by the score (`rbScore`); test
 streak `track-splitter-game-streak`. Phases 2-3 (scoring depth, practice mode) to come.
+Stage lights from the song: `GET /api/lights` (made at separation via `separate(keep=)`, else on first request;
+vocals by `vocals_worker` under `gpu_lock`), `songLights` / `cuesAt` in the page, `PATTERNS` in game3d.js.
+Big moments setting `encore-big-moments` (off); ratings on `/lights-check.html` -> `.light-ratings.json`, tuned by
+`tools/lights_tune.py` against `lights.BIG`.
+Board looks being tried (`v.look` reflect / strings / minimal in game3d.js, off in the game): `/board-lab.html`.
+Reading aids: fret numbers on the HUD (`v.hudNumbers`, `Game3D.labels()`), hand-move labels (`d.handTargets`), hand
+guide neck (`drawHandGuide`, Settings › Hand guide `encore-hand-guide`, off by default).
+Virtual drop D (Settings, `encore-virtual-dropd`, off): `playOpens` scores a drop D tab's low string as a standard E;
+Hear myself's PSOLA shifter (`SHIFT_WORKLET`, `input.monShift`, `updateMonShift`) lowers those notes a whole step.
+Song select tuner (`#arc-tune`, `songTuning`, `readTuner`, `input.tunerSemis`): the song's tuning and each open string's cents.
+Arcade board (Settings › Board: Arcade, `drawArcade` / `arcadePrep` / `arcadeBoard`; mockup `design/game-mockups/arcade.html`):
+the tab glides under a still cursor, numbers on keycaps, echoes for repeats, song-driven background, blue x4.
 
 ## Guitar game (step 2)
 
