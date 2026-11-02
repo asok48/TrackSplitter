@@ -2455,3 +2455,9 @@ Phase 1 redesign (same day):
   - User picked Stems; ported into the game's `drawArcade` (staggered runs 0.3 of the string spacing off the line, a dot
     on the string + a stem to a small keycap). Tested in a game on the library copy (Baby, 2:08 in): staggered 10 / 12
     and 12 / 8 pairs show their dots and stems, no console errors.
+- "I feel like there's a lot of wasted space on the screen" (Arcade): the track now up to half the window (400 px max,
+  was 30% / 250 px), centred at 56% of the height; note sizes, held-note lines and the string wave keep their old sizes
+  (`sizeSp`), the strings spread apart instead. Bare numbers closer than half a number apart now stagger (Baby's "12 8"
+  side by side read as "128"; the rule had only staggered numbers that touched). A first try put a `//` comment inside a
+  one-line loop and the page stuck on "Loading…" (the known trap: comments in one-line blocks). Tested in a game on the
+  library copy: no console errors.

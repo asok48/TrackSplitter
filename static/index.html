@@ -5186,7 +5186,7 @@
   function arcadePrep(d, W, H, n) {
     const key = `${W}x${H}|${hwSpeed}|${n}`;
     if (d.arcadeLayout?.key === key && d.arcadeLayout.notes === d.notes) return d.arcadeLayout;
-    const notes = d.notes, base = AVIS / (3.4 / (0.7 * hwSpeed)), L = Math.max(W * 0.09, 96), R = W * 0.97, trackH = Math.min(H * 0.3, 250), sp = trackH / n;
+    const notes = d.notes, base = AVIS / (3.4 / (0.7 * hwSpeed)), L = Math.max(W * 0.09, 96), R = W * 0.97, sp = Math.min(H * 0.3, 250) / n;   // note sizes as before the taller track
     const fs0 = sp * 0.6 * 0.75, ux = (R - L) / (AVIS * 1.25), need = Math.max(0.56 + 0.6, (fs0 * 1.15 + 10) / ux);
     const end = (notes.length ? notes[notes.length - 1][1] : 0) + 5, step = 0.01, want = new Float32Array(Math.ceil(end / step) + 1).fill(1), lastOn = {};
     for (const nt of notes) { const p = lastOn[nt[2]]; if (p && p[3] !== nt[3]) { const gap = nt[0] - p[0]; if (gap > 0.03) { const s = Math.min(1.35, Math.max(1, need / (gap * base))); for (let i = Math.floor(p[0] / step); i < nt[0] / step && i < want.length; i++) want[i] = Math.max(want[i], s); } } lastOn[nt[2]] = nt; }
@@ -5241,7 +5241,9 @@
     arcadeBoard.mood ||= { c: mc, d: md }; arcadeBoard.mood.c = amix(arcadeBoard.mood.c, mc, Math.min(1, dt * 2.4)); arcadeBoard.mood.d = amix(arcadeBoard.mood.d, md, Math.min(1, dt * 2.4));
     const mood = arcadeBoard.mood;
     arcadeBoard.x4 += ((mult === 4 ? 1 : 0) - arcadeBoard.x4) * Math.min(1, dt * 6); const x4k = arcadeBoard.x4;
-    const trackT = H * 0.36, trackH = Math.min(H * 0.3, 250), trackB = trackT + trackH, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, pad = 18;
+    // the track uses up to half the window (user: "a lot of wasted space on the screen"; it was 30%, at most 250 px), a little
+    // below the middle; the notes keep their size and the strings spread apart instead
+    const trackH = Math.min(H * 0.5, 400), trackT = H * 0.56 - trackH / 2, trackB = trackT + trackH, sizeSp = Math.min(H * 0.3, 250) / n, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, pad = 18;
 
     // ---- around the track: a deep colour mesh following the song ----
     g.fillStyle = '#05060a'; g.fillRect(0, 0, W, H);
@@ -5299,7 +5301,7 @@
       const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.exp(-age / 0.25);
       g.strokeStyle = acss(amix(crgb(s), [125, 211, 252], 0.45 * x4k), 0.38 + 0.45 * a + 0.15 * x4k); g.lineWidth = Math.max(1, 2.4 - s * (1.4 / n)) + a; g.shadowColor = col(s); g.shadowBlur = 4 + 10 * a;
       g.beginPath();
-      if (age < 0.5) { const amp = sp * 0.1 * Math.exp(-age * 7); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.2)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
+      if (age < 0.5) { const amp = sizeSp * 0.1 * Math.exp(-age * 7); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.2)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
       else { g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); }
       g.stroke();
     }
@@ -5309,10 +5311,10 @@
     const vis = []; for (let k = lo; k < notes.length && X(notes[k][0]) < R + 80; k++) if (notes[k][2] < n) vis.push(k);
     // held notes: a line along the string while it rings (the only lines on the track)
     for (const k of vis) { const nt = notes[k], end = Math.min(nt[1], info[k].next - 0.03); if (end - nt[0] < 0.3) continue; const x0 = X(nt[0]), x1 = Math.min(R, X(end)); if (x1 <= x0) continue;
-      g.strokeStyle = acss(game.result[k] === 'miss' ? [90, 90, 100] : crgb(nt[2]), nt[0] < t ? 0.35 : 0.7); g.lineWidth = sp * 0.14; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, sy(nt[2])); g.lineTo(x1, sy(nt[2])); g.stroke(); }
+      g.strokeStyle = acss(game.result[k] === 'miss' ? [90, 90, 100] : crgb(nt[2]), nt[0] < t ? 0.35 : 0.7); g.lineWidth = sizeSp * 0.14; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, sy(nt[2])); g.lineTo(x1, sy(nt[2])); g.stroke(); }
     // the notes: layout per string (one size; too close: no keycaps, then staggered), then drawn
     const upcoming = vis.filter((k) => !game.result[k] && notes[k][0] >= t - 0.1), nextT = upcoming.length ? notes[upcoming[0]][0] : Infinity, ringed = new Set(upcoming.slice(0, 2));
-    const sz = Math.round(sp * 0.6 * 0.75 * P.fit), markW = sp * 0.36 * 0.7, lay = new Map();
+    const sz = Math.round(sizeSp * 0.6 * 0.75 * P.fit), markW = sizeSp * 0.36 * 0.7, lay = new Map();
     for (let s = 0; s < n; s++) {
       const items = vis.filter((k) => notes[k][2] === s).map((k) => { g.font = `700 ${sz}px ${GAME_FONT}`; const tw = g.measureText(String(notes[k][3])).width; return { k, x: X(notes[k][0]), quick: info[k].rep, tw, cw: info[k].rep ? markW : Math.max(sz * 1.05, tw + sz * 0.55), dy: 0 }; });
       for (const it of items) it.form = it.quick ? 'mark' : 'cap';
@@ -5320,8 +5322,9 @@
       for (let i = 1; i < items.length; i++) { const a = items[i - 1], b = items[i];
         if (a.form === 'mark' && b.form === 'cap' && b.x - a.x < markW / 2 + b.cw / 2 + 4) b.form = 'text';
         if (a.form === 'mark' && b.form === 'text' && b.x - a.x < markW / 2 + b.tw / 2 + 2) a.form = 'none'; }
+      // bare numbers closer than half a number apart are staggered ("12 8" side by side read as "128")
       let run = 0; for (let i = 0; i < items.length; i++) { const it = items[i]; if (it.form !== 'text') { run = 0; continue; } const pv = items[i - 1];
-        if (pv && pv.form === 'text' && it.x - pv.x < pv.tw / 2 + it.tw / 2 + 4) { if (!run) pv.dy = -sp * 0.3; run++; it.dy = pv.dy < 0 ? sp * 0.3 : -sp * 0.3; } else run = 0; }
+        if (pv && pv.form === 'text' && it.x - pv.x < pv.tw / 2 + it.tw / 2 + sz * 0.5) { if (!run) pv.dy = -sp * 0.3; run++; it.dy = pv.dy < 0 ? sp * 0.3 : -sp * 0.3; } else run = 0; }
       let edge = -Infinity; for (const it of items) { if (it.form === 'mark' && it.x - markW / 2 < edge + 1) it.form = 'none'; if (it.form !== 'none') edge = it.x + (it.dy ? 0 : it.form === 'mark' ? markW / 2 : it.form === 'text' ? it.tw / 2 : it.cw / 2); }
       for (const it of items) lay.set(it.k, it);
     }
