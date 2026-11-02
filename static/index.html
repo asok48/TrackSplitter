@@ -5176,6 +5176,9 @@
   // the multiplier; x4 turns the board blue with a glowing outline. Score, multiplier, streak and stars top left.
   const ARCADE_COLORS = ['#6ee7a8', '#f8a1a1', '#f6d878', '#8fb8fa', '#fdba74', '#d8b4fe'];   // softer than LANE_COLORS
   const ARCADE_MOOD = { 1: [[245, 230, 211], [192, 132, 87]], 2: [[252, 211, 77], [245, 158, 11]], 3: [[251, 146, 60], [225, 29, 72]], 4: [[125, 211, 252], [99, 102, 241]] };
+  const ARCADE_TIERS = [['NO RECORD YET', ['#2e2e36', '#4a4a55', '#2e2e36']], ['BRONZE', ['#6b3a16', '#c97f42', '#7d4620']], ['SILVER', ['#737b86', '#d9dee5', '#858d98']],
+                        ['GOLD', ['#8a5c03', '#efc244', '#a06c06']], ['PLATINUM', ['#9aa4b0', '#e8edf2', '#b0b9c3']], ['DIAMOND', ['#4fa9de', '#cdeeff', '#9b8cec']]];   // the star levels as records: name, metal
+  const ARCADE_VIVID = ['#ff9a52', '#eef4ff', '#ffcf33', '#cfe3ff', '#5fd0ff'];   // the accent of the tier coming next
   const AVIS = 17.5;
   const arcadeBoard = {   // (`arcade` is the Encore screens' state)
     mood: null, x4: 0, meshT: 0, busyAvg: 0, sweepAt: -9, lastMult: 1, last: 0, mesh: null, grain: null };
@@ -5293,7 +5296,7 @@
     g.beginPath(); g.roundRect(L - 56, trackT - pad, pw, phh, 18);
     let q;
     if (x4k > 0.01) {   // x4: the board turns blue, strongest at the cursor (user: "I liked when the board turned blue before")
-      const cp = (curX - (L - 56)) / pw; q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
+      const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);   // kept in range: a very narrow window put it below 0 and addColorStop threw
       q.addColorStop(0, `rgba(21,87,192,${0.18 * x4k})`); q.addColorStop(cp, `rgba(30,110,230,${(0.5 + 0.06 * beat) * x4k})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(21,87,192,${0.22 * x4k})`); q.addColorStop(1, `rgba(21,87,192,${0.1 * x4k})`);
       g.fillStyle = q; g.fill();
     }
@@ -5321,9 +5324,36 @@
     // which notes are on screen (binary search to the first one near the left edge)
     let lo = 0, hi = notes.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (X(notes[mid][0]) < L - 80) lo = mid + 1; else hi = mid; }
     const vis = []; for (let k = lo; k < notes.length && X(notes[k][0]) < R + 80; k++) if (notes[k][2] < n) vis.push(k);
-    // held notes: a line along the string while it rings (the only lines on the track)
-    for (const k of vis) { const nt = notes[k], end = Math.min(nt[1], info[k].next - 0.03); if (end - nt[0] < 0.3) continue; const x0 = X(nt[0]), x1 = Math.min(R, X(end)); if (x1 <= x0) continue;
-      g.strokeStyle = acss(game.result[k] === 'miss' ? [90, 90, 100] : crgb(nt[2]), nt[0] < t ? 0.35 : 0.7); g.lineWidth = sizeSp * 0.14; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, sy(nt[2])); g.lineTo(x1, sy(nt[2])); g.stroke(); }
+    // Held notes (user: "can we improve how held notes look?"; were a plain line): a ribbon in the string's colour fading
+    // toward its end, with an end marker where you let go. While held: bright with a pulsing glow, streaks of light
+    // flowing along it into the cursor, a glow where it meets the cursor, the end marker brightening in the last 0.4 s;
+    // the finished part fades behind the cursor. A hold let go of early, or a missed note, is grey. The only lines on
+    // the track.
+    for (const k of vis) {
+      const nt = notes[k], end = Math.min(nt[1], info[k].next - 0.03); if (end - nt[0] < 0.3) continue;
+      const x0 = X(nt[0]), x1 = Math.min(R + 20, X(end)); if (x1 <= x0) continue;
+      const res = game.result[k], lost = !!game.hold?.[k]?.lost || res === 'miss', holding = res === 'hit' && !lost && nt[0] <= t && t < end;
+      const y = sy(nt[2]), hh = sizeSp * 0.2, c3 = lost ? [100, 100, 112] : amix(crgb(nt[2]), [125, 211, 252], 0.4 * x4k), pulse = 0.5 + 0.5 * Math.sin(ms / 70);
+      const ribbon = (a, b, w) => { g.beginPath(); g.roundRect(a, y - w / 2, Math.max(0, b - a), w, w / 2); };
+      if (x0 < curX && (holding || res === 'hit' || lost)) {   // the part already played, fading behind the cursor
+        const a = Math.max(L - 40, x0), b = Math.min(curX, x1); if (b > a) { const q = g.createLinearGradient(a, 0, b, 0); q.addColorStop(0, acss(c3, 0)); q.addColorStop(1, acss(c3, lost ? 0.25 : 0.35)); ribbon(a, b, hh * 0.7); g.fillStyle = q; g.fill(); }
+      }
+      const a = holding ? curX : x0; if (x1 <= a) continue;
+      if (holding) { ribbon(a, x1, hh * 2.6); g.fillStyle = acss(c3, 0.12 + 0.08 * pulse); g.fill(); }   // the glow round it
+      const q = g.createLinearGradient(a, 0, x1, 0); q.addColorStop(0, acss(c3, lost ? 0.3 : holding ? 0.95 : 0.6)); q.addColorStop(1, acss(c3, lost ? 0.15 : holding ? 0.55 : 0.28));
+      ribbon(a, x1, hh); g.fillStyle = q; g.fill();
+      g.strokeStyle = `rgba(255,255,255,${lost ? 0.08 : holding ? 0.4 : 0.18})`; g.lineWidth = 1; g.beginPath(); g.moveTo(a + hh / 2, y - hh / 2 + 1); g.lineTo(x1 - hh / 2, y - hh / 2 + 1); g.stroke();   // a light top edge
+      if (holding) {                                       // streaks of light flowing into the cursor, and its glow there
+        g.save(); g.setLineDash([sizeSp * 0.3, sizeSp * 0.9]); g.lineDashOffset = (ms / 1000) * sizeSp * 4; g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = Math.max(1.5, hh * 0.3); g.lineCap = 'round';
+        g.beginPath(); g.moveTo(x1 - hh / 2, y); g.lineTo(a + hh / 2, y); g.stroke(); g.restore();
+        arcadeSoft(g, curX, y, sizeSp * 0.7, c3, 0.45 + 0.2 * pulse);
+      }
+      if (X(end) <= R + 10) {                              // the end marker: let go here
+        const near = holding ? Math.max(0, 1 - (end - t) / 0.4) : 0, mh = hh * (2 + 0.6 * near);
+        g.fillStyle = acss(lost ? c3 : amix(c3, [255, 255, 255], 0.3 + 0.5 * near), lost ? 0.3 : holding ? 0.85 + 0.15 * near : 0.55); g.beginPath(); g.roundRect(X(end) - 2, y - mh / 2, 4, mh, 2); g.fill();
+        if (near > 0) arcadeSoft(g, X(end), y, sizeSp * (0.4 + 0.5 * near), c3, 0.5 * near);
+      }
+    }
     // the notes: layout per string (one size; too close: no keycaps, then staggered), then drawn
     const upcoming = vis.filter((k) => !game.result[k] && notes[k][0] >= t - 0.1), nextT = upcoming.length ? notes[upcoming[0]][0] : Infinity, ringed = new Set(upcoming.slice(0, 2));
     const sz = Math.round(sizeSp * 0.6 * 0.75 * P.fit), markW = sizeSp * 0.36 * 0.7, lay = new Map();
@@ -5383,7 +5413,21 @@
     // the cursor: a slim line with a soft column of light
     q = g.createLinearGradient(curX - 16, 0, curX + 16, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.1 + 0.08 * beat)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(curX - 16, trackT - pad, 32, phh);
     g.restore();
-    g.beginPath(); g.moveTo(curX, trackT - pad - 6); g.lineTo(curX, trackB + pad + 6); g.strokeStyle = acss(mood.c, 0.12 + 0.08 * beat); g.lineWidth = 8; g.stroke(); g.strokeStyle = acss(mood.c, 0.85); g.lineWidth = 2; g.stroke();
+    // The cursor is the multiplier (user: "I would like to incorporate the multiplier into the board"; it was a ring by the
+    // score): it fills from the bottom in the multiplier's colour as the streak builds toward the next level (full and
+    // glowing at x4), with a badge on top showing 1x-4x that pops when the multiplier goes up.
+    const cTop = trackT - pad - 6, cBot = trackB + pad + 6, mf = mult === 4 ? 1 : (game.streak % 10) / 10, fy = cBot - (cBot - cTop) * mf;
+    g.lineCap = 'round';
+    g.beginPath(); g.moveTo(curX, cTop); g.lineTo(curX, cBot); g.strokeStyle = acss(mood.c, 0.1 + 0.08 * beat); g.lineWidth = 8; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 2; g.stroke();
+    if (mf > 0) { g.beginPath(); g.moveTo(curX, cBot); g.lineTo(curX, fy); g.strokeStyle = acss(mood.c, 0.3 + 0.1 * beat); g.lineWidth = 7; g.stroke(); g.strokeStyle = acss(mood.c, 1); g.lineWidth = 3; g.stroke(); }
+    g.lineCap = 'butt';
+    {
+      const pop = 1 + 0.25 * Math.max(0, 1 - (ms - arcadeBoard.sweepAt) / 300), bw = 40 * pop, bh = 24 * pop, by = cTop - 18;
+      g.beginPath(); g.roundRect(curX - bw / 2, by - bh / 2, bw, bh, bh / 2); g.fillStyle = 'rgba(9,10,15,.92)'; g.fill();
+      g.strokeStyle = acss(mood.c, mult === 1 ? 0.45 : 0.95); g.lineWidth = 1.4; g.stroke();
+      g.font = `700 ${Math.round(14 * pop)}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(mood.c, mult === 1 ? 0.75 : 1); g.fillText(`${mult}×`, curX, by + 1);
+    }
     if (x4k > 0.01) {   // x4: caps on the cursor, and the board's edge glowing, its colour shimmering slowly along it (user: "we could make an outline, just cooler")
       arcadeSoft(g, curX, trackT - pad - 6, 16, mood.c, 0.6 * x4k); arcadeSoft(g, curX, trackB + pad + 6, 16, mood.c, 0.6 * x4k);
       const sh = (ms / 1000 * 0.15) % 1, oq = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
@@ -5392,26 +5436,71 @@
     }
     for (let s = 0; s < n; s++) { g.font = `600 15px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(crgb(s), 0.8); g.fillText(names[s], L - 34, sy(s)); }
 
-    // ---- score, multiplier, streak, stars, the latest call ----
-    const hx = L - 56, hy = trackT - pad - 44;
-    g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.font = `300 40px ${GAME_FONT}`; g.fillStyle = '#f5f5f7'; g.fillText(game.score.toLocaleString(), hx, hy);
-    const swd = g.measureText(game.score.toLocaleString()).width, rx = hx + swd + 34, ry = hy - 13, rr = 15, fill = mult === 4 ? 1 : (game.streak % 10) / 10;
-    g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.arc(rx, ry, rr, 0, 7); g.stroke();
-    g.strokeStyle = acss(mood.c, 1); g.shadowColor = acss(mood.c, 1); g.shadowBlur = mult === 4 ? 12 : 0; g.beginPath(); g.arc(rx, ry, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.001, fill)); g.stroke(); g.shadowBlur = 0;
-    g.font = `600 13px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(mood.c, 1); g.fillText(`${mult}×`, rx, ry + 1);
-    g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.font = `500 13px ${GAME_FONT}`; g.fillStyle = 'rgba(245,245,247,.5)'; g.fillText(`${game.streak} streak`, rx + rr + 12, ry + 5);
-    const val = starsFor(game.score, game.units || notes.length), ss = 17;   // as the game's HUD: 17 px, gold
-    for (let i = 0; i < 5; i++) { const cx0 = hx + 9 + i * (ss + 5), cy0 = hy + 20, f = Math.max(0, Math.min(1, val - i));
-      g.save(); g.beginPath(); for (let j = 0; j < 10; j++) { const a = -Math.PI / 2 + j * Math.PI / 5, r0 = j % 2 ? ss * 0.22 : ss / 2; g.lineTo(cx0 + Math.cos(a) * r0, cy0 + Math.sin(a) * r0); } g.closePath();
-      g.fillStyle = 'rgba(255,245,230,0.22)'; g.fill(); g.clip(); if (f > 0) { g.fillStyle = '#f5b70a'; g.shadowColor = 'rgba(245,183,10,0.6)'; g.shadowBlur = f >= 1 ? 8 : 0; g.fillRect(cx0 - ss / 2, cy0 - ss / 2, ss * f, ss); } g.restore(); }
+    // ---- the plaque: a record as its emblem and the score, centred over the track; the latest call on the right ----
+    // (from the mockup, user: "Yes, put them in"): records instead of stars (the 5 star levels as Bronze / Silver / Gold /
+    // Platinum / Diamond), the whole disc in the tier's metal, the next tier sweeping round it faint at first and more solid
+    // and vivid as it grows, a glowing arc on the rim tracing it; a pop and a shine on reaching a tier. No streak number:
+    // a moment every 50 notes instead. No song title or progress (not wanted on the game screen).
+    const hl = L - 56, hr = L - 56 + pw, sc = game.score.toLocaleString(), val = starsFor(game.score, game.units || notes.length);
+    const tier = Math.min(5, Math.floor(val)), frac = tier >= 5 ? 0 : val - tier, [tname, mt] = ARCADE_TIERS[tier], nm = ARCADE_TIERS[Math.min(5, tier + 1)][1];
+    if (tier !== arcadeBoard.tier) { if (tier > (arcadeBoard.tier ?? 0)) arcadeBoard.tierAt = ms; arcadeBoard.tier = tier; }
+    {
+      const R0 = 26, ym = trackT - pad - 48; g.font = `200 48px ${GAME_FONT}`; const sw = g.measureText(sc).width;
+      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const label = tier ? `${tname} RECORD` : tname, lw = g.measureText(label).width + 22; g.letterSpacing = '0px';
+      const w = 2 * R0 + 20 + Math.max(sw, lw), left = (hl + hr) / 2 - w / 2, tx = left + 2 * R0 + 20;
+      // the record
+      const pop = 1 + 0.25 * Math.max(0, 1 - (ms - (arcadeBoard.tierAt ?? -1e9)) / 350), r = R0 * pop, rcx = left + R0;
+      const metal = (m) => { const q2 = g.createLinearGradient(-r, -r, r, r); q2.addColorStop(0, m[0]); q2.addColorStop(0.5, m[1]); q2.addColorStop(1, m[2]); return q2; };
+      const vc = ARCADE_VIVID[Math.min(4, tier)], ang = -Math.PI / 2 + Math.PI * 2 * frac;
+      g.save(); g.translate(rcx, ym);
+      g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 8; g.shadowOffsetY = 2; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = metal(mt); g.fill(); g.shadowBlur = 0; g.shadowOffsetY = 0;
+      if (frac > 0) {   // the next tier filling in, tinted with its accent more as it grows
+        g.save(); g.globalAlpha = 0.35 + 0.65 * frac; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, -Math.PI / 2, ang); g.closePath(); g.fillStyle = metal(nm); g.fill();
+        g.globalAlpha = 0.12 + 0.25 * frac; g.fillStyle = vc; g.fill(); g.restore();
+        g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(ang) * r, Math.sin(ang) * r); g.strokeStyle = vc; g.globalAlpha = 0.8; g.lineWidth = 1.2; g.stroke(); g.globalAlpha = 1;
+      }
+      for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(0, 0, r * (0.5 + i * 0.055), 0, 7); g.strokeStyle = i % 2 ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.12)'; g.lineWidth = 0.6; g.stroke(); }   // grooves
+      g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip(); g.rotate(ms / 1000 * 0.8);   // a reflection, turning as if it spins
+      for (const k of [0, Math.PI]) { g.save(); g.rotate(k); const q2 = g.createLinearGradient(-r * 0.2, -r, r * 0.2, -r); q2.addColorStop(0, 'rgba(255,255,255,0)'); q2.addColorStop(0.5, 'rgba(255,255,255,.28)'); q2.addColorStop(1, 'rgba(255,255,255,0)');
+        g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, -Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3); g.closePath(); g.fillStyle = q2; g.fill(); g.restore(); }
+      g.restore();
+      g.beginPath(); g.arc(0, 0, r - 0.5, 0, 7); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1; g.stroke();   // the bright edge
+      if (frac > 0) { g.save(); g.beginPath(); g.arc(0, 0, r + 3, -Math.PI / 2, ang); g.strokeStyle = vc; g.lineWidth = 2.5; g.lineCap = 'round'; g.shadowColor = vc; g.shadowBlur = 8; g.globalAlpha = 0.65 + 0.35 * frac; g.stroke(); g.restore(); }   // the accent arc
+      g.beginPath(); g.arc(0, 0, r * 0.36, 0, 7); g.fillStyle = 'rgba(0,0,0,.22)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 0.7; g.stroke();   // the label
+      g.fillStyle = '#050506'; g.beginPath(); g.arc(0, 0, r * 0.07, 0, 7); g.fill();   // the spindle hole
+      if (tier === 5) { const sp4 = (px, py, k, z) => { g.fillStyle = `rgba(255,255,255,${0.4 + 0.6 * Math.max(0, Math.sin(ms / 250 + k))})`; g.beginPath(); g.moveTo(px, py - z); g.lineTo(px + z * 0.28, py - z * 0.28); g.lineTo(px + z, py); g.lineTo(px + z * 0.28, py + z * 0.28); g.lineTo(px, py + z); g.lineTo(px - z * 0.28, py + z * 0.28); g.lineTo(px - z, py); g.lineTo(px - z * 0.28, py - z * 0.28); g.closePath(); g.fill(); }; sp4(r * 0.78, -r * 0.78, 0, 4.5); sp4(-r * 0.85, r * 0.55, 2.2, 3); }
+      const sa = (ms - (arcadeBoard.tierAt ?? -1e9)) / 700;   // the shine when a tier is reached
+      if (sa >= 0 && sa < 1) { g.save(); g.beginPath(); g.arc(0, 0, r, 0, 7); g.clip(); const sx = -r * 1.4 + 2.8 * r * sa, q2 = g.createLinearGradient(sx - 7, -r, sx + 7, r); q2.addColorStop(0, 'rgba(255,255,255,0)'); q2.addColorStop(0.5, 'rgba(255,255,255,.6)'); q2.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q2; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore(); }
+      g.restore();
+      // the score, and the tier under it
+      const sq = g.createLinearGradient(0, ym - 34, 0, ym + 4); sq.addColorStop(0, '#ffffff'); sq.addColorStop(1, '#c3c9d2');
+      g.font = `200 48px ${GAME_FONT}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = sq; g.fillText(sc, tx, ym + 4);
+      const ly = ym + 20; g.fillStyle = tier ? mt[1] : 'rgba(245,245,247,.35)'; g.fillRect(tx, ly - 0.5, 14, 1);
+      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; g.textBaseline = 'middle'; g.fillText(label, tx + 22, ly); g.letterSpacing = '0px';
+    }
+    const ry = trackT - pad - 44, sx = hr - 2;
     const calls = [...game.bursts.filter((b) => !b.messy && b.label !== false).map((b) => ({ at: b.at, life: 0.6, text: b.perfect ? 'Perfect' : 'Good', fill: b.perfect ? '#fcd34d' : '#f5f5f4' })),
                    ...game.mistakes.map((mk) => ({ at: mk.at, life: 0.9, text: String(mk.text), fill: mk.amber ? '#fbbf24' : '#f87171', sub: mk.sub }))].sort((a, b) => b.at - a.at);
     const call = calls[0];
-    if (call && (ms - call.at) / 1000 < call.life) {      // the latest call, quietly, right of the streak
+    if (call && (ms - call.at) / 1000 < call.life) {      // the latest call, at the right edge
       const age = (ms - call.at) / 1000; g.globalAlpha = Math.max(0, 1 - Math.max(0, age - call.life * 0.5) / (call.life * 0.5));
-      g.font = `600 16px ${GAME_FONT}`; g.fillStyle = call.fill; g.fillText(call.text, rx + rr + 110, ry + 5 - 6 * Math.max(0, 1 - age / 0.15));
-      if (call.sub) { g.font = `500 12px ${GAME_FONT}`; g.fillStyle = 'rgba(245,245,247,.6)'; g.fillText(call.sub, rx + rr + 110, ry + 22); }
+      g.textAlign = 'right'; g.textBaseline = 'alphabetic'; g.font = `600 20px ${GAME_FONT}`; g.fillStyle = call.fill; g.fillText(call.text, sx, ry + 6 - 6 * Math.max(0, 1 - age / 0.15));
+      if (call.sub) { g.font = `500 12px ${GAME_FONT}`; g.fillStyle = 'rgba(245,245,247,.6)'; g.fillText(call.sub, sx, ry + 22); }
       g.globalAlpha = 1;
+    }
+    { // a moment every 50 notes in a row (user: "I don't want to show the streak, but show something at 50/100/150"): a large
+      // light number over the middle of the track, NOTE STREAK under it, thin lines drawing out to each side, ~1.6 s
+      const m50 = Math.floor(game.streak / 50) * 50;
+      if (m50 > (arcadeBoard.mileN || 0)) { arcadeBoard.mileN = m50; arcadeBoard.mileAt = ms; } else if (m50 < (arcadeBoard.mileN || 0)) arcadeBoard.mileN = m50;
+      const ma = (ms - (arcadeBoard.mileAt ?? -1e9)) / 1000;
+      if (arcadeBoard.mileN > 0 && ma >= 0 && ma < 1.6) {
+        const a = Math.min(1, ma / 0.18) * Math.min(1, (1.6 - ma) / 0.45), scl = 0.92 + 0.08 * Math.min(1, ma / 0.25), cx = (hl + hr) / 2, cy = trackT + trackH * 0.5;
+        g.save(); g.globalAlpha = a; g.translate(cx, cy); g.scale(scl, scl); g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.font = `200 64px ${GAME_FONT}`; g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 18; g.fillStyle = acss(mood.c, 1); g.fillText(String(arcadeBoard.mileN), 0, 0); g.shadowBlur = 0;
+        const nw = g.measureText(String(arcadeBoard.mileN)).width, ext = Math.min(1, ma / 0.5) * 120; g.strokeStyle = acss(mood.c, 0.7); g.lineWidth = 1;
+        g.beginPath(); g.moveTo(-nw / 2 - 16, -20); g.lineTo(-nw / 2 - 16 - ext, -20); g.moveTo(nw / 2 + 16, -20); g.lineTo(nw / 2 + 16 + ext, -20); g.stroke();
+        g.font = `600 11px ${GAME_FONT}`; g.letterSpacing = '3px'; g.fillStyle = 'rgba(245,245,247,.75)'; g.fillText('NOTE STREAK', 0, 20); g.letterSpacing = '0px'; g.restore();
+      }
     }
     game.bursts = game.bursts.filter((b) => ms - b.at < 700);
     const goAge = ms - (game.goAt ?? -1e9);   // the count-in

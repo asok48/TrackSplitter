@@ -2473,3 +2473,52 @@ Phase 1 redesign (same day):
 - "Did we say we would do the diamonds for the repeat notes?" (we hadn't settled it: Mini number was the last confirmed
   pick) -> "sure": the game's echoes are now small diamonds (the echo turned 45 degrees at 92%, a faint fill, a facet of
   light, no number); the mockup's default too. Checked in a game on the library copy (Baby's E-string 10s), no errors.
+- "Can we improve how held notes look?": held notes in `drawArcade` (and the mockup): a ribbon in the string's colour
+  fading toward its end, a light top edge, an end marker where to let go; while held bright with a pulsing glow round
+  it, streaks of light flowing along it into the cursor, a glow where it meets the cursor, the end marker brightening
+  and glowing in the last 0.4 s; the finished part fades behind the cursor; let go early (`game.hold[k].lost`) or missed
+  = grey. Feeding the bass-only track in as the input (a second AudioContext mirroring the player's `start`) gave no
+  hits in the browser pane, so the user said "just use the mockup and I'll tell you what looks good": checked there
+  (Baby 11.85 s, Wow! Wow! Wow! 5.75 s). The game's version is in place but its holding state is untested.
+- Score section (user: "can we make the score section look better? I don't like how much wasted space we have"): the
+  score (52 px) with the stars beside it over the start of the panel; the streak (a big number, a small STREAK label) at
+  the panel's right edge with the latest call left of it. No song title / progress (not wanted on the game screen).
+- "I would like to incorporate the multiplier into the board": the cursor is the multiplier meter (fills from the bottom
+  in the multiplier's colour with the streak toward the next level, full and glowing at x4) with a 1x-4x badge on top
+  that pops when it goes up; the ring by the score removed. The page's scripts can be syntax-checked without a browser
+  with macOS's jsc (`new Function(src)`), which catches the one-line-comment kind of break. Checked in a game on the
+  library copy: at a 25 streak the cursor half full in orange with a 3x badge, "25 STREAK" right, score + stars left;
+  after the misses an empty grey cursor, 1x, "Miss" beside the streak; no console errors.
+- Score layouts in the mockup (user: "I don't like how above the highway looks"): Score switch (`hudStyle`, `?hud=`):
+  Row (score + award left, streak right; the award under the score, beside it ran into the cursor's badge), Centred
+  (one group over the middle), Below (under the track), Off; the cursor-as-multiplier copied in from the game.
+- "How about instead of doing stars, we do records? bronze/silver/gold/platinum/diamond?": Records in the mockup (`award2`,
+  `?award=`, Stars | Records): the 5 star levels as Bronze / Silver / Gold / Platinum / Diamond; a small vinyl (grooves,
+  a highlight) with the tier's colour on its label, a thin ring filling in the next tier's colour, "Gold record" beside
+  it ("No record yet" before Bronze); a pop and a shine across it when a tier is reached; Diamond: an icy label, a
+  shimmering ring and two sparkles. Mockup only; stars are also on song select, results and bests in the game.
+- "I don't want to show the streak, but show something at 50/100/150/etc. I also want to refine the look of the record,
+  make it look more premium" / "I'd like the whole record to be the color and then the progress fills with the new
+  color" (mockup): no streak number; every 50 notes a milestone over the middle of the track (a large light number, NOTE
+  STREAK in spaced capitals, thin lines drawing out to each side, ~1.6 s; `mileN` / `mileAt`). The record: the whole disc
+  in the tier's metal (bronze / silver / gold / platinum / diamond gradients; the first palette read almost silver, now
+  richer), the next tier's metal sweeping round it like a clock hand as you get closer (a bright leading edge), grooves,
+  a reflection turning as if it spins, a bright edge, a deeper label, a spindle hole, sparkles on Diamond, a pop and a
+  shine on reaching a tier; the tier in spaced capitals. Bugs found: jumping back in time (the mockup's loop) left the
+  pop timers in the future and the record swelled huge (clamped, also the cursor badge); a very narrow window made the
+  x4 wash's colour stop negative and the frame threw (clamped in the mockup and in `drawArcade`).
+- "I think the score and record could look better": Plaque score look in the mockup (`scoreLook`, Plaque | Classic, with
+  Records): one unit, the record as its emblem (26 px, no name beside it), the score beside it in 200-weight 48 px type
+  with a white-to-silver gradient, under the score a short rule and the tier in its metal's colour ("GOLD RECORD", spaced
+  capitals); works in Row (left), Centred (one group over the middle) and Below.
+  - "And the next color should be easy to see and get color as you get more": the incoming tier's wedge starts faint
+    (35%) and grows solid, tinted more and more with a vivid accent per tier (orange, bright silver, rich gold, icy
+    platinum, cyan diamond; gold -> platinum had looked alike), a leading edge in the accent, and a glowing accent arc
+    round the rim tracing the progress.
+- In the game ("Yes, put them in"): `drawArcade` now has the Plaque centred over the track (`ARCADE_TIERS` metals,
+  `ARCADE_VIVID` accents: the record as the emblem with the next tier sweeping round it, faint to solid, a glowing rim arc;
+  a pop and a shine on a new tier, `arcadeBoard.tier` / `tierAt`; the score in light silver type; the tier under it), no
+  streak number, the latest call at the right edge, and a moment every 50 notes over the middle of the track
+  (`arcadeBoard.mileN` / `mileAt`, 64 px). The game keeps its own Classic HUD for 3D / Flat. Checked in a game on the
+  library copy: plaque, call, cursor badge, x4, no console errors; the milestone (started at a 50 streak) had faded
+  during the count-in before the screenshot, so it was only seen in the mockup. Song select / results still show stars.

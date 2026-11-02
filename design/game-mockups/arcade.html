@@ -29,6 +29,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <span style="color:rgba(245,245,247,.4)">Repeats</span><button data-rep="pips">Pips</button><button data-rep="echoes">Echoes</button><button data-rep="chevrons">Chevrons</button><button data-rep="bars">Bars</button>
  <span id="echo-bar" style="display:contents"><span class="sep"></span><span style="color:rgba(245,245,247,.4)">Echo</span><button data-echo="outline">Outline</button><button data-echo="mini">Mini number</button><button data-echo="simile">Simile</button><button data-echo="dot">Dot</button><button data-echo="auto">Auto</button><button data-echo="diamond">Diamond</button><button data-echo="fading">Fading</button><button data-echo="ripple">Ripple</button><button data-echo="glass">Glass</button></span>
  <span class="sep"></span>
+ <span style="color:rgba(245,245,247,.4)">Score</span><button data-hud="row">Row</button><button data-hud="center">Centred</button><button data-hud="below">Below</button><button data-hud="off">Off</button><span class="sep"></span><button data-award="stars">Stars</button><button data-award="records">Records</button><button data-look2="plaque">Plaque</button><button data-look2="classic">Classic</button>
+ <span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Stagger</span><button data-stagger="stem">Stems</button><button data-stagger="flag">Flags</button><button data-stagger="float">Float</button>
  <span class="sep"></span>
  <button data-spread>Spread fast runs</button>
@@ -48,7 +50,7 @@ const cv=document.getElementById('cv'),g=cv.getContext('2d');
 let W=0,H=0,clock=0,last=performance.now(),paused=false,spread=true,speedSet=0.7,size=0.75,   // smaller numbers by default (user: "it's easier to read when the numbers aren't huge")
  song=Object.keys(PASSAGES)[1];
 let notes,bars,warp,info,mood={c:[245,230,211],d:[192,132,87]},sweepAt=-9,lastMult=1;
-let stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
+let scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='row',stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
 const fx={x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
 
 function makeWarp(base,need){                  // spread fast runs (as in note-styles.html); need = board units between distinct notes on a string
@@ -85,6 +87,7 @@ function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.widt
 addEventListener('resize',()=>{resize();if(notes)load()});resize();
 const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),css=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
 const missedColor=(n,c)=>c;
+const hudGap=()=>hudStyle==='center'?92:24;   // where a milestone shows: above the score group when centred
 const ease=(a,b,k)=>a.map((v,i)=>v+(b[i]-v)*k);
 function soft(x,y,r,c,a){const q=g.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(c,a));q.addColorStop(1,css(c,0));g.fillStyle=q;g.fillRect(x-r,y-r,r*2,r*2)}
 
@@ -203,7 +206,7 @@ function frame(ms){
  g.shadowColor='rgba(0,0,0,.6)';g.shadowBlur=40;g.fillStyle='rgba(10,11,17,.82)';g.fill();g.shadowBlur=0;
  let q=g.createLinearGradient(0,trackT-pad,0,trackB+pad);q.addColorStop(0,'rgba(255,255,255,.05)');q.addColorStop(1,'rgba(255,255,255,.012)');g.fillStyle=q;g.fill();
  if(x4k>0.01){                                    // x4: the board turns blue (user: "I liked when the board turned blue before"), strongest at the cursor
-  const wq=g.createLinearGradient(L-56,0,R+pad,0),cp=(curX-(L-56))/(R+pad-(L-56));
+  const wq=g.createLinearGradient(L-56,0,R+pad,0),cp=Math.max(0,Math.min(0.65,(curX-(L-56))/(R+pad-(L-56))));   // kept in range (a very narrow window put it below 0 and the frame threw)
   wq.addColorStop(0,`rgba(21,87,192,${0.18*x4k})`);wq.addColorStop(cp,`rgba(30,110,230,${(0.5+0.06*beat)*x4k})`);wq.addColorStop(Math.min(1,cp+0.35),`rgba(21,87,192,${0.22*x4k})`);wq.addColorStop(1,`rgba(21,87,192,${0.1*x4k})`);
   g.fillStyle=wq;g.fill()}
  g.strokeStyle=`rgba(${125*x4k+255*(1-x4k)|0},${211*x4k+255*(1-x4k)|0},255,${0.07+0.25*x4k})`;g.lineWidth=1;g.stroke();
@@ -231,9 +234,22 @@ function frame(ms){
  g.shadowBlur=0;
  // held notes: a line along the string while it rings (the only lines on the track)
  const vis=notes.filter(n=>{const x=X(n[0]);return x>L-60&&x<R+60});
+ // (held notes as in the game's drawArcade, user: "can we improve how held notes look?": a ribbon fading toward its end
+ // with an end marker; while held bright and glowing, light streaks flowing into the cursor, the end brightening)
  for(const n of vis){const I=info.get(n),end=Math.min(n[1],I.next-0.03);if(end-n[0]<0.3)continue;
-  const x0=X(n[0]),x1=Math.min(R,X(end));if(x1<=x0)continue;
-  g.strokeStyle=css(rgb(COL[n[2]]),n[0]<t?0.35:0.7);g.lineWidth=sp*0.14;g.lineCap='round';g.beginPath();g.moveTo(x0,sy(n[2]));g.lineTo(x1,sy(n[2]));g.stroke()}
+  const x0=X(n[0]),x1=Math.min(R+20,X(end));if(x1<=x0)continue;
+  const holding=n[0]<=t&&t<end,y=sy(n[2]),hh=sp*0.2,c3=ease(rgb(COL[n[2]]),[125,211,252],0.4*x4k),pulse=0.5+0.5*Math.sin(clock*1000/70);
+  const ribbon=(a,b,w)=>{g.beginPath();g.roundRect(a,y-w/2,Math.max(0,b-a),w,w/2)};
+  if(x0<curX){const a=Math.max(L-40,x0),b=Math.min(curX,x1);if(b>a){const q=g.createLinearGradient(a,0,b,0);q.addColorStop(0,css(c3,0));q.addColorStop(1,css(c3,0.35));ribbon(a,b,hh*0.7);g.fillStyle=q;g.fill()}}
+  const a=holding?curX:x0;if(x1<=a)continue;
+  if(holding){ribbon(a,x1,hh*2.6);g.fillStyle=css(c3,0.12+0.08*pulse);g.fill()}
+  const q=g.createLinearGradient(a,0,x1,0);q.addColorStop(0,css(c3,holding?0.95:0.6));q.addColorStop(1,css(c3,holding?0.55:0.28));ribbon(a,x1,hh);g.fillStyle=q;g.fill();
+  g.strokeStyle=`rgba(255,255,255,${holding?0.4:0.18})`;g.lineWidth=1;g.beginPath();g.moveTo(a+hh/2,y-hh/2+1);g.lineTo(x1-hh/2,y-hh/2+1);g.stroke();
+  if(holding){g.save();g.setLineDash([sp*0.3,sp*0.9]);g.lineDashOffset=clock*sp*4;g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=Math.max(1.5,hh*0.3);g.lineCap='round';g.beginPath();g.moveTo(x1-hh/2,y);g.lineTo(a+hh/2,y);g.stroke();g.restore();
+   soft(curX,y,sp*0.7,c3,0.45+0.2*pulse)}
+  if(X(end)<=R+10){const near=holding?Math.max(0,1-(end-t)/0.4):0,mh=hh*(2+0.6*near);g.fillStyle=css(ease(c3,[255,255,255],0.3+0.5*near),holding?0.85+0.15*near:0.55);g.beginPath();g.roundRect(X(end)-2,y-mh/2,4,mh,2);g.fill();
+   if(near>0)soft(X(end),y,sp*(0.4+0.5*near),c3,0.5*near)}
+ }
  // the notes: numbers on dark keycaps
  const nextT=Math.min(...notes.filter(n=>n[0]>t).map(n=>n[0])),ringed=new Set(notes.filter(n=>n[0]>t).slice(0,2));
  const sz=Math.round(sp*0.6*size*songFit);
@@ -341,7 +357,13 @@ function frame(ms){
  // the cursor: a slim line with a soft column of light, a touch brighter on the beat
  q=g.createLinearGradient(curX-16,0,curX+16,0);q.addColorStop(0,css(mood.c,0));q.addColorStop(0.5,css(mood.c,0.1+0.08*beat));q.addColorStop(1,css(mood.c,0));g.fillStyle=q;g.fillRect(curX-16,trackT-pad,32,trackH+pad*2);
  g.restore();
- g.strokeStyle=css(mood.c,0.85);g.lineWidth=2;g.shadowColor=css(mood.c,1);g.shadowBlur=8+6*beat;g.beginPath();g.moveTo(curX,trackT-pad-6);g.lineTo(curX,trackB+pad+6);g.stroke();g.shadowBlur=0;
+ // the cursor is the multiplier, as in the game: it fills from the bottom toward the next level, a 1x-4x badge on top
+ {const cTop=trackT-pad-6,cBot=trackB+pad+6,mf=mult===4?1:(streak%10)/10,fy=cBot-(cBot-cTop)*mf;g.lineCap='round';
+  g.beginPath();g.moveTo(curX,cTop);g.lineTo(curX,cBot);g.strokeStyle=css(mood.c,0.1+0.08*beat);g.lineWidth=8;g.stroke();g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=2;g.stroke();
+  if(mf>0){g.beginPath();g.moveTo(curX,cBot);g.lineTo(curX,fy);g.strokeStyle=css(mood.c,0.3+0.1*beat);g.lineWidth=7;g.stroke();g.strokeStyle=css(mood.c,1);g.lineWidth=3;g.stroke()}
+  g.lineCap='butt';if(clock<sweepAt)sweepAt=-9;const pop=1+0.25*Math.max(0,1-(clock-sweepAt)/0.3),bw=40*pop,bh=24*pop,by=cTop-18;
+  g.beginPath();g.roundRect(curX-bw/2,by-bh/2,bw,bh,bh/2);g.fillStyle='rgba(9,10,15,.92)';g.fill();g.strokeStyle=css(mood.c,mult===1?0.45:0.95);g.lineWidth=1.4;g.stroke();
+  g.font=`700 ${Math.round(14*pop)}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(mood.c,mult===1?0.75:1);g.fillText(`${mult}×`,curX,by+1)}
  if(x4k>0.01){                                    // x4: glowing caps on the cursor, and a glint travelling round the board's edge
   soft(curX,trackT-pad-6,16,mood.c,0.6*x4k);soft(curX,trackB+pad+6,16,mood.c,0.6*x4k);
   const pw=R-L+56+pad,ph=trackH+pad*2,per=2*(pw+ph);
@@ -359,22 +381,84 @@ function frame(ms){
  for(let s=0;s<4;s++){g.font=`600 15px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(rgb(COL[s]),0.8);g.fillText(NAMES[s],L-34,sy(s))}
 
  // ---- score, multiplier, streak: quiet, top left above the track ----
- if(fx.hud){
-  const hx=L-56,hy=trackT-pad-44;   // room for the stars under the score
-  g.textAlign='left';g.textBaseline='alphabetic';g.font=`300 40px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(score.toLocaleString(),hx,hy);
-  const sw=g.measureText(score.toLocaleString()).width;
-  const rx=hx+sw+34,ry=hy-13,rr=15,fill=mult===4?1:(streak%10)/10;
-  g.lineWidth=3;g.strokeStyle='rgba(255,255,255,.12)';g.beginPath();g.arc(rx,ry,rr,0,7);g.stroke();
-  g.strokeStyle=css(mood.c,1);g.shadowColor=css(mood.c,1);g.shadowBlur=mult===4?12:0;g.beginPath();g.arc(rx,ry,rr,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.max(0.001,fill));g.stroke();g.shadowBlur=0;
-  // (the flame off the ring at x4 was removed: user, "remove fire effect on the multiplier")
-  g.font=`600 13px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(mood.c,1);g.fillText(`${mult}×`,rx,ry+1);
-  g.textAlign='left';g.textBaseline='alphabetic';g.font=`500 13px ${FONT}`;g.fillStyle='rgba(245,245,247,.5)';g.fillText(`${streak} streak`,rx+rr+12,ry+5);
-  // the stars (user: "I still want to see the stars"): 5, filling with the score toward a perfect run's
-  const total=notes.length?info.get(notes[notes.length-1]).score:1,val=Math.min(5,5*score/total),ss=17;   // as in the game's HUD (drawRockHud): 17 px, gold, warm empty stars
-  for(let i=0;i<5;i++){const cx0=hx+9+i*(ss+5),cy0=hy+20,f=Math.max(0,Math.min(1,val-i));
-   g.save();g.beginPath();for(let j=0;j<10;j++){const a=-Math.PI/2+j*Math.PI/5,r0=j%2?ss*0.22:ss/2;g.lineTo(cx0+Math.cos(a)*r0,cy0+Math.sin(a)*r0)}g.closePath();
-   g.fillStyle='rgba(255,245,230,0.22)';g.fill();g.clip();if(f>0){g.fillStyle='#f5b70a';g.shadowColor='rgba(245,183,10,0.6)';g.shadowBlur=f>=1?8:0;g.fillRect(cx0-ss/2,cy0-ss/2,ss*f,ss)}g.restore()}
+ // Score layouts (user: "I don't like how above the highway looks"): row (as in the game: score + stars left, streak
+ // right), centre (one group centred over the track), below (under the track), off (only the cursor's badge above).
+ if(fx.hud&&hudStyle!=='off'){
+  const total=notes.length?info.get(notes[notes.length-1]).score:1,val=Math.min(5,5*score/total),ss=17,pw=R-L+56+pad,hl=L-56,hr=hl+pw;
+  const stars=(x0,cy)=>{for(let i=0;i<5;i++){const cx0=x0+i*(ss+5),f=Math.max(0,Math.min(1,val-i));
+   g.save();g.beginPath();for(let j=0;j<10;j++){const a=-Math.PI/2+j*Math.PI/5,r0=j%2?ss*0.22:ss/2;g.lineTo(cx0+Math.cos(a)*r0,cy+Math.sin(a)*r0)}g.closePath();
+   g.fillStyle='rgba(255,245,230,0.22)';g.fill();g.clip();if(f>0){g.fillStyle='#f5b70a';g.shadowColor='rgba(245,183,10,0.6)';g.shadowBlur=f>=1?8:0;g.fillRect(cx0-ss/2,cy-ss/2,ss*f,ss)}g.restore()}};
+  // Records instead of stars (user: "how about instead of doing stars, we do records? bronze/silver/gold/platinum/diamond?"):
+  // the 5 star levels as Bronze / Silver / Gold / Platinum / Diamond; a vinyl with the tier's colour on its label, a thin
+  // ring filling toward the next tier, the tier's name beside it; a pop and a shine across it when a tier is reached.
+  // A premium record (user: "refine the look of the record, make it look more premium"): vinyl with fine grooves, a soft
+  // reflection turning slowly as if it spins, a thin bright edge; the label in the tier's metal (copper, brushed silver,
+  // warm gold, cool platinum, pearly diamond) with a highlight; the tier in small spaced capitals; a fine progress ring.
+  const TIERS=[['NO RECORD YET',['#2e2e36','#4a4a55','#2e2e36']],['BRONZE',['#6b3a16','#c97f42','#7d4620']],['SILVER',['#737b86','#d9dee5','#858d98']],
+               ['GOLD',['#8a5c03','#efc244','#a06c06']],['PLATINUM',['#9aa4b0','#e8edf2','#b0b9c3']],['DIAMOND',['#4fa9de','#cdeeff','#9b8cec']]];   // richer metals (the first ones read almost silver)
+  // The whole record in the tier's metal (user: "I'd like the whole record to be the color and then the progress fills with
+  // the new color"): the next tier's metal sweeps round the disc like a clock hand as you get closer (no separate ring).
+  const record=(x,cy,align,rBase=17,showName=true)=>{const tier=Math.min(5,Math.floor(val)),frac=tier>=5?0:val-tier,[name,mt]=TIERS[tier],nm=TIERS[Math.min(5,tier+1)][1];
+   if(tier!==recTier){if(tier>recTier)recAt=clock;recTier=tier}
+   if(clock<recAt)recAt=-9;   // time went back (the loop, a jump): no pop from the future (the record had swelled huge)
+   const pop=1+0.25*Math.max(0,1-(clock-recAt)/0.35),r=rBase*pop,cx=align==='center'?x:x+r+4;
+   const metal=(m)=>{const q=g.createLinearGradient(-r,-r,r,r);q.addColorStop(0,m[0]);q.addColorStop(0.5,m[1]);q.addColorStop(1,m[2]);return q};
+   g.save();g.translate(cx,cy);
+   g.shadowColor='rgba(0,0,0,.55)';g.shadowBlur=8;g.shadowOffsetY=2;g.beginPath();g.arc(0,0,r,0,7);g.fillStyle=metal(mt);g.fill();g.shadowBlur=0;g.shadowOffsetY=0;
+   // the next tier filling in (user: "the next color should be easy to see and get color as you get more"): faint at first,
+   // more solid as it grows; its vivid accent traced round the rim with a glow so even a little progress shows
+   const VIVID=['#ff9a52','#eef4ff','#ffcf33','#cfe3ff','#5fd0ff'],vc=VIVID[Math.min(4,tier)],ang=-Math.PI/2+Math.PI*2*frac;
+   if(frac>0){g.save();g.globalAlpha=0.35+0.65*frac;g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2,ang);g.closePath();g.fillStyle=metal(nm);g.fill();
+    g.globalAlpha=0.12+0.25*frac;g.fillStyle=vc;g.fill();g.restore();   // tinted with its accent, more as it grows
+    g.beginPath();g.moveTo(0,0);g.lineTo(Math.cos(ang)*r,Math.sin(ang)*r);g.strokeStyle=vc;g.globalAlpha=0.8;g.lineWidth=1.2;g.stroke();g.globalAlpha=1}   // its leading edge
+   for(let i=0;i<9;i++){const rr=r*(0.5+i*0.055);g.beginPath();g.arc(0,0,rr,0,7);g.strokeStyle=i%2?'rgba(0,0,0,.14)':'rgba(255,255,255,.12)';g.lineWidth=0.6;g.stroke()}   // grooves
+   g.save();g.beginPath();g.arc(0,0,r,0,7);g.clip();g.rotate(clock*0.8);   // a reflection, turning as if it spins
+   for(const k of[0,Math.PI]){g.save();g.rotate(k);const q=g.createLinearGradient(-r*0.2,-r,r*0.2,-r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.28)');q.addColorStop(1,'rgba(255,255,255,0)');
+    g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2-0.3,-Math.PI/2+0.3);g.closePath();g.fillStyle=q;g.fill();g.restore()}
+   g.restore();
+   g.beginPath();g.arc(0,0,r-0.5,0,7);g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=1;g.stroke();   // the bright edge
+   if(frac>0){g.save();g.beginPath();g.arc(0,0,r+3,-Math.PI/2,ang);g.strokeStyle=vc;g.lineWidth=2.5;g.lineCap='round';g.shadowColor=vc;g.shadowBlur=8;g.globalAlpha=0.65+0.35*frac;g.stroke();g.restore()}   // the accent arc round the rim
+   g.beginPath();g.arc(0,0,r*0.36,0,7);g.fillStyle='rgba(0,0,0,.22)';g.fill();g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=0.7;g.stroke();   // the label, a shade deeper
+   g.fillStyle='#050506';g.beginPath();g.arc(0,0,r*0.07,0,7);g.fill();   // the spindle hole
+   if(tier===5){const sp4=(px,py,k,z)=>{g.fillStyle='rgba(255,255,255,'+(0.4+0.6*Math.max(0,Math.sin(clock*4+k)))+')';g.beginPath();g.moveTo(px,py-z);g.lineTo(px+z*0.28,py-z*0.28);g.lineTo(px+z,py);g.lineTo(px+z*0.28,py+z*0.28);g.lineTo(px,py+z);g.lineTo(px-z*0.28,py+z*0.28);g.lineTo(px-z,py);g.lineTo(px-z*0.28,py-z*0.28);g.closePath();g.fill()};sp4(r*0.78,-r*0.78,0,4.5);sp4(-r*0.85,r*0.55,2.2,3)}
+   const sa=(clock-recAt)/0.7;if(sa>=0&&sa<1){g.save();g.beginPath();g.arc(0,0,r,0,7);g.clip();const sx=-r*1.4+2.8*r*sa,q=g.createLinearGradient(sx-7,-r,sx+7,r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.6)');q.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=q;g.fillRect(-r,-r,2*r,2*r);g.restore()}
+   g.restore();
+   if(!showName)return;g.font=`600 10.5px ${FONT}`;g.letterSpacing='2.2px';g.textBaseline='middle';g.fillStyle=tier?mt[1]:'rgba(245,245,247,.4)';
+   if(align==='center'){g.textAlign='center';g.fillText(name,cx,cy+r+15)}else{g.textAlign='left';g.fillText(name,cx+r+12,cy)}g.letterSpacing='0px'};
+  const award=(x,cy,align)=>award2==='records'?record(x,cy,align):stars(align==='center'?x-2*(ss+5):x,cy);
+  const sc=score.toLocaleString();
+  // Plaque (user: "I think the score and record could look better"): one unit, the record as its emblem (26 px), the score
+  // beside it in light type with a soft silver gradient, the tier under the score in its own metal after a short rule.
+  const plaque=(x0,ym,align)=>{
+   const tier=Math.min(5,Math.floor(val)),[name,mt]=TIERS[tier],R0=26;g.font=`200 48px ${FONT}`;const sw=g.measureText(sc).width;
+   g.font=`600 10.5px ${FONT}`;g.letterSpacing='2.4px';const label=tier?name+' RECORD':name,lw=g.measureText(label).width+22;g.letterSpacing='0px';
+   const w=2*R0+20+Math.max(sw,lw),left=align==='center'?x0-w/2:x0,tx=left+2*R0+20;
+   record(left-4,ym,'left',R0,false);
+   const q=g.createLinearGradient(0,ym-34,0,ym+4);q.addColorStop(0,'#ffffff');q.addColorStop(1,'#c3c9d2');
+   g.font=`200 48px ${FONT}`;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle=q;g.fillText(sc,tx,ym+4);
+   const ly=ym+20;g.fillStyle=tier?mt[1]:'rgba(245,245,247,.35)';g.fillRect(tx,ly-0.5,14,1);
+   g.font=`600 10.5px ${FONT}`;g.letterSpacing='2.4px';g.textBaseline='middle';g.fillText(label,tx+22,ly);g.letterSpacing='0px'};
+  if(scoreLook==='plaque'&&award2==='records'){
+   if(hudStyle==='center')plaque((hl+hr)/2,trackT-pad-48,'center');else plaque(hl,hudStyle==='row'?trackT-pad-48:trackB+pad+50,'left');
+  }else if(hudStyle==='row'||hudStyle==='below'){
+   const hb=hudStyle==='row'?trackT-pad-44:trackB+pad+62;   // row: the stars under the score (beside it they ran into the cursor's badge)
+   g.textAlign='left';g.textBaseline='alphabetic';g.font=`300 52px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(sc,hl,hb);const scW=g.measureText(sc).width;if(hudStyle==='row')award(hl+2,hb+22,'left');else award(hl+scW+26,hb-14,'left');
+   // (no streak shown: user, "I don't want to show the streak, but show something at 50/100/150")
+  }else{                                           // centre: one group over the middle of the track
+   const cx=(hl+hr)/2,hb=trackT-pad-44;
+   g.textAlign='center';g.textBaseline='alphabetic';g.font=`300 46px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(sc,cx,hb);const scW=g.measureText(sc).width;
+   award(cx,hb+32,'center');
+
+  }
  }
+ // Milestones every 50 notes (user: "I don't want to show the streak, but show something at 50/100/150/etc"): a large light
+ // number over the middle of the track, NOTE STREAK under it, thin lines drawing out to each side; ~1.6 s.
+ {if(clock<mileAt)mileAt=-9;const m50=Math.floor(streak/50)*50;if(m50>mileN){mileN=m50;mileAt=clock}if(streak<mileN)mileN=Math.floor(streak/50)*50;
+  const ma=clock-mileAt;if(mileN>0&&ma>=0&&ma<1.6){const pw=R-L+56+pad,cx=L-56+pw/2,cy=trackT-pad-hudGap(),a=Math.min(1,ma/0.18)*Math.min(1,(1.6-ma)/0.45),sc=0.92+0.08*Math.min(1,ma/0.25);
+   g.save();g.globalAlpha=a;g.translate(cx,cy);g.scale(sc,sc);g.textAlign='center';g.textBaseline='alphabetic';g.font=`200 46px ${FONT}`;g.fillStyle=css(mood.c,1);g.fillText(String(mileN),0,0);
+   const nw=g.measureText(String(mileN)).width,ext=Math.min(1,ma/0.5)*110;g.strokeStyle=css(mood.c,0.7);g.lineWidth=1;
+   g.beginPath();g.moveTo(-nw/2-14,-14);g.lineTo(-nw/2-14-ext,-14);g.moveTo(nw/2+14,-14);g.lineTo(nw/2+14+ext,-14);g.stroke();
+   g.font=`600 10px ${FONT}`;g.letterSpacing='3px';g.fillStyle='rgba(245,245,247,.7)';g.fillText('NOTE STREAK',0,16);g.letterSpacing='0px';g.restore()}}
  requestAnimationFrame(frame);
 }
 
@@ -383,6 +467,9 @@ const bar=document.getElementById('bar');
 document.getElementById('songs').innerHTML=Object.keys(PASSAGES).map(s=>`<button data-song="${s}">${s}</button>`).join(' ');
 function show(){
  bar.querySelectorAll('[data-song]').forEach(b=>b.classList.toggle('on',b.dataset.song===song));
+ bar.querySelectorAll('[data-look2]').forEach(b=>b.classList.toggle('on',b.dataset.look2===scoreLook));
+ bar.querySelectorAll('[data-award]').forEach(b=>b.classList.toggle('on',b.dataset.award===award2));
+ bar.querySelectorAll('[data-hud]').forEach(b=>b.classList.toggle('on',b.dataset.hud===hudStyle));
  bar.querySelectorAll('[data-stagger]').forEach(b=>b.classList.toggle('on',b.dataset.stagger===stagger));
  bar.querySelectorAll('[data-bg]').forEach(b=>b.classList.toggle('on',b.dataset.bg===bgStyle));
  bar.querySelectorAll('[data-rep]').forEach(b=>b.classList.toggle('on',b.dataset.rep===repStyle));
@@ -393,11 +480,11 @@ function show(){
  bar.querySelector('[data-pause]').textContent=paused?'Play':'Pause';
 }
 bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
- if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx)fx[b.dataset.fx]=!fx[b.dataset.fx];else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
+ if(b.dataset.look2)scoreLook=b.dataset.look2;else if(b.dataset.award)award2=b.dataset.award;else if(b.dataset.hud)hudStyle=b.dataset.hud;else if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx)fx[b.dataset.fx]=!fx[b.dataset.fx];else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
 addEventListener('keydown',e=>{if(e.key===' '){paused=!paused;e.preventDefault();show()}});
 const sp=document.getElementById('speed');sp.oninput=()=>{speedSet=+sp.value;document.getElementById('speedv').textContent=speedSet+'×';load()};
 const sz=document.getElementById('size');sz.oninput=()=>{size=+sz.value;document.getElementById('sizev').textContent=size+'×';load()};
 const rs=document.getElementById('repsize');rs.oninput=()=>{repSize=+rs.value;document.getElementById('repsizev').textContent=repSize+'×'};
-const qs=new URLSearchParams(location.search);if(qs.get('t'))clock=+qs.get('t');if(qs.get('pause'))paused=true;if(qs.get('x4'))fx.x4=true;if(qs.get('stagger'))stagger=qs.get('stagger');if(qs.get('bg'))bgStyle=qs.get('bg');if(qs.get('rep'))repStyle=qs.get('rep');if(qs.get('echo'))echo=qs.get('echo');if(qs.get('song'))song=Object.keys(PASSAGES)[+qs.get('song')];
+const qs=new URLSearchParams(location.search);if(qs.get('t'))clock=+qs.get('t');if(qs.get('pause'))paused=true;if(qs.get('x4'))fx.x4=true;if(qs.get('award'))award2=qs.get('award');if(qs.get('hud'))hudStyle=qs.get('hud');if(qs.get('stagger'))stagger=qs.get('stagger');if(qs.get('bg'))bgStyle=qs.get('bg');if(qs.get('rep'))repStyle=qs.get('rep');if(qs.get('echo'))echo=qs.get('echo');if(qs.get('song'))song=Object.keys(PASSAGES)[+qs.get('song')];
 load();show();requestAnimationFrame(frame);
 </script>
