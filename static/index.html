@@ -1488,7 +1488,33 @@
   #arc-go:hover:not(:disabled), #arc-go:focus-visible, #arc-feature-go:hover, #arc-feature-go:focus-visible { background: #fff; color: #0a0b10; transform: none; text-shadow: none; box-shadow: 0 8px 30px rgba(var(--arc-mood), .3); }
   #arc-go:disabled { background: rgba(255, 255, 255, .1); color: rgba(245, 245, 247, .4); box-shadow: none; }
   #arc-feature-go { width: 100%; height: 44px; font-size: 12px; margin-top: 18px; }
-  #pause-dlg .pause-body .btn:hover:not(:disabled), #pause-dlg .pause-body .btn:focus-visible { background: none; box-shadow: none; }   /* (Resume showed a white box on hover: user) */
+  /* No focus box on menus, covers, rows or difficulty cards: the cursor line or the highlight shows where you are
+     (user, a screenshot: a white box round Play on the title) */
+  .arc-screen .arc-item:focus-visible, .arc-screen .arc-car-card:focus-visible, .arc-screen .arc-row:focus-visible, .arc-screen .arc-diff:focus-visible,
+  .arc-screen .arc-link:focus-visible { outline: none; }
+  /* The splash when Encore opens (user: "can we also update the loading splash when you first open encore"): the brand
+     and a light sweeping along a thin line, over the page while it loads, and on "Starting Track Splitter…" */
+  .encore-splash { display: none; position: fixed; inset: 0; z-index: 90; flex-direction: column; align-items: center; justify-content: center; gap: 30px;
+    background: radial-gradient(70% 55% at 50% 45%, rgba(192, 132, 87, .13), transparent 70%), #06070b; color: #f5f5f7; animation: arc-in .5s ease-out; }
+  html.encore-boot body:not(.arcade) .encore-splash { display: flex; }
+  html.encore-boot body:not(.arcade) { background: #06070b; }
+  html.encore-boot body:not(.arcade) > :not(.encore-splash) { visibility: hidden; }
+  .splash-brand { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .splash-brand small { font: 600 10.5px var(--arc-font); letter-spacing: .32em; padding-left: .32em; text-transform: uppercase; color: var(--arc-faint); }
+  .splash-brand b { font: 200 clamp(48px, 6vw, 76px) var(--arc-font); letter-spacing: .34em; padding-left: .34em; line-height: 1;
+    background: linear-gradient(#fff, #c3c9d2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .splash-line { position: relative; width: 220px; height: 2px; margin: 0 auto; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+  .splash-line i { position: absolute; top: 0; bottom: 0; left: -70px; width: 70px; background: linear-gradient(90deg, transparent, #fff, transparent);
+    box-shadow: 0 0 10px rgba(var(--arc-mood), .9); animation: splash-sweep 1.5s cubic-bezier(.5, 0, .5, 1) infinite; }
+  @keyframes splash-sweep { to { left: 220px; } }
+  @media (prefers-reduced-motion: reduce) { .splash-line i { animation-duration: 4s; } }
+  .arc-starting .arc-load-info { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .arc-starting .splash-line { margin-top: 30px; }
+  #arc-start-title { margin: 34px 0 0; font: 300 20px var(--arc-font); color: #f5f5f7; }
+  .arc-starting .arc-load-tip { margin-top: 10px; font-size: 14px; }
+  /* The pause words stay bare in every state (user: "hovering over resume shows a white box", twice) */
+  #pause-dlg .pause-body .btn, #pause-dlg .pause-body .btn:hover, #pause-dlg .pause-body .btn:focus, #pause-dlg .pause-body .btn:focus-visible, #pause-dlg .pause-body .btn:active {
+    background: none !important; box-shadow: none !important; border: 0 !important; outline: none !important; filter: none !important; }
   /* Settings as one panel in the middle with Game / Sound / Setup tabs (user: "can we improve the settings"; it was two
      crowded columns across the whole screen) */
   #settings-dlg.full[open] { display: flex; align-items: center; justify-content: center; }
@@ -1512,6 +1538,7 @@
 <script>
   // Encore as an installable Chrome app (its own icon and window): only the game's page links the manifest.
   if (location.pathname.replace(/\/+$/, '') === '/game') {
+    document.documentElement.classList.add('encore-boot');   // the splash covers the page until Encore is ready
     document.head.append(Object.assign(document.createElement('link'), { rel: 'manifest', href: '/encore-manifest.json' }),
       Object.assign(document.createElement('meta'), { name: 'theme-color', content: '#06070b' }),
       Object.assign(document.createElement('link'), { rel: 'icon', href: '/icons/encore-192.png' }));
@@ -1520,6 +1547,7 @@
 </script>
 </head>
 <body>
+<div class="encore-splash" aria-label="Loading Encore"><div class="splash-brand"><small>Track Splitter</small><b>ENCORE</b></div><div class="splash-line"><i></i></div></div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -1957,9 +1985,9 @@
   <section class="arc-screen hidden" id="arc-starting" aria-label="Starting">
     <div class="arc-load arc-starting">
       <div class="arc-load-info">
-        <div class="arc-load-label">Encore</div>
-        <h1 class="arc-display" id="arc-start-title">Starting Track Splitter…</h1>
-        <div class="arc-load-bar" id="arc-start-bar"><i></i></div>
+        <div class="splash-brand"><small>Track Splitter</small><b>ENCORE</b></div>
+        <div class="splash-line" id="arc-start-bar"><i></i></div>
+        <h1 id="arc-start-title">Starting Track Splitter…</h1>
         <p class="arc-load-tip" id="arc-start-note">Encore needs Track Splitter running in the background. It's starting now.</p>
         <button type="button" class="btn primary hidden" id="arc-start-go">Start Track Splitter</button>
         <button type="button" class="btn primary hidden" id="arc-start-retry">Try again</button>

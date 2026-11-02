@@ -2552,3 +2552,10 @@ progessing the new one, just do a ring on the outside").
 - Checked on the library copy (port 7873): title, song select (covers and list), settings (all tabs, from the title and
   song select), an Arcade game, pause, quit → results; no console errors from the page (the only one is the existing
   service worker fetch in the browser pane).
+- Follow-ups: the "white box" was the keyboard focus outline round Play on the title (user sent a screenshot; Play has
+  focus when Encore opens); menus, covers, list rows and difficulty cards no longer draw it (the cursor line or the
+  highlight shows where you are), and the pause words stay bare in every state. Opening splash (user: "can we also
+  update the loading splash when you first open encore"): `.encore-splash` (brand + a light sweeping a thin line) covers
+  the page from the first paint until `startArcade` adds `body.arcade` (`html.encore-boot`, set in the head script on
+  /game; before, the Track Splitter page showed for a moment); "Starting Track Splitter…" uses the same brand and line;
+  the installed app's colours (`encore-manifest.json`, theme-color) match the new background.
