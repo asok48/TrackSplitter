@@ -31,7 +31,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Score</span><button data-hud="row">Row</button><button data-hud="center">Centred</button><button data-hud="below">Below</button><button data-hud="off">Off</button><span class="sep"></span><button data-award="stars">Stars</button><button data-award="records">Records</button><button data-look2="plaque">Plaque</button><button data-look2="classic">Classic</button>
  <span class="sep"></span>
- <span style="color:rgba(245,245,247,.4)">Stagger</span><button data-stagger="stem">Stems</button><button data-stagger="flag">Flags</button><button data-stagger="float">Float</button>
+ <span style="color:rgba(245,245,247,.4)">Stagger</span><button data-stagger="stem">Stems</button><button data-stagger="lift">Lift</button><button data-stagger="joined">Joined</button><button data-stagger="gap">Slim</button>
  <span class="sep"></span>
  <button data-spread>Spread fast runs</button>
  <label>Speed <input type="range" id="speed" min="0.4" max="1.5" step="0.05" value="0.7"><span id="speedv">0.7×</span></label>
@@ -269,18 +269,26 @@ function frame(ms){
   // A fret change is never hidden (at one size per song, 16ths ~20 px apart had hidden up to 15 of 87): two numbered
   // notes too close for keycaps both drop them and show just their numbers, same size; a mark only when even bare
   // numbers can't fit; only repeats are ever merged away.
-  const half=it=>it.form==='mark'?markW/2:it.form==='text'?it.tw/2:it.cw/2;
-  for(const it of items){it.form=it.quick?'mark':'cap';g.font=`700 ${Math.round(it.fs)}px ${FONT}`;it.tw=g.measureText(String(it.n[3])).width}
-  for(let i=1;i<items.length;i++){const a=items[i-1],b=items[i];if(a.form!=='mark'&&b.form!=='mark'&&b.x-a.x<a.cw/2+b.cw/2+6)a.form=b.form='text'}
-  for(let i=1;i<items.length;i++){const a=items[i-1],b=items[i];   // an echo right before a numbered note: the note drops its keycap, then the echo merges
-   if(a.form==='mark'&&b.form==='cap'&&b.x-a.x<markW/2+b.cw/2+4)b.form='text';
-   if(a.form==='mark'&&b.form==='text'&&b.x-a.x<markW/2+b.tw/2+2&&info.get(a.n).rep)a.form='none'}
-  // a run of bare numbers still too tight side by side (Baby's 8-12-8 at 0.137 s) is staggered, alternately a little above
-  // and below the string, so neighbours never collide and nothing shrinks or hides
-  let run=0;for(let i=0;i<items.length;i++){const it=items[i];it.dy=0;if(it.form!=='text'){run=0;continue}
-   const pv=items[i-1];if(pv&&pv.form==='text'&&it.x-pv.x<pv.tw/2+it.tw/2+4){const off=sp*(stagger==='float'?0.22:0.3);if(!run)pv.dy=-off;run++;it.dy=pv.dy<0?off:-off}else run=0}
-  let edge=-Infinity;   // repeat marks with no room at all merge into the note before
-  for(const it of items){if(it.form==='mark'&&it.x-markW/2<edge+1&&info.get(it.n).rep)it.form='none';if(it.form!=='none')edge=it.x+(it.dy?0:half(it))}
+  // As in the game now: every note but a repeat keeps its keycap (user: "not all notes have the box around them"); keycaps
+  // too close to sit side by side are placed by the Stagger setting (user: "can be hard to read the staggered notes"):
+  //  stem   - alternately above and below the string on stems (the game's)
+  //  lift   - the first stays on the string, the next close one sits just above it on a short stem, then back down
+  //  joined - a run of close notes shares one keycap on the string, its numbers in order with thin dividers
+  //  gap    - slimmer keycaps packed closer; only what still can't fit lifts above
+  for(const it of items){it.form=it.quick?'mark':'cap';g.font=`700 ${Math.round(it.fs)}px ${FONT}`;it.tw=g.measureText(String(it.n[3])).width;it.dy=0;it.grp=null;
+   if(stagger==='gap')it.cw=Math.max(it.fs*0.9,it.tw+it.fs*0.36)}
+  const caps=items.filter(it=>it.form==='cap'),gapPx=stagger==='gap'?2:4,ch0=sz*1.12;
+  const tight=(a,b)=>b.x-a.x<a.cw/2+b.cw/2+gapPx;
+  if(stagger==='stem'){for(let i=1;i<caps.length;i++){const a=caps[i-1],b=caps[i];if(tight(a,b)){if(!a.dy)a.dy=-sp*0.3;b.dy=a.dy<0?sp*0.3:-sp*0.3}}}
+  if(stagger==='lift'||stagger==='gap'){const up=-(ch0+6);for(let i=1;i<caps.length;i++){const a=caps[i-1],b=caps[i];if(tight(a,b))b.dy=a.dy?0:up;   // back down if it fits beside the one before on the string
+    if(!b.dy&&i>1&&a.dy&&tight(caps[i-2],b))b.dy=up}}
+  if(stagger==='joined'){let g0=null;for(let i=0;i<caps.length;i++){const b=caps[i],a=caps[i-1];if(a&&tight(a,b)){if(!g0){g0=[a];a.grp=g0}g0.push(b);b.grp=g0}else g0=null}
+   for(const it of caps)if(it.grp&&it.grp[0]===it){const gr=it.grp,pad=sz*0.32,div=sz*0.5,w=gr.reduce((m,x)=>m+x.tw,0)+div*(gr.length-1)+pad*2,cx=(gr[0].x+gr[gr.length-1].x)/2;
+    let xx=cx-w/2+pad;gr.forEach(x=>{x.gx=xx+x.tw/2;xx+=x.tw+div});it.gw=w;it.gcx=cx}}
+  // a repeat's diamond gives way to a keycap it would touch, and to the diamond before it
+  items.forEach((it,i)=>{if(it.form!=='mark')return;const a=items[i-1],b=items[i+1],hw=x=>x.grp?x.grp[0].gw/2:x.cw/2,cx=x=>x.grp?x.grp[0].gcx:x.x;
+   if((a&&a.form==='cap'&&!a.dy&&Math.abs(it.x-cx(a))<hw(a)+markW/2+2)||(b&&b.form==='cap'&&!b.dy&&Math.abs(cx(b)-it.x)<hw(b)+markW/2+2))it.form='none'});
+  let edge=-Infinity;for(const it of items){if(it.form==='mark'&&it.x-markW/2<edge+1)it.form='none';if(it.form!=='none'&&!it.dy)edge=it.grp?it.grp[0].gcx+it.grp[0].gw/2:it.x+(it.form==='mark'?markW/2:it.cw/2)}
  }
  for(const n of vis.slice().reverse()){
   const I=info.get(n),x=X(n[0]),y=sy(n[2])+(lay.get(n).dy||0),age=t-n[0],played=age>0.02,c=rgb(COL[n[2]]),open=n[3]===0,isNext=n[0]===nextT,it=lay.get(n);
@@ -335,14 +343,21 @@ function frame(ms){
   // arcade: a hit flares, rings out and throws a few sparks
   if(fx.sparks&&played&&age<0.35){const pp=1-age/0.35;g.save();g.globalAlpha=pp;g.strokeStyle=COL[n[2]];g.lineWidth=2;g.beginPath();g.arc(x,y,ch*(0.6+1.2*(1-pp)),0,7);g.stroke();
    for(let j=0;j<6;j++){const ang=j*1.05+I.i*1.3,d=ch*(0.55+1.5*(1-pp));g.fillStyle=j%2?css(mood.c,1):COL[n[2]];g.beginPath();g.arc(x+Math.cos(ang)*d,y+Math.sin(ang)*d,2.2*pp+0.5,0,7);g.fill()}g.restore()}
-  if(it.form==='text'&&it.dy&&stagger!=='float'){  // staggered, made easier to read (user: "I like the idea of putting the numbers on
+  if(it.grp){                                      // joined: the group's one keycap, drawn with its first note; each number dims as it's played
+   const gr=it.grp,g0=gr[0];if(g0!==it){g.globalAlpha=1;continue}
+   const h=fs*1.12,anyNear=gr.some(x=>x.n[0]===nextT);g.shadowBlur=0;if(anyNear){g.shadowColor=COL[n[2]];g.shadowBlur=10+14*near}
+   g.globalAlpha=edgeA;g.beginPath();g.roundRect(g0.gcx-g0.gw/2,y-h/2,g0.gw,h,h*0.3);g.fillStyle='rgba(9,10,15,.92)';g.fill();g.shadowBlur=0;
+   g.strokeStyle=css(c,0.45+0.5*(anyNear?0.6:0));g.lineWidth=1.2;g.stroke();
+   gr.forEach((x,j)=>{const pa=t-x.n[0]>0.02;if(j){g.strokeStyle=css(c,0.35);g.lineWidth=1;g.beginPath();g.moveTo(x.gx-x.tw/2-fs*0.25,y-h*0.28);g.lineTo(x.gx-x.tw/2-fs*0.25,y+h*0.28);g.stroke()}
+    g.globalAlpha=edgeA*(pa?0.4:1);g.textAlign='center';g.textBaseline='middle';g.fillStyle='#f5f5f7';g.fillText(String(x.n[3]),x.gx,y+fs*0.04);g.globalAlpha=edgeA});
+   g.globalAlpha=1;continue}
+  if(it.form==='cap'&&it.dy){  // staggered, made easier to read (user: "I like the idea of putting the numbers on
    // different sides of the line, I just feel like we could make it easier to read"): stem = a dot on the string where the
    // note falls and a thin stem to the number; flag = a keycap beside the line with a small pointer touching it
-   const y0=sy(n[2]),up=it.dy<0,w=Math.max(fs*1.0,it.tw+fs*0.42),h=fs*1.06,ey=up?y+h/2:y-h/2,cc=missedColor(n,c);
-   if(stagger==='stem'){g.fillStyle=COL[n[2]];g.beginPath();g.arc(x,y0,3.2,0,7);g.fill();g.strokeStyle=css(c,0.75);g.lineWidth=1.4;g.beginPath();g.moveTo(x,y0);g.lineTo(x,ey);g.stroke()}
+   const y0=sy(n[2]),up=it.dy<0,w=it.cw,h=fs*1.12,ey=up?y+h/2:y-h/2,cc=missedColor(n,c);
+   {g.fillStyle=COL[n[2]];g.beginPath();g.arc(x,y0,3.2,0,7);g.fill();g.strokeStyle=css(c,0.75);g.lineWidth=1.4;g.beginPath();g.moveTo(x,y0);g.lineTo(x,ey);g.stroke()}
    if(isNext||hit){g.shadowColor=COL[n[2]];g.shadowBlur=10+12*Math.max(near,hit)}
    g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,h*0.3);
-   if(stagger==='flag'){const pw=Math.min(9,w*0.35);g.moveTo(x-pw/2,ey);g.lineTo(x,y0+(up?-2:2));g.lineTo(x+pw/2,ey)}   // the pointer, touching the line
    g.fillStyle=hit?css(c,0.9*hit+0.1):'rgba(9,10,15,.94)';g.fill();g.shadowBlur=0;g.strokeStyle=css(cc,0.55+0.4*Math.max(near,isNext?0.6:0));g.lineWidth=1.2;g.stroke();
    g.textAlign='center';g.textBaseline='middle';g.fillStyle=hit>0.4?'#0a0b10':'#f5f5f7';g.fillText(String(n[3]),x,y+fs*0.04);g.globalAlpha=1;continue}
   if(it.form==='text'){                           // no room for a keycap: just the number

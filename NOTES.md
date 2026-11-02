@@ -2559,3 +2559,15 @@ progessing the new one, just do a ring on the outside").
   the page from the first paint until `startArcade` adds `body.arcade` (`html.encore-boot`, set in the head script on
   /game; before, the Track Splitter page showed for a moment); "Starting Track Splitter…" uses the same brand and line;
   the installed app's colours (`encore-manifest.json`, theme-color) match the new background.
+- Arcade board: every note but a repeat keeps its keycap (user: "not all notes have the box around them. Any none
+  repeating note and new note needs it. Thank you for the venom for example"). Two keycaps too close to sit side by side
+  used to drop to bare numbers; now they go above / below the string on stems (with their keycaps), and a repeat's
+  diamond gives way to a keycap it would touch. Checked in a game on Thank You for the Venom (copied into the test
+  library; every non-repeat note boxed, none needed staggering) and Flower Power Madness (fast runs staggered on stems,
+  boxed).
+- Staggered notes "can be hard to read" (user): the Arcade mockup got Stagger options (Stems, Lift: the next close one
+  just above on a short stem; Joined: a run of close notes shares one keycap on the string, numbers in order with thin
+  dividers; Slim: narrower keycaps packed closer). User picked Joined; in the game a run of keycaps too close to sit side
+  by side (`grp`) is one keycap centred on the run, each number at its own spot inside it, lighting / flashing / dimming
+  on its own; rings and hit sparks sit on the number. Stems are gone from the game. Checked in a game on Flower Power
+  Madness ("3 | 5" runs on the A string, no console errors).

@@ -5413,8 +5413,8 @@
   // The pads stay put and the tab glides under a fixed cursor at one steady speed (flat: the leaning 3D board made notes
   // grow and speed up as they came in), slower than the 3D board (0.7x its speed at the same setting); fast runs get a
   // little more room (up to 1.35x, eased over ±0.8 s: more "speeds up super fast"). Numbers on dark keycaps, one size per
-  // song (sizes changing note to note was "tough"); two too close drop their keycaps, a run still too tight staggers above
-  // / below the string; a fret change is never hidden. A repeat (the very next note, same string and fret) is an echo with
+  // song (sizes changing note to note was "tough"); every note but a repeat keeps its keycap, a run too close to sit side
+  // by side shares one keycap with dividers; a fret change is never hidden. A repeat (the very next note, same string and fret) is an echo with
   // the fret tiny inside. Rings close in on the next two notes; hits glow, ring out and spark; the string vibrates; misses
   // go grey. Around the track: a deep colour mesh that follows the song (its kicks, loudness and big moments), coloured by
   // the multiplier; x4 turns the board blue with a glowing outline. Score, multiplier, streak and stars top left.
@@ -5647,25 +5647,38 @@
         if (near > 0) arcadeSoft(g, X(end), y, sizeSp * (0.4 + 0.5 * near), c3, 0.5 * near);
       }
     }
-    // the notes: layout per string (one size; too close: no keycaps, then staggered), then drawn
+    // the notes: layout per string (one size; keycaps too close share one), then drawn
     const upcoming = vis.filter((k) => !game.result[k] && notes[k][0] >= t - 0.1), nextT = upcoming.length ? notes[upcoming[0]][0] : Infinity, ringed = new Set(upcoming.slice(0, 2));
     const sz = Math.round(sizeSp * 0.6 * 0.75 * P.fit), markW = sizeSp * 0.36 * 0.7, lay = new Map();
     for (let s = 0; s < n; s++) {
-      const items = vis.filter((k) => notes[k][2] === s).map((k) => { g.font = `700 ${sz}px ${GAME_FONT}`; const tw = g.measureText(String(notes[k][3])).width; return { k, x: X(notes[k][0]), quick: info[k].rep, tw, cw: info[k].rep ? markW : Math.max(sz * 1.05, tw + sz * 0.55), dy: 0 }; });
+      const items = vis.filter((k) => notes[k][2] === s).map((k) => { g.font = `700 ${sz}px ${GAME_FONT}`; const tw = g.measureText(String(notes[k][3])).width; return { k, x: X(notes[k][0]), quick: info[k].rep, tw, cw: info[k].rep ? markW : Math.max(sz * 1.05, tw + sz * 0.55) }; });
       for (const it of items) it.form = it.quick ? 'mark' : 'cap';
-      for (let i = 1; i < items.length; i++) { const a = items[i - 1], b = items[i]; if (a.form !== 'mark' && b.form !== 'mark' && b.x - a.x < a.cw / 2 + b.cw / 2 + 6) a.form = b.form = 'text'; }
-      for (let i = 1; i < items.length; i++) { const a = items[i - 1], b = items[i];
-        if (a.form === 'mark' && b.form === 'cap' && b.x - a.x < markW / 2 + b.cw / 2 + 4) b.form = 'text';
-        if (a.form === 'mark' && b.form === 'text' && b.x - a.x < markW / 2 + b.tw / 2 + 2) a.form = 'none'; }
-      // bare numbers closer than half a number apart are staggered ("12 8" side by side read as "128")
-      let run = 0; for (let i = 0; i < items.length; i++) { const it = items[i]; if (it.form !== 'text') { run = 0; continue; } const pv = items[i - 1];
-        if (pv && pv.form === 'text' && it.x - pv.x < pv.tw / 2 + it.tw / 2 + sz * 0.5) { if (!run) pv.dy = -sp * 0.3; run++; it.dy = pv.dy < 0 ? sp * 0.3 : -sp * 0.3; } else run = 0; }
-      let edge = -Infinity; for (const it of items) { if (it.form === 'mark' && it.x - markW / 2 < edge + 1) it.form = 'none'; if (it.form !== 'none') edge = it.x + (it.dy ? 0 : it.form === 'mark' ? markW / 2 : it.form === 'text' ? it.tw / 2 : it.cw / 2); }
+      // Every note that isn't a repeat keeps its keycap (user: "not all notes have the box around them. Any none repeating
+      // note and new note needs it"). Keycaps too close to sit side by side share one, on the string, the numbers in order
+      // with thin dividers (user picked "Joined" in the mockup: stems above and below "can be hard to read").
+      const caps = items.filter((it) => it.form === 'cap');
+      for (let i = 1, grp = null; i < caps.length; i++) {
+        const a = caps[i - 1], b = caps[i];
+        if (b.x - a.x < a.cw / 2 + b.cw / 2 + 4) { if (!grp) { grp = [a]; a.grp = grp; } grp.push(b); b.grp = grp; } else grp = null;
+      }
+      for (const it of caps) if (it.grp && it.grp[0] === it) {
+        const gr = it.grp, padX = sz * 0.32, div = sz * 0.5;
+        it.gw = gr.reduce((m, x) => m + x.tw, 0) + div * (gr.length - 1) + padX * 2; it.gcx = (gr[0].x + gr[gr.length - 1].x) / 2;
+        let xx = it.gcx - it.gw / 2 + padX; for (const x of gr) { x.gx = xx + x.tw / 2; xx += x.tw + div; }
+      }
+      const left = (it) => (it.grp ? it.grp[0].gcx - it.grp[0].gw / 2 : it.x - it.cw / 2), right = (it) => (it.grp ? it.grp[0].gcx + it.grp[0].gw / 2 : it.x + it.cw / 2);
+      // a repeat's diamond gives way to a keycap it would touch, and to the diamond before it
+      items.forEach((it, i) => {
+        if (it.form !== 'mark') return;
+        const a = items[i - 1], b = items[i + 1];
+        if ((a && a.form === 'cap' && it.x - markW / 2 < right(a) + 2) || (b && b.form === 'cap' && it.x + markW / 2 > left(b) - 2)) it.form = 'none';
+      });
+      let edge = -Infinity; for (const it of items) { if (it.form === 'mark' && it.x - markW / 2 < edge + 1) it.form = 'none'; if (it.form !== 'none') edge = it.form === 'mark' ? it.x + markW / 2 : Math.max(edge, right(it)); }
       for (const it of items) lay.set(it.k, it);
     }
     for (const k of vis.slice().reverse()) {
       const it = lay.get(k); if (!it || it.form === 'none') continue;
-      const nt = notes[k], s = nt[2], x = it.x, y = sy(s) + it.dy, res = game.result[k], missed = res === 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : 9;
+      const nt = notes[k], s = nt[2], x = it.grp ? it.gx : it.x, y = sy(s), res = game.result[k], missed = res === 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : 9;
       const c = missed ? [110, 110, 120] : crgb(s), cs = missed ? '#6b6b78' : col(s), isNext = nt[0] === nextT && !res;
       const edgeA = Math.max(0, Math.min(1, (R - x) / ((R - L) * 0.18))) * Math.max(0, Math.min(1, (x - L + 30) / 60));
       const passed = nt[0] < t - 0.02, near = !passed && !res ? Math.max(0, 1 - (nt[0] - t) / 0.7) : 0, fl = hitAge >= 0 && hitAge < 0.2 ? 1 - hitAge / 0.2 : 0;
@@ -5688,15 +5701,23 @@
         g.restore(); continue;
       }
       g.globalAlpha = alpha; g.font = `700 ${sz}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      if (it.form === 'text' && it.dy) {                 // staggered: a dot on the string where the note falls, a stem to the number (user picked "Stems")
-        const y0 = sy(s), w = Math.max(sz, g.measureText(String(nt[3])).width + sz * 0.42), h = sz * 1.06, ey = it.dy < 0 ? y + h / 2 : y - h / 2;
-        g.fillStyle = cs; g.beginPath(); g.arc(x, y0, 3.2, 0, 7); g.fill(); g.strokeStyle = acss(c, 0.75); g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y0); g.lineTo(x, ey); g.stroke();
-        if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 10 + 12 * Math.max(near, fl); }
-        g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h * 0.3); g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : 'rgba(9,10,15,.94)'; g.fill(); g.shadowBlur = 0;
-        g.strokeStyle = acss(c, 0.55 + 0.4 * Math.max(near, isNext ? 0.6 : 0)); g.lineWidth = 1.2; g.stroke();
-        g.fillStyle = fl > 0.4 ? '#0a0b10' : missed ? '#8b8b96' : '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.globalAlpha = 1; continue;
+      if (it.grp) {                                      // joined: the run's one keycap, drawn with its first note; each number lights, flashes and dims on its own
+        g.globalAlpha = 1; if (it.grp[0] !== it) continue;
+        const gr = it.grp, ch = sz * 1.12, y0 = sy(s), st = gr.map((x) => { const r2 = game.result[x.k], ha = r2 === 'hit' ? t - (game.hitAt[x.k] ?? notes[x.k][0]) : 9;
+          return { x, res: r2, fl: ha >= 0 && ha < 0.2 ? 1 - ha / 0.2 : 0, next: notes[x.k][0] === nextT && !r2, passed: notes[x.k][0] < t - 0.02 }; });
+        const gA = edgeA * (st.every((q) => q.passed || q.res) ? 0.45 : 1), anyNext = st.some((q) => q.next), anyFl = Math.max(...st.map((q) => q.fl));
+        g.globalAlpha = gA; if (anyNext || anyFl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, anyFl); }
+        g.beginPath(); g.roundRect(it.gcx - it.gw / 2, y0 - ch / 2, it.gw, ch, ch * 0.3); g.fillStyle = 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
+        g.strokeStyle = acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * (anyNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
+        st.forEach((q, j) => {
+          const gx = q.x.gx, tw = q.x.tw;
+          if (j) { g.globalAlpha = gA; g.strokeStyle = acss(c, 0.35); g.lineWidth = 1; g.beginPath(); g.moveTo(gx - tw / 2 - sz * 0.25, y0 - ch * 0.28); g.lineTo(gx - tw / 2 - sz * 0.25, y0 + ch * 0.28); g.stroke(); }
+          if (q.fl) { g.globalAlpha = edgeA * q.fl; g.fillStyle = acss(c, 0.9); g.beginPath(); g.roundRect(gx - tw / 2 - sz * 0.18, y0 - ch * 0.38, tw + sz * 0.36, ch * 0.76, ch * 0.2); g.fill(); }
+          g.globalAlpha = edgeA * (q.passed || q.res ? (q.fl ? 1 : 0.4) : 1);
+          g.fillStyle = q.fl > 0.4 ? '#0a0b10' : q.res === 'miss' ? '#8b8b96' : '#f5f5f7'; g.fillText(String(notes[q.x.k][3]), gx, y0 + sz * 0.04);
+        });
+        g.globalAlpha = 1; continue;
       }
-      if (it.form === 'text') { if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 12; } g.fillStyle = '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.shadowBlur = 0; g.globalAlpha = 1; continue; }
       const cw = it.cw, ch = sz * 1.12;
       if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, fl); }
       g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
