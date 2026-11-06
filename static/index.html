@@ -869,6 +869,9 @@
   .arcade { position: fixed; inset: 0; z-index: 45; overflow: clip; color: #fff; background: #070504; font-family: var(--arc-font); }
   /* clip, not hidden: hidden still scrolls (focus, scrollIntoView), which slid song select up and off the right edge */
   body.game-on .arcade { display: none; }
+  /* Play's hand-off (flyCover): the loading screen stays over the game's intro and fades out while its cover flies onto it */
+  body.game-on.arc-handoff .arcade { display: block; pointer-events: none; transition: opacity .6s ease .15s; }
+  body.arc-handoff.arc-handoff-out .arcade { opacity: 0; }
   .arcade::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 5; opacity: .12; mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
   .arc-display { font-family: var(--arc-font); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .01em; }
@@ -1072,13 +1075,13 @@
   .arc-tune-s.near { border-color: #fbbf24; } .arc-tune-s.near b { color: #fff; } .arc-tune-s.near small { color: #fbbf24; }
   .arc-tune-s.off { border-color: #f87171; } .arc-tune-s.off b { color: #fff; } .arc-tune-s.off small { color: #f87171; }
   .arc-tune-s.live { background: rgba(255, 245, 230, .07); border-radius: 6px 6px 0 0; }
-  #arc-panel .arc-input select { flex: 1; max-width: none; }
+  #arc-panel .arc-input select { flex: 1; max-width: none; min-width: 0; text-overflow: ellipsis; }   /* a long device name (Scarlett Solo USB (1235:8211)) shrinks instead of widening the panel */
   #arc-panel .arc-input .btn { margin-left: auto; }
   /* minmax(0, 1fr): a plain 1fr row grew to the list's full height and pushed Play and the hints off the bottom */
-  #arc-select.list-mode { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 36px; }
+  #arc-select.list-mode { display: grid; grid-template-columns: minmax(0, 1fr) minmax(400px, min(580px, 42%));   /* the song's side wider (user: "can we just make the right side wider?") */ grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 36px; }
   #arc-select.list-mode .arc-top, #arc-select.list-mode .arc-foot { grid-column: 1 / -1; }
   #arc-select.list-mode .arc-carousel { display: none; }
-  #arc-select.list-mode .arc-panel { grid-template-columns: 1fr; align-items: start; align-content: start; gap: 18px; padding: 18px 32px 12px 0; margin: 0;
+  #arc-select.list-mode .arc-panel { grid-template-columns: minmax(0, 1fr); align-items: start; align-content: start; gap: 18px; padding: 18px 32px 12px 0; margin: 0;
     min-height: 0; overflow-y: auto; scrollbar-width: none; }
   #arc-select.list-mode .arc-now h1 { font-size: 40px; }
   #arc-select.list-mode .arc-song-note:empty { display: none; }
@@ -5527,6 +5530,35 @@
   // the multiplier; x4 turns the board blue with a glowing outline. Score, multiplier, streak and stars top left.
   const ARCADE_COLORS = ['#6ee7a8', '#f8a1a1', '#f6d878', '#8fb8fa', '#fdba74', '#d8b4fe'];   // softer than LANE_COLORS
   const ARCADE_MOOD = { 1: [[245, 230, 211], [192, 132, 87]], 2: [[252, 211, 77], [245, 158, 11]], 3: [[251, 146, 60], [225, 29, 72]], 4: [[125, 211, 252], [99, 102, 241]] };
+  // The song's own colours for the board's mood (user picked "Song colours": "every song has its own mood"; it was the same warm,
+  // yellow, orange for every song): the cover's two strongest hues (a drawn cover's two hues), a light one and a deep one, richer
+  // at x2 and x3; x4 stays blue and Encore gold (ARCADE_MOOD). `arcadeBoard.pal`, made when a game starts.
+  const hsl2rgb = (h, s, l) => { const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return [f(0) * 255, f(8) * 255, f(4) * 255]; };
+  function songPalette(song) {
+    const h = hashOf(song.id), drawn = { h1: h % 360, h2: (h >>> 9) % 360, s: 0.6 };
+    const pal = ({ h1, h2, s }) => ({ h1, h2, s: Math.max(0.55, Math.min(0.85, s)) });
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        if (!img.naturalWidth) { resolve(pal(drawn)); return; }
+        const c = document.createElement('canvas'); c.width = c.height = 32; const q = c.getContext('2d'); q.drawImage(img, 0, 0, 32, 32);
+        const px = q.getImageData(0, 0, 32, 32).data, bins = new Float32Array(24), sat = new Float32Array(24);
+        for (let i = 0; i < px.length; i += 4) {        // hue bins weighted by how colourful a pixel is (greys, black and white count little)
+          const r = px[i] / 255, gg = px[i + 1] / 255, b = px[i + 2] / 255, mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), l = (mx + mn) / 2, d = mx - mn;
+          if (d < 0.08 || l < 0.12 || l > 0.92) continue;
+          const sv = d / (1 - Math.abs(2 * l - 1)), hue = (mx === r ? ((gg - b) / d) % 6 : mx === gg ? (b - r) / d + 2 : (r - gg) / d + 4) * 60, bi = Math.floor(((hue + 360) % 360) / 15);
+          bins[bi] += sv * d; sat[bi] += sv * sv * d;
+        }
+        let a = 0; for (let i = 1; i < 24; i++) if (bins[i] > bins[a]) a = i;
+        if (bins[a] < 1.5) { resolve(pal(drawn)); return; }   // a grey cover: the drawn hues
+        let b = -1; for (let i = 0; i < 24; i++) { const gap = Math.min(Math.abs(i - a), 24 - Math.abs(i - a)); if (gap >= 3 && bins[i] > bins[a] * 0.15 && (b < 0 || bins[i] > bins[b])) b = i; }
+        resolve(pal({ h1: a * 15 + 7, h2: b < 0 ? (a * 15 + 37) % 360 : b * 15 + 7, s: sat[a] / bins[a] }));
+      };
+      img.onerror = () => resolve(pal(drawn));
+      img.src = `/api/cover?song=${encodeURIComponent(song.id)}&v=${song.cover || 0}`;
+    });
+  }
+  const songMood = (p, mult) => { const k = (mult - 1) / 2; return [hsl2rgb(p.h1, p.s * (0.75 + 0.25 * k), 0.8 - 0.06 * k), hsl2rgb(p.h2, Math.min(0.95, p.s + 0.1 * k), 0.47 + 0.04 * k)]; };
   const ARCADE_TIERS = [['NO RECORD YET', ['#2e2e36', '#4a4a55', '#2e2e36']], ['BRONZE', ['#6b3a16', '#c97f42', '#7d4620']], ['SILVER', ['#737b86', '#d9dee5', '#858d98']],
                         ['GOLD', ['#8a5c03', '#efc244', '#a06c06']], ['PLATINUM', ['#9aa4b0', '#e8edf2', '#b0b9c3']], ['DIAMOND', ['#4fa9de', '#cdeeff', '#9b8cec']]];   // the star levels as records: name, metal
   const ARCADE_VIVID = ['#ff9a52', '#eef4ff', '#ffcf33', '#cfe3ff', '#5fd0ff'];   // the accent of the tier coming next
@@ -5688,10 +5720,10 @@
     const cues = player.playing ? cuesAt(songLights(state.current?.song?.id) || (player.rate === 1 ? lightCues(player.buffers?.[0]) : null), t) : null;
     const beat = cues ? Math.max(Math.exp(-cues.kick * 7), 0.5 * Math.exp(-cues.snare * 7)) : Math.exp(-ph * 6) * (beatN === 0 ? 1 : 0.5);
     let busy = 0; if (cues) busy = cues.level; else { for (const nt of notes) if (nt[0] <= t && nt[0] > t - 1) busy++; busy = Math.min(1, busy / 8); }
-    const mult = multiplier(), heat = Math.min(1, game.streak / 30);
+    const mult = multiplier(), heat = Math.min(1, game.streak / 30), build = mult === 4 ? 1 : heat;   // build: toward x4 (user picked "Streak build-up")
     const enc = game.on ? game.enc : null, encOn = !!enc?.on && t >= enc.on.t0 && t < enc.on.t1;
     if (mult > arcadeBoard.lastMult || (encOn && !arcadeBoard.wasEnc)) arcadeBoard.sweepAt = ms; arcadeBoard.lastMult = mult; arcadeBoard.wasEnc = encOn;
-    const [mc, md] = encOn ? [[253, 230, 138], [217, 119, 6]] : ARCADE_MOOD[mult];
+    const [mc, md] = encOn ? [[253, 230, 138], [217, 119, 6]] : mult < 4 && arcadeBoard.pal ? songMood(arcadeBoard.pal, mult) : ARCADE_MOOD[mult];
     arcadeBoard.mood ||= { c: mc, d: md }; arcadeBoard.mood.c = amix(arcadeBoard.mood.c, mc, Math.min(1, dt * 2.4)); arcadeBoard.mood.d = amix(arcadeBoard.mood.d, md, Math.min(1, dt * 2.4));
     const mood = arcadeBoard.mood;
     arcadeBoard.x4 += ((mult === 4 && !encOn ? 1 : 0) - arcadeBoard.x4) * Math.min(1, dt * 6); const x4k = arcadeBoard.x4;   // Encore's gold takes over from x4's blue
@@ -5728,7 +5760,7 @@
       for (let i = 0; i < 4; i++) {
         const c3 = amix(cols[(i + phrase) % 4], cols[(i + phrase + 1) % 4], 1 - Math.min(1, pk)), T = arcadeBoard.meshT;
         const x = mw * (0.5 + 0.38 * Math.sin(T * (0.21 + i * 0.07) + i * 1.9)), y = mh * (0.5 + 0.36 * Math.cos(T * (0.17 + i * 0.05) + i * 2.7)), r = mw * (0.42 + 0.08 * Math.sin(T * 0.3 + i));
-        const a = Math.min(1, 0.16 + 0.16 * busy + 0.05 * beat + 0.14 * swell + 0.06 * heat + 0.12 * bigK) * (i === 3 ? 0.6 : 1);
+        const a = Math.min(1, 0.16 + 0.16 * busy + 0.05 * beat + 0.14 * swell + 0.14 * heat + 0.12 * bigK) * (i === 3 ? 0.6 : 1);   // (the streak lifts it more: 0.06 -> 0.14)
         const q = m.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, acss(c3, a)); q.addColorStop(1, acss(c3, 0)); m.fillStyle = q; m.fillRect(0, 0, mw, mh);
       }
       m.globalCompositeOperation = 'source-over'; m.fillStyle = 'rgba(5,6,10,0.594)'; m.fillRect(0, 0, mw, mh);   // = drawn at 70% over the dark, then a 42% dark layer
@@ -5772,6 +5804,12 @@
       g.fillStyle = q; g.fill();
     }
     if (bigK > 0.01) { g.fillStyle = acss(mood.d, 0.07 * bigK); g.fill(); }
+    const warm = build * (1 - x4k) * (1 - encK);      // a streak building: the track warms in the song's colour toward the cursor, before x4's blue
+    if (warm > 0.01) {
+      const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
+      q.addColorStop(0, acss(mood.d, 0.05 * warm)); q.addColorStop(cp, acss(mood.d, (0.16 + 0.03 * beat) * warm)); q.addColorStop(Math.min(1, cp + 0.35), acss(mood.d, 0.06 * warm)); q.addColorStop(1, acss(mood.d, 0.02 * warm));
+      g.fillStyle = q; g.fill();
+    }
     if (encK > 0.01) {                                   // Encore: the board turns gold, strongest at the cursor (as x4 turns it blue)
       const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
       q.addColorStop(0, `rgba(160,95,8,${0.16 * encK})`); q.addColorStop(cp, `rgba(225,150,25,${(0.4 + 0.06 * beat) * encK})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(160,95,8,${0.2 * encK})`); q.addColorStop(1, `rgba(160,95,8,${0.08 * encK})`);
@@ -5795,51 +5833,90 @@
     }
     // strings: brighter for a moment when played, vibrating out from the cursor
     for (let s = 0; s < n; s++) {
-      const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.min(1, Math.exp(-age / 0.25) + 0.8 * landF);
-      const sc3 = amix(amix(crgb(s), [125, 211, 252], 0.45 * x4k), [253, 224, 140], 0.4 * encK), lw = Math.max(1, 2.4 - s * (1.4 / n)) + a;
+      // a hit rings its string brighter and longer (user picked "Hit feel": 0.25 s -> 0.45 s, vibrating 0.9 s); a streak warms every string
+      const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.min(1, Math.exp(-age / 0.45) + 0.8 * landF);
+      const sc3 = amix(amix(amix(crgb(s), mood.c, 0.22 * warm), [125, 211, 252], 0.45 * x4k), [253, 224, 140], 0.4 * encK), lw = Math.max(1, 2.4 - s * (1.4 / n)) + a;
       g.beginPath();
-      if (age < 0.5) { const amp = sizeSp * 0.1 * Math.exp(-age * 7); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.2)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
+      if (age < 0.9) { const amp = sizeSp * 0.12 * Math.exp(-age * 4.5); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.14)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
       else { g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); }
-      g.strokeStyle = acss(sc3, 0.08 + 0.22 * a); g.lineWidth = lw + 5 + 6 * a; g.stroke();   // a soft glow (a stroke, not shadowBlur)
-      g.strokeStyle = acss(sc3, 0.38 + 0.45 * a + 0.15 * x4k); g.lineWidth = lw; g.stroke();
+      g.strokeStyle = acss(sc3, 0.08 + 0.22 * a + 0.06 * warm); g.lineWidth = lw + 5 + 6 * a; g.stroke();   // a soft glow (a stroke, not shadowBlur)
+      g.strokeStyle = acss(sc3, 0.38 + 0.45 * a + 0.15 * x4k + 0.12 * warm); g.lineWidth = lw; g.stroke();
     }
     // which notes are on screen (binary search to the first one near the left edge)
     let lo = 0, hi = notes.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (X(notes[mid][0]) < L - 80) lo = mid + 1; else hi = mid; }
     const vis = []; for (let k = lo; k < notes.length && X(notes[k][0]) < R + 80; k++) if (notes[k][2] < n) vis.push(k);
+    // Notes struck together (a double stop / chord: within 30 ms on different strings), by their first note.
+    const sz = Math.round(sizeSp * 0.6 * 0.75 * P.fit), markW = sizeSp * 0.36 * 0.7, lay = new Map(), chordOf = new Map(), chords = [];
+    for (let i = 0; i < vis.length; i++) {
+      if (chordOf.has(vis[i])) continue;
+      const ks = [vis[i]]; for (let j = i + 1; j < vis.length && notes[vis[j]][0] - notes[vis[i]][0] < 0.03; j++) if (!ks.some((x) => notes[x][2] === notes[vis[j]][2])) ks.push(vis[j]);
+      if (ks.length > 1) { const c = { ks }; chords.push(c); for (const x of ks) chordOf.set(x, c); }
+    }
     // Held notes (user: "can we improve how held notes look?"; were a plain line): a glass tube along the string, fading
     // toward its rounded end (no end marker: user, "held notes have a bar at the end, can we make it not have that"),
     // lit while held; the finished part fades behind the cursor. A hold let go of early, or a missed note, is grey. The only lines on
-    // the track.
+    // the track. Only notes held long enough to score as held (over 0.4 s before the next note on the string), and each tube
+    // stops short of the next keycap (user: "long notes look a bit weird, especially when there are multiple": every note of a
+    // steady line got a tube from 0.3 s, so a string read as one long wire through its keycaps). Only notes held longer than a
+    // beat get one (from 0.4 s they still score as held: a quarter note ringing to the next beat is just a note).
+    const upcoming = vis.filter((k) => !game.result[k] && notes[k][0] >= t - 0.1), nextT = upcoming.length ? notes[upcoming[0]][0] : Infinity, ringed = new Set();
+    { let on = 0, last = -9; for (const k of upcoming) { if (notes[k][0] - last > 0.03) { if (++on > 2) break; last = notes[k][0]; } ringed.add(k); } }   // the next two strikes (a chord's notes are one)
+    const tails = [], holdMin = Math.max(0.4, 0.95 * beatLen);   // the bars' beat (the tab's bpm is double time on some songs)
     for (const k of vis) {
-      const nt = notes[k], end = Math.min(nt[1], info[k].next - 0.03); if (end - nt[0] < 0.3) continue;
-      const x0 = X(nt[0]), x1 = Math.min(R + 20, X(end)); if (x1 <= x0) continue;
-      const res = game.result[k], lost = !!game.hold?.[k]?.lost || res === 'miss', holding = res === 'hit' && !lost && nt[0] <= t && t < end;
-      const y = sy(nt[2]), hh = sizeSp * 0.2, c3 = lost ? [100, 100, 112] : amix(crgb(nt[2]), [125, 211, 252], 0.4 * x4k), pulse = 0.5 + 0.5 * Math.sin(ms / 70);
-      const ribbon = (a, b, w) => { g.beginPath(); g.roundRect(a, y - w / 2, Math.max(0, b - a), w, w / 2); };
-      if (x0 < curX && (holding || res === 'hit' || lost)) {   // the part already played, fading behind the cursor
-        const a = Math.max(L - 40, x0), b = Math.min(curX, x1); if (b > a) { const q = g.createLinearGradient(a, 0, b, 0); q.addColorStop(0, acss(c3, 0)); q.addColorStop(1, acss(c3, lost ? 0.25 : 0.35)); ribbon(a, b, hh * 0.7); g.fillStyle = q; g.fill(); }
+      const nt = notes[k], end = Math.min(nt[1], info[k].next - 0.03); if (nt[1] - nt[0] <= 0.4 || end - nt[0] < holdMin) continue;
+      const x0 = X(nt[0]), x1 = Math.min(R + 20, X(end), X(info[k].next) - sz * 1.05); if (x1 - x0 < sz) continue;
+      const res = game.result[k], hk = game.lead?.[k] ?? k, lost = !!game.hold?.[hk]?.lost || res === 'miss', holding = res === 'hit' && !lost && nt[0] <= t && t < end;
+      g.font = `700 ${sz}px ${GAME_FONT}`; const cw = Math.max(sz * 1.05, g.measureText(String(nt[3])).width + sz * 0.55);   // its keycap's width
+      tails.push({ k, x0, x1, res, lost, holding, end, cw });
+    }
+    // A chord held: a faint sheet of glass between its outer tubes, so the strings read as one held chord, not loose lines.
+    for (const c of chords) {
+      const ts = tails.filter((tl) => c.ks.includes(tl.k)); if (ts.length < 2) continue;
+      const ss = ts.map((tl) => notes[tl.k][2]), yTop = sy(Math.max(...ss)), yBot = sy(Math.min(...ss)), lost = ts.every((tl) => tl.lost), holding = ts.some((tl) => tl.holding);
+      const a = Math.max(L - 40, holding ? curX : Math.min(...ts.map((tl) => tl.x0))), b = Math.max(...ts.map((tl) => tl.x1)); if (b <= a) continue;
+      const c3 = lost ? [100, 100, 112] : amix(mood.c, [125, 211, 252], 0.4 * x4k), sq = g.createLinearGradient(a, 0, b, 0);
+      sq.addColorStop(0, acss(c3, holding ? 0.11 : 0.06)); sq.addColorStop(1, acss(c3, 0));
+      g.beginPath(); g.roundRect(a, yTop, b - a, yBot - yTop, 6); g.fillStyle = sq; g.fill();
+    }
+    const tailOf = new Map();
+    for (const { k, x0, x1, res, lost, holding, end, cw: kw } of tails) {
+      const nt = notes[k];
+      const y = sy(nt[2]), pulse = 0.5 + 0.5 * Math.sin(ms / 70);
+      // Capsule (user picked it in moments.html: "I feel like we could improve the look of held notes"; was Glass, a dark tube
+      // under the keycap): the note's keycap stretches into one long keycap with a channel of light inside, fading toward
+      // the end; held, it's eaten at the cursor, glowing, as the light drains into it. In the keycaps' own style (user:
+      // "can we match the style of the normal notes too?"): their fill and rim, lit when it's next, gold in Encore, blue-rimmed
+      // at x4, grey when missed or let go; its keycap draws only the number on it (no seam), until it's held.
+      const s = nt[2], phx = plan && enc ? plan.phraseOf[k] : -1, gd = !lost && !!enc && ((!!enc.on && nt[0] >= enc.on.t0 && nt[0] < enc.on.t1) || (phx >= 0 && enc.st[phx] !== 'broken' && enc.st[phx] !== 'skip'));
+      const c = lost ? [110, 110, 120] : gd ? ENCORE_GOLD : crgb(s), cs = lost ? '#6b6b78' : gd ? '#fbbf24' : col(s), isNext = Math.abs(nt[0] - nextT) < 0.03 && !res;
+      const passed = nt[0] < t - 0.02, near = !passed && !res ? Math.max(0, 1 - (nt[0] - t) / 0.7) : 0;
+      const eA = Math.max(0, Math.min(1, (R - x0) / ((R - L) * 0.18))) * Math.max(0, Math.min(1, (x0 - L + 30) / 60));
+      const ch = sz * 1.12, sa = holding ? curX : x0 - kw / 2; if (x1 <= sa) continue;
+      tailOf.set(k, { holding });
+      const cap = (p, q, hgt, r) => { g.beginPath(); g.roundRect(p, y - hgt / 2, Math.max(0, q - p), hgt, r); };
+      const fade = (cl, a0, a1, p, q) => { const f = g.createLinearGradient(p, 0, q, 0); f.addColorStop(0, acss(cl, a0)); f.addColorStop(1, acss(cl, a1)); return f; };
+      g.globalAlpha = holding ? 1 : eA * (passed || res ? 0.45 : 1);
+      if (holding) { cap(sa - 4, x1 + 4, ch + 8, (ch + 8) * 0.3); g.fillStyle = acss(c, 0.08 + 0.05 * pulse); g.fill(); }   // the glow round it
+      if (isNext) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * near; } else if (gd) { g.shadowColor = cs; g.shadowBlur = 8; }
+      cap(sa, x1, ch, ch * 0.3); g.fillStyle = gd ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
+      g.strokeStyle = holding ? acss(amix(c, [125, 211, 252], 0.6 * x4k), 0.95) : gd ? acss(c, 0.75 + 0.25 * Math.max(near, isNext ? 1 : 0))
+        : acss(amix(c, [125, 211, 252], lost ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k);
+      g.lineWidth = 1.2; g.stroke();                     // the rim, as a keycap's
+      const cw = ch * 0.24, c0 = holding ? sa + ch * 0.3 : x0 + kw / 2 + sz * 0.15, c1 = x1 - ch * 0.3, lc = amix(c, [125, 211, 252], lost || gd ? 0 : 0.4 * x4k);
+      if (c1 > c0) {                                     // the channel of light
+        cap(c0, c1, cw, cw / 2); g.fillStyle = acss(lc, 0.14); g.fill();
+        g.fillStyle = fade(holding ? amix(lc, [255, 255, 255], 0.35) : lc, lost ? 0.3 : holding ? 1 : 0.6, holding ? 0.55 : 0.25, c0, c1); g.fill();
+        if (holding) {                                   // light running along it into the cursor
+          g.save(); cap(c0, c1, cw, cw / 2); g.clip();
+          for (let i = 0; i < 3; i++) { const u = 1 - (((ms / 1000) * 0.9 + i / 3) % 1), gx = c0 + u * (c1 - c0), q = g.createRadialGradient(gx, y, 0, gx, y, cw * 2.2);
+            q.addColorStop(0, 'rgba(255,255,255,.8)'); q.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q; g.fillRect(gx - cw * 3, y - cw, cw * 6, cw * 2); }
+          g.restore();
+        }
       }
-      const a = holding ? curX : x0; if (x1 <= a) continue;
-      // Glass (user picked it in the mockup: "can we make the hold line look more premium like the rest of the app?"): a dark
-      // glass tube with a fine rim in the string's colour, like the keycaps, a top reflection, and a thin core of light
-      // inside; while held the core brightens and one soft glint travels along it.
-      const w = hh * 1.25, fade = (col, a0, a1) => { const q = g.createLinearGradient(a, 0, x1, 0); q.addColorStop(0, acss(col, a0)); q.addColorStop(1, acss(col, a1)); return q; };
-      if (holding) { ribbon(a, x1, w * 2.4); g.fillStyle = acss(c3, 0.07 + 0.04 * pulse); g.fill(); }   // the glow round it
-      ribbon(a, x1, w); g.fillStyle = 'rgba(9,10,15,.82)'; g.fill();
-      g.strokeStyle = fade(c3, lost ? 0.3 : holding ? 0.9 : 0.55, 0.12); g.lineWidth = 1.2; g.stroke();   // the rim
-      g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1; g.beginPath(); g.moveTo(a + w / 2, y - w / 2 + 1.5); g.lineTo(x1 - w / 2, y - w / 2 + 1.5); g.stroke();   // the glass's top reflection
-      g.lineCap = 'round'; g.strokeStyle = fade(holding ? amix(c3, [255, 255, 255], 0.35) : c3, lost ? 0.3 : holding ? 1 : 0.55, holding ? 0.5 : 0.1); g.lineWidth = Math.max(1.6, w * 0.22);
-      g.beginPath(); g.moveTo(a + w * 0.4, y); g.lineTo(x1 - w * 0.4, y); g.stroke(); g.lineCap = 'butt';   // the core
-      if (holding) {                                       // a glint travelling along it, and a glow where it meets the cursor
-        const len = Math.max(1, x1 - a), gx = a + (((ms / 1000) * sizeSp * 2.2) % len), q = g.createRadialGradient(gx, y, 0, gx, y, w * 1.6);
-        q.addColorStop(0, 'rgba(255,255,255,.75)'); q.addColorStop(1, 'rgba(255,255,255,0)');
-        g.save(); ribbon(a, x1, w); g.clip(); g.fillStyle = q; g.fillRect(gx - w * 2, y - w, w * 4, w * 2); g.restore();
-        arcadeSoft(g, curX, y, sizeSp * 0.55, c3, 0.4 + 0.15 * pulse);
-      }
+      g.globalAlpha = 1;
+      if (holding) arcadeSoft(g, curX, y, sizeSp * 0.6, c, 0.45 + 0.2 * pulse);
     }
     // the notes: layout per string (one size; keycaps too close share one), then drawn
-    const upcoming = vis.filter((k) => !game.result[k] && notes[k][0] >= t - 0.1), nextT = upcoming.length ? notes[upcoming[0]][0] : Infinity, ringed = new Set(upcoming.slice(0, 2));
-    const sz = Math.round(sizeSp * 0.6 * 0.75 * P.fit), markW = sizeSp * 0.36 * 0.7, lay = new Map();
     for (let s = 0; s < n; s++) {
       const items = vis.filter((k) => notes[k][2] === s).map((k) => { g.font = `700 ${sz}px ${GAME_FONT}`; const tw = g.measureText(String(notes[k][3])).width; return { k, x: X(notes[k][0]), quick: info[k].rep, tw, cw: info[k].rep ? markW : Math.max(sz * 1.05, tw + sz * 0.55) }; });
       for (const it of items) it.form = it.quick ? 'mark' : 'cap';
@@ -5866,37 +5943,103 @@
       let edge = -Infinity; for (const it of items) { if (it.form === 'mark' && it.x - markW / 2 < edge + 1) it.form = 'none'; if (it.form !== 'none') edge = it.form === 'mark' ? it.x + markW / 2 : Math.max(edge, right(it)); }
       for (const it of items) lay.set(it.k, it);
     }
+    // Notes struck together (user: "can we handle playing multiple notes at once?"): one frame of glass behind them, a line
+    // joining them and one ring closing in round the frame, so a double stop reads as one strike.
+    const edgeOf = (x) => Math.max(0, Math.min(1, (R - x) / ((R - L) * 0.18))) * Math.max(0, Math.min(1, (x - L + 30) / 60));
+    const px = (it) => (it.grp ? it.gx : it.x), half = (it) => (it.form === 'mark' ? markW * 0.6 : it.grp ? it.tw / 2 + sz * 0.12 : it.cw / 2);
+    for (const c of chords) {
+      const its = c.ks.map((k) => lay.get(k)).filter((it) => it && it.form !== 'none'); if (its.length < 2) continue;
+      const cx = its.reduce((a, it) => a + px(it), 0) / its.length, ss = its.map((it) => notes[it.k][2]), ch = sz * 1.12;
+      const yT = sy(Math.max(...ss)) - ch / 2 - 5, yB = sy(Math.min(...ss)) + ch / 2 + 5, fw = Math.max(...its.map((it) => 2 * half(it))) + 10, fr = Math.min(fw / 2, ch * 0.45);
+      const k0 = c.ks[0], nt = notes[k0], res = game.result[k0], passed = nt[0] < t - 0.02, hitAge = res === 'hit' ? t - (game.hitAt[k0] ?? nt[0]) : 9;
+      const isNext = Math.abs(nt[0] - nextT) < 0.03 && !res, near = !passed && !res ? Math.max(0, 1 - (nt[0] - t) / 0.7) : 0, edgeA = edgeOf(cx);
+      const fc = res === 'miss' ? [110, 110, 120] : amix(mood.c, [125, 211, 252], 0.5 * x4k);
+      g.globalAlpha = edgeA * (passed || res ? (res === 'hit' ? Math.max(0.2, 1 - Math.max(0, hitAge) / 0.4) : 0.45) : 1);
+      g.beginPath(); g.roundRect(cx - fw / 2, yT, fw, yB - yT, fr); g.fillStyle = 'rgba(255,255,255,.035)'; g.fill();
+      if (isNext) { g.shadowColor = acss(fc, 1); g.shadowBlur = 8 + 12 * near; }
+      g.strokeStyle = acss(fc, 0.22 + 0.5 * (isNext ? 0.4 + 0.6 * near : 0)); g.lineWidth = 1.2; g.stroke(); g.shadowBlur = 0;
+      g.strokeStyle = acss(fc, 0.3); g.lineWidth = 2; g.beginPath(); g.moveTo(cx, yT + ch * 0.55); g.lineTo(cx, yB - ch * 0.55); g.stroke();   // joining them, under the keycaps
+      if (ringed.has(k0) && nt[0] - t < 0.7 && nt[0] >= t) {
+        const kk = (nt[0] - t) / 0.7, gr = kk * sz * 1.4; g.globalAlpha = edgeA * (1 - kk) * 0.85; g.strokeStyle = acss(fc, 1); g.lineWidth = 1.5 + 2 * (1 - kk);
+        g.beginPath(); g.roundRect(cx - fw / 2 - gr, yT - gr, fw + 2 * gr, yB - yT + 2 * gr, fr + gr); g.stroke();
+      }
+      g.globalAlpha = 1;
+    }
+    // Slides and hammer-ons / pull-offs (user: "I think the slides could look better", then "a slide should be connected to the
+    // note" and "a slid note should be fully attached, right now it has rounded edges on the note"; and "is there a cooler way
+    // we could display hammer on and pulloffs?", which were a slur with h / p over the notes): a band in the keycaps' style
+    // (dark, tinted with the string's colour, a rim, a channel of light) that comes out of one note and into the next, its ends
+    // under their keycaps (from their centres, so nothing round shows at a note): slanted for a slide (rising up the neck,
+    // falling down it), level for a hammer-on / pull-off; a short one into or off a note for a slide in or off. From the first
+    // note to the second a spark runs along it (riding the cursor, reaching the second note when you should get there), the band
+    // lit meanwhile and flashing when that note's hit; the second note's keycap is tinted to match (`tied`, keycaps below).
+    for (const k of vis) {
+      const it = lay.get(k), lm = it && it.form !== 'none' && notes[k][4] ? legatoMarks(d, k) : null; if (!lm) continue;
+      const slid = lm.into === '/' || lm.into === '\\', legato = lm.into === 'h' || lm.into === 'p'; if (!slid && !legato && !lm.out) continue;
+      const s = notes[k][2], y = sy(s), x = px(it), res = game.result[k], ch = sz * 1.12, h = ch * 0.44, rise = ch * 0.22;
+      const c3 = res === 'miss' ? [110, 110, 120] : amix(crgb(s), [125, 211, 252], 0.4 * x4k), A = edgeOf(x), dim = notes[k][0] < t - 0.02 || res ? 0.45 : 1, pv = lm.prev >= 0 ? lay.get(lm.prev) : null;
+      const band = (pts, f0, f1, lit, u) => {              // along pts (its ends under keycaps), faded to f0 / f1 at its ends; the spark at u along pts[1] -> pts[2]
+        const xa = pts[0][0], xb = pts[pts.length - 1][0], grad = (fn) => { const q = g.createLinearGradient(xa, 0, Math.max(xb, xa + 1), 0); q.addColorStop(0, fn(f0)); q.addColorStop(1, fn(f1)); return q; };
+        const path = () => { g.beginPath(); pts.forEach(([qx, qy], i) => (i ? g.lineTo(qx, qy) : g.moveTo(qx, qy))); };
+        g.lineCap = g.lineJoin = 'round';
+        if (lit > 0) { path(); g.strokeStyle = grad((f) => acss(c3, 0.18 * lit * f)); g.lineWidth = h + 8; g.stroke(); }   // its glow
+        path(); g.strokeStyle = grad((f) => acss(c3, (0.6 + 0.2 * x4k + 0.35 * lit) * f)); g.lineWidth = h + 2.4; g.stroke();   // the rim, as a keycap's
+        path(); g.strokeStyle = grad((f) => `rgba(9,10,15,${0.92 * f})`); g.lineWidth = h; g.stroke();
+        path(); g.strokeStyle = grad((f) => acss(c3, (0.16 + 0.2 * lit) * f)); g.stroke();   // tinted (dark alone vanished into the board)
+        path(); g.strokeStyle = grad((f) => acss(amix(c3, [255, 255, 255], 0.25 + 0.2 * lit), (0.75 + 0.25 * lit) * f)); g.lineWidth = Math.max(2, h * 0.24); g.stroke();   // the channel
+        if (u !== null) {                                // the spark and a short trail
+          const at = (v) => [pts[1][0] + (pts[2][0] - pts[1][0]) * v, pts[1][1] + (pts[2][1] - pts[1][1]) * v];
+          for (let i = 4; i >= 1; i--) { const [qx, qy] = at(Math.max(0, u - i * 0.05)); g.fillStyle = acss(amix(c3, [255, 255, 255], 0.5), 0.5 * (1 - i / 5)); g.beginPath(); g.arc(qx, qy, 2.4 - i * 0.3, 0, 7); g.fill(); }
+          const [qx, qy] = at(u); arcadeSoft(g, qx, qy, sz * 0.55, c3, 0.75); g.fillStyle = '#fff'; g.beginPath(); g.arc(qx, qy, 2.6, 0, 7); g.fill();
+        }
+        g.lineCap = 'butt'; g.lineJoin = 'miter';
+      };
+      const tilt = (up) => (up ? -1 : 1) * rise, eB = x - half(it), eA = pv ? px(pv) + half(pv) : 0;   // up the neck: rising to the right
+      if ((slid || legato) && pv && pv.form !== 'none' && eB - eA >= 6) {   // from the note before (closer slides get a slur, below)
+        const ta = notes[lm.prev][0], tb = notes[k][0], u = (t - ta) / Math.max(0.05, tb - ta), go = u > 0 && u < 1 && res !== 'miss';
+        const hitAge = res === 'hit' ? t - (game.hitAt[k] ?? tb) : 9, pop = hitAge >= 0 && hitAge < 0.35 ? 1 - hitAge / 0.35 : 0;
+        const dy = slid ? tilt(lm.into === '/') : 0, kA = pv.form === 'mark' ? 0.4 : 1, kB = it.form === 'mark' ? 0.4 : 1;   // (a diamond is smaller than a keycap)
+        g.globalAlpha = go || pop ? A : A * dim; band([[px(pv), y], [eA, y - dy * kA], [eB, y + dy * kB], [x, y]], 1, 1, go ? 1 : pop, go ? u : null);
+      } else if (slid && !(pv && pv.form !== 'none')) { g.globalAlpha = A * dim; const up = lm.into === '/'; band([[eB - sz * 1.1, y - 2 * tilt(up)], [eB, y], [x, y]], 0.55, 1, 0, null); }   // slid in
+      const eR = x + half(it), room = info[k].next < Infinity ? X(info[k].next) - eR - sz * 0.75 : sz * 1.1, out = Math.min(sz * 1.1, room);   // stopping before the next note
+      if (lm.out && out > sz * 0.5) { g.globalAlpha = A * dim; const up = lm.out === '/'; band([[x, y], [eR, y], [eR + out, y + 2 * tilt(up) * (out / (sz * 1.1))]], 1, 0.55, 0, null); }   // slides off
+      g.globalAlpha = 1;
+    }
     for (const k of vis.slice().reverse()) {
       const it = lay.get(k); if (!it || it.form === 'none') continue;
-      const nt = notes[k], s = nt[2], x = it.grp ? it.gx : it.x, y = sy(s), res = game.result[k], missed = res === 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : 9;
+      const nt = notes[k], s = nt[2], x = it.grp ? it.gx : it.x, res = game.result[k], missed = res === 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : 9;
+      // Hammered / pulled / slid from the note before (`tied`): its keycap tinted like the band joining them; hit, it dips as if
+      // hammered (a pull-off flicks up instead).
+      const lmK = !it.grp && nt[4] ? legatoMarks(d, k) : null, tied = !!lmK && lmK.prev >= 0 && !!lmK.into && 'hp/\\'.includes(lmK.into) && lay.get(lmK.prev)?.form !== 'none';
+      const y = sy(s) + (tied && (lmK.into === 'h' || lmK.into === 'p') && hitAge >= 0 && hitAge < 0.2 ? (lmK.into === 'p' ? -1 : 1) * sz * 0.16 * Math.sin(Math.PI * hitAge / 0.2) : 0);
       // Gold: a live Encore phrase's notes, and every note in Encore (user picked Gold notes): warm keycaps, a gold rim and glow, a glint now and then
       const phx = plan && enc ? plan.phraseOf[k] : -1, gd = !missed && !!enc && ((!!enc.on && nt[0] >= enc.on.t0 && nt[0] < enc.on.t1) || (phx >= 0 && enc.st[phx] !== 'broken' && enc.st[phx] !== 'skip'));
-      const c = missed ? [110, 110, 120] : gd ? ENCORE_GOLD : crgb(s), cs = missed ? '#6b6b78' : gd ? '#fbbf24' : col(s), isNext = nt[0] === nextT && !res;
+      const c = missed ? [110, 110, 120] : gd ? ENCORE_GOLD : crgb(s), cs = missed ? '#6b6b78' : gd ? '#fbbf24' : col(s), isNext = Math.abs(nt[0] - nextT) < 0.03 && !res;
       const edgeA = Math.max(0, Math.min(1, (R - x) / ((R - L) * 0.18))) * Math.max(0, Math.min(1, (x - L + 30) / 60));
       const passed = nt[0] < t - 0.02, near = !passed && !res ? Math.max(0, 1 - (nt[0] - t) / 0.7) : 0, fl = hitAge >= 0 && hitAge < 0.2 ? 1 - hitAge / 0.2 : 0;
-      if (ringed.has(k) && nt[0] - t < 0.7 && nt[0] >= t) {   // a ring closing in
+      if (ringed.has(k) && !chordOf.has(k) && nt[0] - t < 0.7 && nt[0] >= t) {   // a ring closing in (a chord's goes round its frame)
         const kk = (nt[0] - t) / 0.7, base = it.form === 'mark' ? markW * 0.75 : sz * 0.7; g.globalAlpha = edgeA * (1 - kk) * 0.85; g.strokeStyle = cs; g.lineWidth = 1.5 + 2 * (1 - kk);
         g.beginPath(); g.arc(x, y, base + kk * base * 2, 0, 7); g.stroke(); g.globalAlpha = 1;
       }
-      if (hitAge >= 0 && hitAge < 0.35) {                 // a hit: glow, ring, sparks
-        const pp = 1 - hitAge / 0.35, rr = it.form === 'mark' ? markW : sz * 0.7; g.globalAlpha = edgeA; arcadeSoft(g, x, y, rr * 2.4, c, 0.35 * pp);
-        g.globalAlpha = edgeA * pp; g.strokeStyle = cs; g.lineWidth = 2; g.beginPath(); g.arc(x, y, rr * (0.9 + 1.4 * (1 - pp)), 0, 7); g.stroke();
-        for (let j = 0; j < 6; j++) { const ang = j * 1.05 + k * 1.3, dd = rr * (0.8 + 2 * (1 - pp)); g.fillStyle = j % 2 ? acss(mood.c, 1) : cs; g.beginPath(); g.arc(x + Math.cos(ang) * dd, y + Math.sin(ang) * dd, 2.2 * pp + 0.5, 0, 7); g.fill(); }
-        g.globalAlpha = 1;
+      if (hitAge >= 0 && hitAge < 0.4) {                  // a hit: a soft glow (user picked "Hit feel" without "any explosion": the ring and sparks are gone; the keycap pops, below)
+        const pp = 1 - hitAge / 0.4, rr = it.form === 'mark' ? markW : sz * 0.7; g.globalAlpha = edgeA; arcadeSoft(g, x, y, rr * 2.8, c, 0.4 * pp * pp); g.globalAlpha = 1;
       }
+      const pop = hitAge >= 0 && hitAge < 0.22 ? 1 + 0.18 * Math.sin(Math.PI * hitAge / 0.22) : 1;   // the keycap pops as it's hit
+      if (pop > 1) { g.save(); g.translate(x, y); g.scale(pop, pop); g.translate(-x, -y); }
       const alpha = edgeA * (passed || res ? (res === 'hit' ? Math.max(0.28, 1 - Math.max(0, hitAge) / 0.4) : 0.45) : 1);
       if (it.form === 'mark') {                           // an echo: a small diamond (user: "did we say we would do the diamonds for the repeat notes?" -> "sure"; was the fret tiny inside a small keycap)
         const w = markW * 0.92 * (1 + 0.12 * fl + 0.15 * near);
         g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.globalAlpha = alpha; g.shadowColor = cs; g.shadowBlur = Math.max(near, fl) > 0.05 ? 6 + 12 * Math.max(near, fl) : 0;
         g.beginPath(); g.roundRect(-w / 2, -w / 2, w, w, w * 0.3); g.fillStyle = acss(c, 0.18 + 0.5 * fl); g.fill(); g.lineWidth = 1.6; g.strokeStyle = cs; g.stroke(); g.shadowBlur = 0;
         g.fillStyle = 'rgba(255,255,255,.4)'; g.beginPath(); g.roundRect(-w * 0.3, -w * 0.3, w * 0.28, w * 0.28, w * 0.06); g.fill();   // a facet of light at the top
-        g.restore(); continue;
+        g.restore(); if (pop > 1) g.restore(); continue;
       }
       g.globalAlpha = alpha; g.font = `700 ${sz}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       if (it.grp) {                                      // joined: the run's one keycap, drawn with its first note; each number lights, flashes and dims on its own
+        if (pop > 1) g.restore();                        // (no pop for a shared keycap)
         g.globalAlpha = 1; if (it.grp[0] !== it) continue;
         const gr = it.grp, ch = sz * 1.12, y0 = sy(s), st = gr.map((x) => { const r2 = game.result[x.k], ha = r2 === 'hit' ? t - (game.hitAt[x.k] ?? notes[x.k][0]) : 9;
-          return { x, res: r2, fl: ha >= 0 && ha < 0.2 ? 1 - ha / 0.2 : 0, next: notes[x.k][0] === nextT && !r2, passed: notes[x.k][0] < t - 0.02 }; });
+          return { x, res: r2, fl: ha >= 0 && ha < 0.2 ? 1 - ha / 0.2 : 0, next: Math.abs(notes[x.k][0] - nextT) < 0.03 && !r2, passed: notes[x.k][0] < t - 0.02 }; });
         const gA = edgeA * (st.every((q) => q.passed || q.res) ? 0.45 : 1), anyNext = st.some((q) => q.next), anyFl = Math.max(...st.map((q) => q.fl));
         g.globalAlpha = gA; if (anyNext || anyFl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, anyFl); } else if (gd) { g.shadowColor = cs; g.shadowBlur = 8; }
         g.beginPath(); g.roundRect(it.gcx - it.gw / 2, y0 - ch / 2, it.gw, ch, ch * 0.3); g.fillStyle = gd ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
@@ -5910,16 +6053,59 @@
         });
         g.globalAlpha = 1; continue;
       }
-      const cw = it.cw, ch = sz * 1.12;
+      const cw = it.cw, ch = sz * 1.12, inTail = tailOf.has(k) && !tailOf.get(k).holding;   // its capsule is its keycap (drawn with the hold)
+      if (inTail && !fl) { g.fillStyle = missed ? '#8b8b96' : '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.globalAlpha = 1; if (pop > 1) g.restore(); continue; }
       if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, fl); } else if (gd) { g.shadowColor = cs; g.shadowBlur = 8; }
       g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : gd ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
+      if (tied && !fl && !gd) { g.fillStyle = acss(c, 0.16); g.fill(); }
       g.strokeStyle = gd ? acss(c, 0.75 + 0.25 * Math.max(near, isNext ? 1 : 0)) : acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
       if (gd && !fl && !passed) {                        // a glint crossing the gold keycap now and then
         g.save(); g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.clip(); const gx = x - cw + ((ms / 1000 * 0.9 + k * 0.13) % 1.6) * cw * 1.6, gq = g.createLinearGradient(gx - 6, y - ch / 2, gx + 6, y + ch / 2);
         gq.addColorStop(0, 'rgba(255,240,200,0)'); gq.addColorStop(0.5, 'rgba(255,240,200,.28)'); gq.addColorStop(1, 'rgba(255,240,200,0)'); g.fillStyle = gq; g.fillRect(x - cw / 2, y - ch / 2, cw, ch); g.restore();
       }
       g.fillStyle = fl > 0.4 ? '#0a0b10' : missed ? '#8b8b96' : '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.globalAlpha = 1;
+      if (pop > 1) g.restore();
     }
+    // A slide between notes too close for its band (above): a slur over them with / or \ on it. (Hammer-ons / pull-offs were
+    // slurs with h / p here; user: "I don't like the h and p, I know if it is a hammeron or pulloff based off the notes", then a
+    // band, above.) The second note needs no pluck of its own.
+    g.lineCap = 'round';
+    for (const k of vis) {
+      const it = lay.get(k), lm = it && it.form !== 'none' && notes[k][4] ? legatoMarks(d, k) : null; if (!lm) continue;
+      const s = notes[k][2], y = sy(s), x = px(it), res = game.result[k], ch = sz * 1.12;
+      const c3 = res === 'miss' ? [110, 110, 120] : amix(crgb(s), [255, 255, 255], 0.3), pv = lm.prev >= 0 ? lay.get(lm.prev) : null;
+      g.globalAlpha = edgeOf(x) * (notes[k][0] < t - 0.02 || res ? 0.4 : 0.95); g.strokeStyle = g.fillStyle = acss(c3, 1); g.lineWidth = 1.8;
+      if ((lm.into === '/' || lm.into === '\\') && pv && pv.form !== 'none' && px(it) - half(it) - px(pv) - half(pv) < 6) {
+        const xl = px(pv), xa = xl + half(pv) + 3, xb = x - half(it) - 3, legato = lm.into === 'h' || lm.into === 'p';
+        // Moving (user: "can we make the hammer on and pull off have an animation?"): from the first note to the second a
+        // spark of light runs along the mark, so it reaches the second note as you should hammer (it rides the cursor); the
+        // mark glows meanwhile, and flashes with h / p popping when the second note is hit.
+        const ta = notes[lm.prev][0], tb = notes[k][0], u = (t - ta) / Math.max(0.05, tb - ta), A = edgeOf(x), base = g.globalAlpha;
+        const go = u > 0 && u < 1 && res !== 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? tb) : 9;
+        const pop = hitAge >= 0 && hitAge < 0.35 ? 1 - hitAge / 0.35 : 0, lit = go ? 1 : pop, cs3 = crgb(s);
+        let path, at;                                    // the mark's path, and a point along it (0-1)
+        if (legato || xb - xa < 8) {                     // a slur from note to note over their keycaps, its mark on top
+          const top = y - ch / 2 - 2, rise = Math.min(12, 5 + (x - xl) * 0.1), mx = (xl + x) / 2, x0 = xl + 3, x1 = x - 3, cy = top - rise * 2;
+          path = () => { g.beginPath(); g.moveTo(x0, top); g.quadraticCurveTo(mx, cy, x1, top); };
+          at = (v) => [(1 - v) ** 2 * x0 + 2 * (1 - v) * v * mx + v * v * x1, (1 - v) ** 2 * top + 2 * (1 - v) * v * cy + v * v * top];
+          if (lit > 0) { g.globalAlpha = A * lit; path(); g.strokeStyle = acss(cs3, 0.35); g.lineWidth = 7; g.stroke(); g.strokeStyle = g.fillStyle = acss(c3, 1); }   // the glow
+          g.globalAlpha = lit > 0 ? A : base; g.lineWidth = 2 + lit; path(); g.stroke();
+          if (!legato) {                                 // no h / p (user: "I know if it is a hammeron or pulloff based off the notes"); a slide this close keeps its / or \
+            const fz = Math.max(11, Math.round(sz * 0.56)) * (1 + 0.4 * pop);
+            g.font = `700 ${fz}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = pop ? acss(amix(c3, [255, 255, 255], pop), 1) : acss(c3, 1);
+            g.fillText(lm.into, mx, top - rise - 5); g.fillStyle = acss(c3, 1);
+          }
+        }
+        if (go) {                                        // the spark and a short fading trail behind it
+          g.globalAlpha = A;
+          for (let i = 4; i >= 1; i--) { const [qx, qy] = at(Math.max(0, u - i * 0.05)); g.fillStyle = acss(amix(cs3, [255, 255, 255], 0.5), 0.5 * (1 - i / 5)); g.beginPath(); g.arc(qx, qy, 2.4 - i * 0.3, 0, 7); g.fill(); }
+          const [qx, qy] = at(u); arcadeSoft(g, qx, qy, sz * 0.55, cs3, 0.75); g.fillStyle = '#fff'; g.beginPath(); g.arc(qx, qy, 2.6, 0, 7); g.fill();
+          g.fillStyle = acss(c3, 1);
+        }
+        g.globalAlpha = base; g.lineWidth = 1.8;
+      }
+    }
+    g.lineCap = 'butt'; g.globalAlpha = 1;
     // the cursor: a slim line with a soft column of light
     q = g.createLinearGradient(curX - 16, 0, curX + 16, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.1 + 0.08 * beat)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(curX - 16, trackT - pad, 32, phh);
     g.restore();
@@ -5928,9 +6114,16 @@
     // glowing at x4), with a badge on top showing 1x-4x that pops when the multiplier goes up.
     const cTop = trackT - pad - 6, cBot = trackB + pad + 6, mf = mult === 4 ? 1 : (game.streak % 10) / 10, fy = cBot - (cBot - cTop) * mf;
     g.lineCap = 'round';
-    g.beginPath(); g.moveTo(curX, cTop); g.lineTo(curX, cBot); g.strokeStyle = acss(mood.c, 0.1 + 0.08 * beat); g.lineWidth = 8; g.stroke();
+    g.beginPath(); g.moveTo(curX, cTop); g.lineTo(curX, cBot); g.strokeStyle = acss(mood.c, 0.1 + 0.08 * beat + 0.1 * warm); g.lineWidth = 8; g.stroke();
     g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 2; g.stroke();
     if (mf > 0) { g.beginPath(); g.moveTo(curX, cBot); g.lineTo(curX, fy); g.strokeStyle = acss(mood.c, 0.3 + 0.1 * beat); g.lineWidth = 7; g.stroke(); g.strokeStyle = acss(mood.c, 1); g.lineWidth = 3; g.stroke(); }
+    for (let s = 0; s < n; s++) {                        // a hit: the cursor pulses in that string's colour where it crosses it (user picked "Hit feel")
+      const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000; if (age < 0 || age > 0.35) continue;
+      const k = 1 - age / 0.35, c3 = amix(crgb(s), [255, 255, 255], 0.25), y0 = sy(s), hh = sizeSp * (0.55 + 0.25 * (1 - k)), lq = g.createLinearGradient(0, y0 - hh, 0, y0 + hh);
+      lq.addColorStop(0, acss(c3, 0)); lq.addColorStop(0.5, acss(c3, 0.95 * k)); lq.addColorStop(1, acss(c3, 0));
+      g.beginPath(); g.moveTo(curX, y0 - hh); g.lineTo(curX, y0 + hh); g.strokeStyle = lq; g.lineWidth = 3 + 3 * k; g.stroke();
+      arcadeSoft(g, curX, y0, sizeSp * 0.5, c3, 0.3 * k * k);
+    }
     g.lineCap = 'butt';
     if (!game.pr) {                                      // the multiplier on the cursor (none in practice)
       // The count-in is counted here, where you're looking (the big 3-2-1 over the board got in the way): the number on each
@@ -6068,6 +6261,7 @@
       const ci = eo2(introEl / 0.7), k = xk, cs = 120, cy = trackT - pad - 100 + 8 * (1 - ci), art = (intro.artist || '').toUpperCase();
       g.save(); g.font = `300 40px ${GAME_FONT}`; const tw = g.measureText(intro.title).width; g.font = `600 11px ${GAME_FONT}`; g.letterSpacing = '3px'; const aw = g.measureText(art).width; g.letterSpacing = '0px';
       const w = cs + 30 + Math.max(tw, aw, 200), x0 = bcx - w / 2, txc = x0 + cs + 30, lerp = (a, b, u) => a + (b - a) * u;
+      arcadeBoard.introCover = { x: x0, y: trackT - pad - 100 - cs / 2, s: cs };   // where the loading screen's cover flies to (flyCover)
       const cover = (x, y, sz, cr) => {
         g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 30 * sz / cs; g.shadowOffsetY = 10 * sz / cs; g.beginPath(); g.roundRect(x, y, sz, sz, cr); g.fillStyle = '#111'; g.fill(); g.restore();
         g.save(); g.beginPath(); g.roundRect(x, y, sz, sz, cr); g.clip();
@@ -6080,7 +6274,7 @@
       };
       const m = eo2(k / 0.55), fl = Math.max(0, Math.min(1, (k - 0.55) / 0.35)), sx = Math.cos(fl * Math.PI), cs2 = lerp(cs, 2 * Pq.r, m), ccx = lerp(x0 + cs / 2, Pq.rx, m), ccy = lerp(cy, Pq.ry, m);
       g.globalAlpha = ci * (1 - Math.max(0, Math.min(1, (k - 0.92) / 0.08)));
-      if (sx > 0) { g.save(); g.translate(ccx, ccy); g.scale(sx, 1); cover(-cs2 / 2, -cs2 / 2, cs2, cs2 * 0.06); g.restore(); }
+      if (sx > 0) { if (!(ms < (arcadeBoard.flyUntil || 0))) { g.save(); g.translate(ccx, ccy); g.scale(sx, 1); cover(-cs2 / 2, -cs2 / 2, cs2, cs2 * 0.06); g.restore(); } }   // (not while the loading screen's is flying in)
       else { g.save(); g.translate(ccx, ccy); g.scale(-sx, 1); drawRecord(g, 0, 0, Pq.r, 0, ms / 1000); g.restore(); }
       g.globalAlpha = ci * Math.max(0, 1 - k * 2); g.translate(0, -10 * k);
       if (g.globalAlpha > 0) {
@@ -6125,7 +6319,7 @@
   }
 
   function drawGame(t, force) {
-    if (!game.members) { drawArcade(t, force); return; }   // the only board (user: "get rid of the old game highways and just use arcade")
+    if (!game.members || !game.strums) { drawArcade(t, force); return; }   // the only board (user: "get rid of the old game highways and just use arcade"); guitar chords keep the 2D one
     const body = $('#tab-body');
     let cv = tabView.canvas;
     if (force || !cv || !body.contains(cv)) {
@@ -8767,7 +8961,8 @@
       checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'same note back after a blink' });
     }
     game.prevDb2 = game.prevDb; game.prevDb = db;
-    if (game.members) { strumByChange(now, fix); readChord(now); }
+    if (game.strums) strumByChange(now, fix);
+    if (game.members && (game.strums || chordNear(now))) readChord(now);
     if (raw !== null) game.heard.push([now - 0.05 * sc - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
     tuneCheck(now - 0.05 * sc - fix);
     // A wrong note needs a real attack just before it: lifting a finger lets the open
@@ -8859,6 +9054,29 @@
     return null;
   }
 
+  // Bass double stops (user: "can we handle playing multiple notes at once?"): the pitch reading hears one note of the
+  // two at best, so each judged on its own as a single note missed the other. A double stop is hit by one pluck in its
+  // window with one of its notes, or an octave of one, read after it (and before the next pluck), or the chord reading
+  // (`readChord`) finding its notes as at least 40% of what it hears. Scored and counted as one note, as guitar chords are.
+  function bassChordPluck(k, quietBelow) {
+    const d = tabView.data, notes = d.notes, open = playOpens(d), [early, late] = TIMINGS[gameTiming], ns = notes[k][0];
+    const pitches = game.members[k].filter((j) => notes[j][3] !== 'x').map((j) => open[notes[j][2]] + notes[j][3]), pcs = new Set(pitches.map(pcOf));
+    for (const p of game.plucks) {
+      if (p.t < ns - early || p.t > ns + late || (p.used !== null && Math.abs(p.used - ns) >= 0.03) || p.db < quietBelow) continue;
+      if (!pitches.length) return p;                     // all dead notes: the pluck is enough
+      const next = game.plucks.find((q) => !q.soft && q.at > p.at + 0.05), until = Math.min(p.at + CHORD_WAIT, next ? next.at : Infinity);
+      if (game.heard.some(([, m, at]) => at >= p.at + (p.soft ? 0 : 0.015) && at <= until && pitches.some((x) => (m - x) % 12 === 0))) return p;
+      if (game.poly.some((r) => {
+        if (r.at < p.at + 0.05 || r.at > until) return false;
+        const all = r.notes.reduce((a, [, sal]) => a + sal, 0);
+        return all > 0 && r.notes.filter(([pc]) => pcs.has(pc)).reduce((a, [, sal]) => a + sal, 0) / all >= 0.4;
+      })) return p;
+    }
+    return null;
+  }
+  // A double stop due around now (bass reads chords only then: `heardNotes` is a large FFT every 40 ms).
+  const chordNear = (now) => { const notes = tabView.data.notes; for (let k = game.next; k < notes.length && notes[k][0] < now + 0.3; k++) if (game.members[k] && notes[k][0] > now - 0.6) return true; return false; };
+
   function judge(now, heardNow) {
     const d = tabView.data, notes = d.notes, open = playOpens(d);
     const pitchOfNote = (k) => (notes[k][3] === 'x' ? null : open[notes[k][2]] + notes[k][3]);
@@ -8870,7 +9088,7 @@
       if (game.result[k]) continue;
       if (game.members && game.lead[k] !== k) continue;   // judged with its chord
       if (game.members?.[k]) {
-        const pluck = chordPluck(k, quietBelow);
+        const pluck = game.strums ? chordPluck(k, quietBelow) : bassChordPluck(k, quietBelow);
         if (pluck) {
           pluck.used = notes[k][0];
           const grade = Math.abs(pluck.t - notes[k][0]) < perfect ? 'Perfect' : 'Good', at = performance.now(), before = multiplier();
@@ -9002,16 +9220,19 @@
     // HOLD_GRACE (or quarter of the note) counts as held to the end (user: "I always lose it at the end": in the
     // game checks a quarter of holds lost their pitch 0.2 s+ before the end, mostly unclear readings as the note
     // faded or the hand moved on; held to the end 261 of 431 -> 349 with this).
+    // A held bass double stop is one hold (on its first note, as long as its longest), kept by either of its notes or an octave.
     const hold = game.hold || (game.hold = {});
     for (let k = Math.max(0, game.next - 8); k < game.next + 4 && k < notes.length; k++) {
-      const [ns, ne] = notes[k], s = notes[k][2], pitch = pitchOfNote(k);
-      if (game.result[k] !== 'hit' || ne - ns <= 0.4 || now <= ns + 0.15 || now >= ne || pitch === null) continue;
+      if (game.members && !game.strums && game.lead[k] !== k) continue;
+      const chord = !game.strums && game.members?.[k], ks = chord || [k], ns = notes[k][0], ne = Math.max(...ks.map((j) => notes[j][1])), pitch = pitchOfNote(k);
+      const pitches = ks.map(pitchOfNote).filter((x) => x !== null), its = (m) => m !== null && (chord ? pitches.some((x) => (m - x) % 12 === 0) : m === pitch);
+      if (game.result[k] !== 'hit' || ne - ns <= 0.4 || now <= ns + 0.15 || now >= ne || !pitches.length) continue;
       const h = hold[k] || (hold[k] = { last: null, lost: false, done: false });
       if (h.lost) continue;
       const finishing = now >= ne - Math.min(HOLD_GRACE, 0.25 * (ne - ns));
       if (!h.done) {
-        if (heardNow === pitch) h.last = now;
-        const quiet = (input.freshDb ?? -100) <= GATE_DB, other = heardNow !== null && heardNow !== pitch;
+        if (its(heardNow)) h.last = now;
+        const quiet = (input.freshDb ?? -100) <= GATE_DB, other = heardNow !== null && !its(heardNow);
         if (h.last === null ? now - ns > 0.4 : (other || quiet || now - h.last > HOLD_GAP)) {
           if (!finishing || h.last === null) { h.lost = true; continue; }
         }
@@ -9019,7 +9240,7 @@
         if (h.last === null) continue;
       }
       addScore(2 * multiplier(), now);
-      game.sustain[s] = performance.now();               // the hold animation on that string
+      for (const j of ks) game.sustain[notes[j][2]] = performance.now();   // the hold animation on that string
     }
     encoreTick(now);
   }
@@ -9058,8 +9279,9 @@
     game.fullData = tabView.data;                        // the whole tab comes back when the game ends
     tabView.data = gameNotesFor(tabView.data);
     const firstNote = Math.max(0, tabView.data.notes.findIndex((n) => n[0] >= startAt - 0.05));   // a later start skips what's before it
-    // Guitar chords: notes starting within 30 ms are one chord (`lead`: each note's first
-    // note; `members`: a chord's notes, by its first), judged and scored as one.
+    // Chords: notes starting within 30 ms are one chord (`lead`: each note's first note;
+    // `members`: a chord's notes, by its first), judged and scored as one. Guitar always;
+    // bass when the tab has double stops (`bassChordPluck`; none: judged as before).
     const gn = tabView.data.notes, lead = [], members = {};
     let units = 0;
     gn.forEach((n, k) => {
@@ -9078,7 +9300,8 @@
                           bursts: [], sparks: [], sustain: {}, hold: {}, laneHitMs: {}, laneTapMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
                           laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, tuneLog: {},
                           prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false,
-                          lead: guitar ? lead : null, members: guitar ? members : null, poly: [], polyAt: -9, flux: [], units: guitar ? units : null,
+                          lead: guitar || Object.keys(members).length ? lead : null, members: guitar || Object.keys(members).length ? members : null,
+                          poly: [], polyAt: -9, flux: [], units: guitar || Object.keys(members).length ? units : null, strums: guitar,
                           pr: arcadeOn && arcade.mode === 'practice' ? newPractice() : null });
     fetch('/api/ping?game=1', { method: 'POST' }).catch(() => {});   // background work (the vocals pass) waits from now
     if (virtualDropOn()) toast(`Virtual drop D: play the low string's frets on your E string${input.monShift && $('#input-monitor').checked ? ' (Hear myself lowers them to D)' : ''}.`);
@@ -9089,7 +9312,8 @@
     const arcadeMoments = gameView !== 'tab' && !guitar && !game.pr;
     game.intro = null; game.songEnded = false;
     game.enc = arcadeMoments ? (() => { const plan = encorePlan(tabView.data); return { plan, st: plan.phrases.map((p) => (p.ks[0] < firstNote ? 'skip' : null)), meter: 0, on: null, bonus: 0, doneAt: {}, endAt: -1e9, endBonus: 0 }; })() : null;
-    Object.assign(arcadeBoard, { big: 0, encK: 0, ending: null });
+    Object.assign(arcadeBoard, { big: 0, encK: 0, ending: null, pal: null, mood: null });
+    songPalette(state.current.song).then((p) => { if (game.on) arcadeBoard.pal = p; });   // the board's colours from the cover
     document.body.classList.add('game-on');
     document.body.classList.toggle('practice', !!game.pr);
     $('#tab-game').textContent = 'Pause';
@@ -9108,7 +9332,7 @@
       const lens = bars.slice(1).map((b, i) => b - bars[i]).filter((x) => x > 0.8 && x < 8).sort((a, b) => a - b);
       const B = Math.max(0.4, Math.min(0.75, (lens.length ? lens[lens.length >> 1] : 2.4) / 4)), CARD = 1.8, at = performance.now();
       const until = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms - performance.now())));
-      game.intro = { at, B, card: CARD, lead: CARD + 4 * B, start: startAt, ...introCard() };
+      game.intro = Object.assign(introCard(), { at, B, card: CARD, lead: CARD + 4 * B, start: startAt });   // the card itself (not a copy): its cover arrives after
       game.countdown = 9; game.countAt = at;              // the card: not counting yet, but nothing's judged
       await until(at + CARD * 1000);
       for (let c = 4; c > 0; c--) {
@@ -9482,7 +9706,7 @@
     if (attack || newPitch) pr.waitPluck = performance.now();
     const pitches = ks.map((j) => (notes[j][3] === 'x' ? null : open[notes[j][2]] + notes[j][3]));
     const plucked = pr.waitPluck !== null && performance.now() - pr.waitPluck < 600;
-    const ok = plucked && (pitches.includes(null) || (raw !== null && pitches.some((p) => samePitch(raw - player.shift, p))));
+    const ok = plucked && (pitches.includes(null) || (raw !== null && pitches.some((p) => samePitch(raw - player.shift, p) || (ks.length > 1 && (raw - player.shift - p) % 12 === 0))));   // a double stop: either note, or an octave of one
     if (!ok) return;
     const at = performance.now();
     for (const j of ks) {
@@ -9684,11 +9908,14 @@
   // Guitar tabs' bests apart from bass ones (both are "imported"): "-guitar" after the source.
   const bestKey = (song, source) => `${song}|${source}${isGuitarTab() ? '-guitar' : ''}|${gameTiming}${gameDiff === 'expert' ? '' : `|${gameDiff}`}`;
   function gameNotesFor(d) {
+    // In time order: an imported tab can list a bar's notes string by string (No You Girls had 21 notes after later ones), and
+    // judging (`game.next`), notes struck together and the board all go note by note in time.
+    const sorted = d.notes.every((n, k) => !k || n[0] >= d.notes[k - 1][0]) ? d.notes : [...d.notes].sort((a, b) => a[0] - b[0]);
     const beats = DIFFS[gameDiff][1];
-    if (!beats) return d;
+    if (!beats) return sorted === d.notes ? d : { ...d, notes: sorted, quickLaneGap: undefined, typicalLaneGap: undefined, lanes: undefined, barTimes: undefined };
     const gap = (60 / (d.bpm || 120)) * beats * 0.9, notes = [];
     let last = -1e9;
-    for (const n of d.notes) {
+    for (const n of sorted) {
       if (n[0] - last < 0.03) { if (gameDiff !== 'easy' || isGuitarTab()) notes.push(n); continue; }   // double stops stay together (guitar chords on Easy too: fewer strums, not single notes)
       if (n[0] - last >= gap) { notes.push(n); last = n[0]; }
     }
@@ -10927,6 +11154,30 @@
     $('#arc-load-tip').textContent = LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
     setScreen('loading');
   }
+  // Play's hand-off (user: "could we do something where the loading screen transitions into it?"; it faded through black):
+  // the loading screen stays over the game and fades out once the intro card is drawn, while its cover flies to the card's
+  // cover, which the board draws from when it lands. No intro (it didn't start): the copy just fades.
+  async function flyCover(art) {
+    const from = art.getBoundingClientRect(), fly = art.cloneNode(true);
+    Object.assign(fly.style, { position: 'fixed', left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, margin: '0',
+      zIndex: '200', pointerEvents: 'none', transformOrigin: '0 0', borderRadius: '10px', boxShadow: '0 18px 50px rgba(0, 0, 0, .5)' });
+    fly.style.setProperty('--card', `${from.width}px`);
+    document.body.append(fly); art.style.visibility = 'hidden';
+    arcadeBoard.flyUntil = Infinity; arcadeBoard.introCover = null;
+    document.body.classList.add('arc-handoff');
+    const t0 = performance.now();
+    while (!(game.on && game.intro && arcadeBoard.introCover) && performance.now() - t0 < 6000) await new Promise((r) => requestAnimationFrame(r));
+    const to = game.on && game.intro ? arcadeBoard.introCover : null, cv = tabView.canvas?.getBoundingClientRect();
+    document.body.classList.add('arc-handoff-out');
+    if (to && cv) {
+      const k = to.s / from.width, dx = cv.left + to.x - from.left, dy = cv.top + to.y - from.top;
+      await fly.animate([{ transform: 'none', borderRadius: '10px' }, { transform: `translate(${dx}px, ${dy}px) scale(${k})`, borderRadius: `${(0.06 * to.s) / k}px` }],
+        { duration: 750, easing: 'cubic-bezier(.3, 0, .15, 1)', fill: 'forwards' }).finished;
+    } else await fly.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished;
+    arcadeBoard.flyUntil = 0;
+    requestAnimationFrame(() => { fly.remove(); art.style.visibility = ''; });   // after the board has drawn its own
+    setTimeout(() => document.body.classList.remove('arc-handoff', 'arc-handoff-out'), 100);
+  }
   async function arcadePlay() {
     const song = arcade.song;
     if (!song || arcade.busy || !song.tabs?.[arcade.instrument]) return;
@@ -10949,9 +11200,11 @@
       if (!ready()) { toast('The tab didn\'t load. Try again, or open it from the Library.', 'error'); return; }
       if (tabView.section !== 'game') setSection('game');
       arcade.busy = false;
-      await fadeTo(true);
+      // Games with the intro card hand over from the loading screen (flyCover); the others fade through black.
+      const art = $('#arc-load-art .arc-cover'), hand = !!art && arcade.instrument !== 'guitar' && arcade.mode !== 'practice' && gameView !== 'tab';
+      if (hand) flyCover(art); else await fadeTo(true);  // (flyCover measures the cover before startGame hides the loading screen)
       const started = startGame();
-      setTimeout(() => fadeTo(false), 120);              // the board fades in under the count-in
+      if (!hand) setTimeout(() => fadeTo(false), 120);   // the board fades in under the count-in
       await started;
       if (game.on) { loading = false; setScreen('select'); }   // waiting behind the game for when it ends
     } catch (err) {

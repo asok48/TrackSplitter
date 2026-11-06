@@ -2778,6 +2778,115 @@ progessing the new one, just do a ring on the outside").
     filling the meter (gold board, banner, 2× badge, meter draining, +3,200 bonus), the ending from a late start (moment,
     then the results by themselves, finished), practice unchanged; no console errors but the service worker's. Not yet
     played with a real bass; a phrase completing on its own wasn't caught (the simulated input slips now and then).
+- "Can we improve the visuals of the game? For instance, long notes look a bit weird, especially when there are multiple.
+  Also, can we handle playing multiple notes at once and hammer-on/pull-offs?" (2026-11-06). Looked first on a library copy
+  (All My Best Friends Are Metalheads ~191 s, held double stops; NARCISISTA; No You Girls, hammer-ons at 13 s and double
+  stops at 79 s; Amsterdam, a held power chord at 148.5 s):
+  - Held notes: every note at least 0.3 s before the next on its string got a tube, which ran right up to the next keycap,
+    so a steady line on long notes read as one wire through the keycaps (three of them for the Metalheads chords). Now a
+    tube only for a note held longer than a beat (the bars' beat, `beatLen`: the tab's bpm is double time on some songs,
+    Metalheads 185 for ~93; at least 0.4 s, from which a hold scores, unchanged) and it stops a keycap short of the next note
+    (`tails`). A held chord gets a faint sheet of glass between its outer tubes, brighter while held.
+  - Notes struck together (within 30 ms, different strings; `chords` / `chordOf` in drawArcade): one glass frame behind the
+    keycaps with a line joining them, glowing when it's next, and one ring closing in round the frame (`ringed` is now the
+    next two strikes, a chord's notes one; `isNext` within 30 ms).
+  - Slides and hammer-ons / pull-offs (imported tabs' marks, `legatoMarks`) weren't drawn on the Arcade board at all: now a
+    slur over the two keycaps with h / p on it, a slide a slanted line between them (rising = up the neck), short slanted
+    lines for slides in / off; a slide between notes sharing a joined keycap is a slur with / or \. Their judging was
+    already in (no pluck of their own needed, never messy).
+  - Bass double stops judged as one (`bassChordPluck`): the pitch reading hears one note of the two, so each judged on its
+    own missed the other (and counted as two notes). Now, as guitar chords, `lead` / `members` / `units` for bass too when
+    the tab has double stops (none: unchanged); hit by one pluck in the window with either note or an octave of one read
+    after it, or the chord reading (`readChord`, only near a double stop on bass: `chordNear`) finding its notes as 40% of
+    what it hears; 100 x multiplier once. Held: one hold per chord (its longest note), kept by either note. `game.strums`
+    (guitar) keeps guitar's strum detection, `chordPluck` and the 2D chord board; bass chords stay on the Arcade board.
+    Practice's Wait for me takes either note or an octave of one.
+  - Bug found: imported tabs can list a bar's notes string by string, out of time order (No You Girls: 21 notes after later
+    ones), which the game's judging (`game.next`) and grouping assume; `gameNotesFor` now sorts the game's copy (29 double
+    stops found there instead of 21). The tab views still get the file's order.
+  - Tested on a library copy (port 7893): screens above at 1440x900 incl. a held power chord forced to "hit and held" (both
+    tubes lit, the sheet brighter, hold points); plucks + pitch readings fed into a running game at No You Girls' double
+    stops: lower note -> hit, upper note -> hit, octave of the upper -> hit, a wrong note -> miss, 100 points each;
+    120 fps, no console errors. Not yet played with a real bass (double stops on the Scarlett), and the chord-reading path
+    (`heardNotes` starts at 75 Hz, tuned for guitar) wasn't exercised; the pitch path carries it.
+- Hammer-ons / pull-offs animated (user: "can we make the hammer on and pull off have an animation?"): between the first
+  note and the second a spark with a short trail runs along the slur (it rides the cursor, reaching the second note when
+  you should hammer), the slur glowing meanwhile; when the second note is hit the slur flashes and its h / p pops. Slides
+  between two notes do the same along their line. The spark runs even if the first note was missed (a timing cue).
+  Checked on a frozen frame mid-hammer (No You Girls 15.07 s); no console errors.
+- Song select's List view cut off on the right after playing a song (user, with a screenshot: the difficulty cards, input
+  row and Play past the window's edge). Once the input is connected the row shows the device picker, and a select is as wide
+  as its longest option ("Scarlett Solo USB (1235:8211)"); the list-mode panel's `1fr` column couldn't shrink below that.
+  Now `minmax(0, 1fr)` and the picker `min-width: 0` with an ellipsis. Checked with a fake device of that name at 1280x800
+  and in a ~770 px pane: nothing past the edge (only the top bar's buttons at 770, below the ~1024 the app is made for).
+  Then "can we just make the right side wider?": the list view's song side is 400-580 px, at most 42% of the window (was 320-440; uncapped, at 1024 wide it outgrew the list), so the device name
+  fits again at the user's window size.
+- "The album cover doesn't show up before the song": the intro card always drew the made-up cover. `game.intro` was a copy
+  of `introCard()`'s object (`{ ...introCard() }`) and the picture, loading a moment later, was set on the original. Now the
+  card object itself (`Object.assign(introCard(), ...)`). Checked: No You Girls' thumbnail on the card.
+- "Could we do something where the loading screen transitions into it?" (it faded through black): `flyCover` in arcadePlay
+  (games with the intro card: bass, Play, the board). A copy of the loading screen's cover is lifted out (measured before
+  startGame hides the screen) and the loading screen stays over the game (`body.arc-handoff`); once the intro card is drawn it
+  fades out (0.6 s) while the cover flies to the card's cover spot (`arcadeBoard.introCover`, 0.75 s), and the board draws its
+  own cover from the landing (`arcadeBoard.flyUntil`). Guitar, practice and Play on Tab keep the fade. Checked mid-flight on
+  the library copy; the classes and the copy are gone afterwards, no console errors. The landing itself wasn't caught on a
+  screenshot (it lines up by construction).
+- "I feel like we could improve the look of held notes" (2026-11-06): moments.html got Hold looks (Glass, the game's; Ringing
+  string: the string lit thicker over the note, vibrating while held; Light trail: a comet streak tapering to a point, sparks
+  while held; Capsule: the keycap stretched into one long keycap with a channel of light) and three passages with long notes
+  from the user's tabs (`holds-data.js`: NARCISISTA, Amsterdam's held power chords, Dust to Dust); the mockup also follows the
+  game's newer tail rules. User picked Capsule, then "can we match the style of the normal notes too? ... I don't want it to
+  be off style wise": in drawArcade the tail is the note's own keycap stretched (from the keycap's left edge, its width
+  `cw` measured with the tails), with the keycaps' fill and rim rules (lit when next / near, glow, gold in Encore phrases,
+  x4's blue rim, grey when missed or let go, 45% once passed); the keycap draws only its number over it (`tailOf`, no seam)
+  until it's held, when the capsule starts at the cursor and the light in its channel runs into it. Held chords keep their
+  glass sheet. Checked on a frozen frame on the library copy (NARCISISTA at 2.9 s, and at 3.7 s with the A 0 forced held);
+  Encore gold and x4 not looked at in the game (same rules as the keycaps).
+- "I think the slides could look better" (were a thin slanted line, 1.8 px): a slide is now a slim slanted keycap in the keycaps'
+  style (dark fill tinted with the string's colour, a rim, a channel of light), drawn before the keycaps. First it sat
+  between the notes with a small gap (tucked under their centres, its end stuck out round a repeat's small diamond); user: "a
+  slide should be connected to the note", so it runs edge to edge, 3 px under each keycap, rising 0.22 of a keycap's height
+  each side for a slide up the neck (falling down it). Slides in / off: a short one (1.1 keycaps) into or off the note, its
+  far end at 55%, stopping before the next note. The spark rides it as before (lit, flashing on the hit). Slides between
+  notes too close for a bar stay a slur with / or \.
+- "I don't like the h and p, I know if it is a hammeron or pulloff based off the notes": the slur has no letter now (its
+  spark and flash stay).
+- Checked on I Love My Friends (copied into the test library: 43 slides, 17 slides in, 36 off, 49 hammer-ons) on frozen frames
+  blown up on the page (a canvas crop scaled into an <img>: the pane's screenshots are too small to judge these marks).
+- "Still not right, a slid note should be fully attached, right now it has rounded edges on the note", and "is there a cooler
+  way we could display hammer on and pulloffs?": slides and hammer-ons / pull-offs are one band now (`band` in drawArcade),
+  stroked along a path from the first note's centre, out of its edge, to the next note's edge and into its centre (round caps
+  and joins under the keycaps, so nothing round shows at a note; a diamond's end tilts 40% as much, it being smaller): slanted
+  for a slide, level for a hammer-on / pull-off (the slur and its h / p are gone; a slide too close for a band keeps a slur with
+  / or \). The second note's keycap is tinted like the band (`tied`); hit, a hammered note dips and a pulled one flicks up
+  (0.2 s, 16% of the note size). The spark runs along the visible part. Checked blown up on I Love My Friends (hammer 5-7 on
+  the A string, a slide off a repeat, a slide up into 12); the dip wasn't caught on a frame.
+- Making the game "more fun, less sanitized" but "polished and professional" (2026-11-06). Tried in mockups and turned down:
+  fun.html (Lively: colour-filled bobbing notes, gliding slide streaks, hopping hammer-on arcs, bursts on hits; Neon; Chunky):
+  "flash gamey", "the explosion is distracting"; effect.html (a Tetris Effect-like field of light reacting to hits): "super
+  distracting, I want the background to look like a show"; show.html (a drawn concert: beams, LED wall, crowd; then rendered out
+  of focus with bokeh and grain) and webgl.html (a three.js stage: volumetric beams, spots on a glossy floor, haze, bloom): both
+  "flash gamey". Offered real footage (the song's music video, needing a video download) or the cover as an Apple Music-like
+  backdrop; the user chose "I think we can improve what we have now" and picked Song colours, Hit feel and Streak build-up:
+  - Song colours: `songPalette(song)` (at game start, `arcadeBoard.pal`): the cover drawn 32 px, hue bins weighted by colour,
+    the strongest hue and the next one at least 45 degrees away (a grey or missing cover: the drawn cover's two hues);
+    `songMood(pal, mult)` gives the mood's light and deep colours for x1-x3, richer as the multiplier goes up; x4 stays blue
+    and Encore gold (ARCADE_MOOD). I Love My Friends: pink-red and orange.
+  - Hit feel, no explosion: the ring and six sparks are gone; a soft glow, the keycap pops (18%, 0.22 s), its string rings
+    brighter and longer (0.25 -> 0.45 s, vibrating 0.9 s, less far along it), and the cursor pulses in the string's colour where it
+    crosses it (0.35 s).
+  - Streak build-up (`build`, toward x4; `warm` = build outside x4 / Encore): the track warms in the song's deep colour toward
+    the cursor, the strings take on its light colour and brighten, the cursor's glow and the background mesh lift (heat 0.06 ->
+    0.14), before x4's blue.
+  - Checked on the library copy (I Love My Friends with a 25 streak, a hit forced at the cursor): 120 fps, no console errors.
+- "I liked the dynamic stage lighting" / "I want it to feel epic": soft beams from a rig above behind the Arcade board (drawn at 0.3
+  scale, blurred small and laid in; the song's colours, its loudness from a few dim beams to the whole rig, big moments fanning
+  them with a sweep, kicks / snares pumping, accents snapping them, the streak adding fixtures; 121 fps). User: "Looks like a
+  flash game still..."; taken out again. Drawn or rendered lights haven't worked in five tries (show.html, webgl.html, this);
+  what's left untried is real footage (filmed stage lighting behind the board, as Guitar Hero Live used filmed video).
+  Footage: the user's reference was a photo from inside a festival crowd (warm golden haze, lights through smoke, silhouettes
+  with hands up); a shortlist was found on Pexels (free licence; e.g. 7722221, 16501141, 19679435, 720p files 1-15 MB), then
+  "abandon this idea". Nothing was downloaded. The game keeps the song colours, hit feel and streak build-up.
 
 ## Open ideas / to do
 

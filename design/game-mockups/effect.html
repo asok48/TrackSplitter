@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<!-- A living world around the board (user, 2026-11-06: "not necessarily gameplay features, but just make the game look and feel
+     overall more fun to play. Think about something like tetris effect"; Lively "looks flash gamey and the explosion is
+     distracting"). The board stays the game's clean look; around it a field of soft light drifts on slow currents, breathes
+     with the beat, and answers your playing: a hit sends a wave of light through it and the note dissolves into motes that join
+     the field; slides and hammer-ons are motes flowing note to note; the field builds with the streak (ribbons at 4x, a gold
+     vortex in Encore). Same passage as fun.html (I Love My Friends 3-17 s), every note hit; beats from the bars. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encore living board</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #03040a; color: #f5f5f7; font: 500 13px -apple-system, "SF Pro Display", system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 12px 18px; z-index: 2; }
+  #bar b { font-weight: 700; margin-right: 6px; }
+  #bar button { background: none; border: 0; color: rgba(245,245,247,.55); font: inherit; padding: 4px 2px; cursor: pointer; }
+  #bar button.on { color: #fff; box-shadow: 0 2px 0 #fff; }
+  #bar .lab { color: rgba(245,245,247,.35); margin-left: 10px; }
+  #bar input { width: 110px; accent-color: #fff; }
+  #desc { position: fixed; left: 18px; right: 18px; bottom: 16px; color: rgba(245,245,247,.55); max-width: 960px; line-height: 1.5; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="bar"><b>Living board</b>
+  <span class="lab">Theme</span><button data-theme="aurora">Aurora</button><button data-theme="nebula">Nebula</button><button data-theme="embers">Embers</button><button data-theme="tide">Tide</button>
+  <span class="lab">Streak</span><input type="range" id="streak" min="0" max="40" value="12"><span id="mult">2×</span>
+  <button data-encore>Encore</button>
+  <span class="lab">World</span><button data-off>Off (the game now)</button>
+  <button data-pause>Pause</button>
+</div>
+<div id="desc">The board is the game's own look; everything around it is new. Hits send a wave of light through the field and the note dissolves into motes that drift off and join it; slides and hammer-ons are motes flowing from note to note. Drag Streak to see it build (ribbons at 4×), and try Encore. Space pauses.</div>
+<script>
+const DATA = {"notes":[[0.164,0.422,2,10,""],[0.423,0.595,2,7,""],[0.595,0.768,2,7,""],[0.768,0.94,2,5,""],[0.94,1.113,2,7,""],[1.113,1.285,2,7,""],[1.285,1.458,2,9,"s"],[1.458,1.63,2,9,""],[1.63,1.803,1,5,""],[1.803,1.975,1,7,"h"],[1.975,2.148,1,7,""],[2.148,2.321,1,7,""],[2.321,2.493,1,7,""],[2.493,2.752,1,7,"d"],[2.756,3.003,1,3,""],[3.003,3.251,1,3,""],[3.251,3.622,1,12,"s"],[3.622,3.993,1,12,""],[3.993,4.365,1,12,""],[4.365,4.86,1,12,"d"],[4.86,5.107,1,2,""],[5.107,5.355,1,2,""],[5.355,5.602,1,7,""],[5.69,5.941,2,10,"b"],[5.942,6.193,2,10,""],[6.194,6.361,2,7,""],[6.362,6.529,2,7,""],[6.53,6.697,2,5,""],[6.698,6.865,2,7,""],[6.865,7.033,2,7,""],[7.033,7.201,2,9,"s"],[7.201,7.369,2,9,""],[7.369,7.537,1,5,""],[7.537,7.705,1,7,"h"],[7.705,7.873,1,7,""],[7.873,8.04,1,7,""],[8.041,8.208,1,7,""],[8.209,8.46,1,7,"d"],[8.473,8.662,1,3,""],[8.663,8.853,1,3,""],[8.853,9.138,1,12,"s"],[9.139,9.423,1,12,""],[9.424,9.709,1,12,""],[9.71,10.089,1,12,"d"],[10.09,10.28,1,2,""],[10.281,10.47,1,2,""],[10.471,10.661,1,7,""],[10.661,10.851,1,7,""],[10.852,11.041,1,7,""],[11.042,11.232,1,5,""],[11.232,11.327,1,7,"h"],[11.416,11.667,2,10,"b"],[11.669,11.921,2,10,""],[11.923,12.091,2,7,""],[12.093,12.26,2,7,""],[12.262,12.429,2,5,""],[12.431,12.599,2,7,""],[12.6,12.768,2,7,""],[12.77,12.937,2,9,"s"],[12.939,13.106,2,9,""],[13.108,13.276,1,5,""],[13.277,13.445,1,7,"h"],[13.447,13.614,1,7,""],[13.616,13.783,1,7,""],[13.785,13.953,1,7,""],[13.954,14.206,1,7,"d"]],"bars":[-0.095,2.756,5.606,8.473,11.331,14.111,16.938]};
+const COL = ['#6ee7a8', '#f8a1a1', '#f6d878', '#8fb8fa'], NAMES = ['E', 'A', 'D', 'G'], FONT = '-apple-system,"SF Pro Display",system-ui,sans-serif';
+// Each theme: the deep background, two glows, and the field's palette (particles pick from it; hits tint with the string's colour)
+const THEMES = {
+  aurora: { bg: ['#020a10', '#04141c'], glow: [[34, 211, 170], [129, 90, 246]], field: [[94, 234, 212], [134, 239, 172], [167, 139, 250], [125, 211, 252]] },
+  nebula: { bg: ['#07020f', '#120420'], glow: [[217, 70, 239], [79, 70, 229]], field: [[240, 171, 252], [196, 181, 253], [129, 140, 248], [244, 114, 182]] },
+  embers: { bg: ['#0d0503', '#1a0904'], glow: [[251, 146, 60], [220, 38, 38]], field: [[253, 186, 116], [252, 211, 77], [248, 113, 113], [254, 215, 170]] },
+  tide:   { bg: ['#01060f', '#031326'], glow: [[56, 189, 248], [37, 99, 235]], field: [[125, 211, 252], [186, 230, 253], [99, 102, 241], [165, 243, 252]] },
+};
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), css = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`, mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+const clamp01 = (x) => Math.max(0, Math.min(1, x)), eout = (x) => 1 - (1 - clamp01(x)) ** 3;
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let W = 0, H = 0, theme = 'aurora', streak = 12, encore = false, world = true, paused = false, clock = 0, last = performance.now();
+const qs = new URLSearchParams(location.search); if (qs.get('theme')) theme = qs.get('theme'); if (qs.get('streak')) streak = +qs.get('streak');
+function resize() { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', resize); resize();
+// a soft round sprite per colour, drawn once (fast to stamp hundreds of times with 'lighter')
+const sprites = new Map();
+function sprite(c) {
+  const key = c.map((v) => v | 0).join(); if (sprites.has(key)) return sprites.get(key);
+  const s = document.createElement('canvas'); s.width = s.height = 64; const q = s.getContext('2d'), gr = q.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, css(mix(c, [255, 255, 255], 0.6), 1)); gr.addColorStop(0.18, css(c, 0.85)); gr.addColorStop(0.5, css(c, 0.22)); gr.addColorStop(1, css(c, 0)); q.fillStyle = gr; q.fillRect(0, 0, 64, 64);
+  sprites.set(key, s); return s;
+}
+// notes: neighbours, legato marks, repeats (as fun.html)
+const notes = DATA.notes, prevOn = {};
+notes.forEach((n, i) => { n.i = i; if (prevOn[n[2]] !== undefined) { n.prev = prevOn[n[2]]; notes[prevOn[n[2]]].next = i; } prevOn[n[2]] = i; });
+for (const n of notes) {
+  const c = n[4] || '', p = n.prev !== undefined ? notes[n.prev] : null, up = !p || n[3] >= p[3];
+  n.into = c[0] === 's' && p ? (up ? '/' : '\\') : c[0] === 'h' && p ? (up ? 'h' : 'p') : null;
+  n.rep = !!p && p[3] === n[3] && n[0] - p[0] < 1.2 && !n.into;
+}
+const beatLen = (DATA.bars[2] - DATA.bars[1]) / 4, LOOP = 14;
+// ---- the field ----
+const field = [], motes = [], waves = [];
+function seed() {
+  field.length = 0;
+  for (let i = 0; i < 900; i++) field.push({ x: Math.random() * W, y: Math.random() * H, z: 0.25 + Math.random() * 0.75, c: Math.floor(Math.random() * 4), ph: Math.random() * 7, kick: 0, kvx: 0, kvy: 0, tint: null, tk: 0 });
+}
+seed(); addEventListener('resize', seed);
+const fired = new Set();
+document.querySelectorAll('#bar button').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.theme) theme = b.dataset.theme; else if ('encore' in b.dataset) encore = !encore; else if ('off' in b.dataset) world = !world; else paused = !paused; show();
+}));
+document.getElementById('streak').addEventListener('input', (e) => { streak = +e.target.value; show(); });
+addEventListener('keydown', (e) => { if (e.code === 'Space') { paused = !paused; show(); e.preventDefault(); } });
+function show() {
+  document.querySelectorAll('[data-theme]').forEach((b) => b.classList.toggle('on', b.dataset.theme === theme));
+  document.querySelector('[data-encore]').classList.toggle('on', encore); document.querySelector('[data-off]').classList.toggle('on', !world);
+  document.querySelector('[data-pause]').textContent = paused ? 'Play' : 'Pause';
+  document.getElementById('streak').value = streak; document.getElementById('mult').textContent = `${Math.min(4, 1 + Math.floor(streak / 10))}×`;
+}
+show();
+function soft(x, y, r, c, a) { if (a <= 0) return; const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, css(c, a)); q.addColorStop(1, css(c, 0)); g.fillStyle = q; g.fillRect(x - r, y - r, r * 2, r * 2); }
+
+let energy = 0.3, enc = 0, prevT = -9;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!paused) clock += dt;
+  const t = (clock % LOOP) - 1.2, T = clock, th = THEMES[theme];
+  if (t < prevT) fired.clear(); prevT = t;
+  const mult = Math.min(4, 1 + Math.floor(streak / 10)), target = 0.25 + 0.18 * (mult - 1) + (encore ? 0.3 : 0);
+  energy += (target - energy) * Math.min(1, dt * 1.5); enc += ((encore ? 1 : 0) - enc) * Math.min(1, dt * 1.2);
+  const trackH = Math.min(H * 0.46, 380), trackT = H * 0.54 - trackH / 2, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, sp = trackH / 4, pad = 18;
+  const pxs = (R - L) / 4.2, X = (tt) => curX + (tt - t) * pxs, sy = (s) => trackT + (3 - s) * sp + sp / 2, midY = trackT + trackH / 2;
+  const beatPh = (((t - DATA.bars[1]) / beatLen) % 1 + 1) % 1, beatN = Math.floor((((t - DATA.bars[1]) / beatLen) % 4 + 4) % 4), beat = Math.exp(-beatPh * 5) * (beatN % 2 ? 0.55 : 1);
+  const sz = Math.round(Math.min(H * 0.3, 250) / 4 * 0.45), ch = sz * 1.12;
+  const gold = [251, 191, 36], palette = th.field.map((c) => mix(c, gold, 0.75 * enc));
+
+  // ---- background ----
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, world ? th.bg[0] : '#05060a'); bg.addColorStop(1, world ? th.bg[1] : '#07080d'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  if (world) {
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) { const c = mix(th.glow[i % 2], gold, 0.7 * enc), x = W * (0.5 + 0.35 * Math.sin(T * (0.05 + i * 0.03) + i * 2)), y = H * (0.5 + 0.3 * Math.cos(T * (0.04 + i * 0.02) + i)); soft(x, y, Math.max(W, H) * 0.5, c, (0.07 + 0.06 * energy) * (1 + 0.25 * beat)); }
+    soft(curX, midY, trackH * 1.3, palette[0], 0.05 + 0.05 * beat * energy);
+    // ---- the field: drifting on slow currents, leftward with the tab; faster and brighter with the streak ----
+    const spd = 18 + 60 * energy, ribbon = clamp01((mult - 3.2) / 0.8) * (1 - enc);
+    for (const p of field) {
+      // a flow field (layered sines, cheap curl-like), the board's drift to the left, and the vortex in Encore
+      let ang = Math.sin(p.x * 0.0021 + T * 0.13 + p.z) * 1.4 + Math.cos(p.y * 0.0027 - T * 0.09) * 1.2;
+      let vx = Math.cos(ang) * spd * 0.5 - spd * 0.6 * p.z, vy = Math.sin(ang) * spd * 0.35;
+      if (ribbon > 0) { const band = Math.sin((p.y / H) * Math.PI * 6 + T * 0.6); vy += -band * 25 * ribbon; vx -= spd * 0.8 * ribbon * p.z; }   // x4: gathers into flowing ribbons
+      if (enc > 0.01) { const dx = p.x - curX, dy = p.y - midY, r = Math.hypot(dx, dy) + 1; vx += (-dy / r * 140 - dx / r * 18) * enc; vy += (dx / r * 140 - dy / r * 18) * enc; }   // Encore: a swirl round where you play
+      p.kick *= Math.exp(-dt * 3);
+      p.x += (vx + p.kvx * p.kick) * dt * (0.6 + p.z * 0.6); p.y += (vy + p.kvy * p.kick) * dt * (0.6 + p.z * 0.6);
+      if (p.x < -40) { p.x = W + 30; p.y = Math.random() * H; } if (p.x > W + 40) p.x = -30; if (p.y < -40) p.y = H + 30; if (p.y > H + 40) p.y = -30;
+      p.tk = Math.max(0, p.tk - dt * 0.8);
+      const tw = 0.55 + 0.45 * Math.sin(T * 1.7 + p.ph), c = p.tint && p.tk > 0 ? mix(palette[p.c], p.tint, p.tk) : palette[p.c];
+      const a = (0.3 + 0.5 * energy) * p.z * tw * (1 + 0.6 * beat * energy) + 0.8 * p.kick, r = (4 + 10 * p.z) * (1 + 0.8 * p.kick);
+      g.globalAlpha = Math.min(1, a); g.drawImage(sprite(c), p.x - r, p.y - r, r * 2, r * 2);
+    }
+    for (const wv of waves) { const age = T - wv.at, r = age * (420 + 300 * energy), fade = clamp01(1 - age / 1.4); g.globalAlpha = 1; g.strokeStyle = css(wv.c, 0.05 * fade); g.lineWidth = 30 * fade + 4; g.beginPath(); g.ellipse(wv.x, wv.y, r, r * 0.62, 0, 0, 7); g.stroke(); }   // the waves, faint: the field they light carries them
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  }
+  // ---- the board: the game's look, its glass letting the world show through a little ----
+  g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, R - L + 74, trackH + pad * 2, 18);
+  g.fillStyle = world ? 'rgba(6,7,12,.72)' : 'rgba(10,11,17,.85)'; g.fill(); g.strokeStyle = world ? css(mix(palette[0], [255, 255, 255], 0.5), 0.12 + 0.1 * beat * energy) : 'rgba(255,255,255,.08)'; g.lineWidth = 1; g.stroke(); g.clip();
+  for (const b of DATA.bars) for (let j = 0; j < 4; j++) { const x = X(b + j * beatLen); if (x < L - 20 || x > R + 20) continue; g.fillStyle = j ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.1)'; g.fillRect(x, trackT - 6, 1, trackH + 12); }
+  const lastHit = (s) => { let a = 9; for (const n of notes) if (n[2] === s && n[0] <= t) a = Math.min(a, t - n[0]); return a; };
+  for (let s = 0; s < 4; s++) { const c = rgb(COL[s]), a = Math.exp(-lastHit(s) / 0.25); g.strokeStyle = css(c, 0.08 + 0.22 * a); g.lineWidth = 7; g.beginPath(); g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); g.stroke(); g.strokeStyle = css(c, 0.4 + 0.45 * a); g.lineWidth = 2.2 - s * 0.35 + a; g.stroke(); }
+  g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(curX - 1, trackT - pad, 2, trackH + pad * 2);
+  const vis = notes.filter((n) => X(n[0]) > L - 120 && X(n[0]) < R + 120), capW = (n) => (n.rep ? sz * 0.75 : Math.max(sz * 1.05, String(n[3]).length * sz * 0.6 + sz * 0.55));
+  // ---- slides and hammer-ons: light flowing from note to note ----
+  if (world) g.globalCompositeOperation = 'lighter';
+  for (const n of vis) {
+    if (!n.into) continue;
+    const p = notes[n.prev], s = n[2], y = sy(s), c = rgb(COL[s]), xa = X(p[0]) + capW(p) / 2, xb = X(n[0]) - capW(n) / 2; if (xb - xa < 4) continue;
+    const slide = n.into === '/' || n.into === '\\', up = n.into === '/' || n.into === 'h', u = (t - p[0]) / Math.max(0.05, n[0] - p[0]), live = u > -0.6 && u < 1.15;
+    const at = slide ? (v) => { const dy = (up ? -1 : 1) * ch * 0.28, k = v * v * (3 - 2 * v); return [xa + (xb - xa) * v, y - dy + 2 * dy * k]; }
+                     : (v) => { const hgt = Math.min(ch * 1.1, ch * 0.45 + (xb - xa) * 0.25); return [xa + (xb - xa) * v, y - ch * 0.5 - Math.sin(Math.PI * v) * hgt]; };
+    // a faint path, and motes streaming along it (thicker as it's played)
+    g.globalAlpha = 0.35; g.strokeStyle = css(c, 0.5); g.lineWidth = 1.2; g.setLineDash(slide ? [] : [2, 5]); g.beginPath(); for (let i = 0; i <= 16; i++) { const [px, py] = at(i / 16); i ? g.lineTo(px, py) : g.moveTo(px, py); } g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+    const count = live ? 9 : 4;
+    for (let i = 0; i < count; i++) { const v = ((T * (live ? 0.9 : 0.4) + i / count) % 1), [px, py] = at(v), r = (live ? 5 : 3.2) * (0.6 + 0.4 * Math.sin(Math.PI * v)); g.globalAlpha = (live ? 0.9 : 0.45) * Math.sin(Math.PI * v); g.drawImage(sprite(c), px - r, py - r, r * 2, r * 2); }
+    if (u > 0 && u < 1) { const [px, py] = at(u); g.globalAlpha = 1; g.drawImage(sprite(mix(c, [255, 255, 255], 0.3)), px - 12, py - 12, 24, 24); }   // the head, riding the cursor
+    g.globalAlpha = 1;
+  }
+  g.globalCompositeOperation = 'source-over';
+  // ---- the notes (the game's keycaps) ----
+  for (const n of vis.slice().reverse()) {
+    const s = n[2], c = rgb(COL[s]), x = X(n[0]), y = sy(s), age = t - n[0], near = age < 0 ? clamp01(1 + age / 0.7) : 0;
+    if (age > 0.02) {                                    // hit: it dissolves (into the world's motes, below) instead of bursting
+      const k = clamp01(age / 0.35); if (k >= 1 || n.rep) continue;
+      g.globalAlpha = 1 - k; const w = capW(n) * (1 + 0.25 * k), h = ch * (1 + 0.25 * k);
+      g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h * 0.3); g.strokeStyle = css(mix(c, [255, 255, 255], 0.4), 1); g.lineWidth = 1.5; g.stroke();
+      g.font = `700 ${sz}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css([245, 245, 247], 1); g.fillText(String(n[3]), x, y + sz * 0.04 - 10 * k);
+      g.globalAlpha = 1; continue;
+    }
+    if (n.rep) { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); const d = sz * 0.58 * (1 + 0.15 * near); if (near > 0.1) { g.shadowColor = css(c, 1); g.shadowBlur = 12 * near; } g.beginPath(); g.roundRect(-d / 2, -d / 2, d, d, d * 0.3); g.fillStyle = css(c, 0.18); g.fill(); g.strokeStyle = css(c, 1); g.lineWidth = 1.6; g.stroke(); g.restore(); continue; }
+    const w = capW(n); if (near > 0.1) { g.shadowColor = css(c, 1); g.shadowBlur = 16 * near; }
+    g.beginPath(); g.roundRect(x - w / 2, y - ch / 2, w, ch, ch * 0.3); g.fillStyle = 'rgba(9,10,15,.94)'; g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = css(c, 0.4 + 0.55 * near); g.lineWidth = 1.2; g.stroke();
+    g.font = `700 ${sz}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f5f5f7'; g.fillText(String(n[3]), x, y + sz * 0.04);
+  }
+  // a hit on the board: just a soft flare at the cursor
+  for (const n of vis) { const age = t - n[0]; if (age >= 0 && age < 0.3) soft(curX, sy(n[2]), sz * 1.4, rgb(COL[n[2]]), 0.35 * (1 - age / 0.3)); }
+  g.restore();
+  for (let s = 0; s < 4; s++) { g.font = `600 15px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css(rgb(COL[s]), 0.85); g.fillText(NAMES[s], L - 34, sy(s)); }
+
+  // ---- your playing answered by the world: each hit a wave through the field, the note's motes joining it ----
+  for (const n of notes) {
+    if (n[0] > t || n[0] < t - 0.05 || fired.has(n.i)) continue; fired.add(n.i);
+    if (!world) continue;
+    const c = rgb(COL[n[2]]), y = sy(n[2]); waves.push({ x: curX, y, at: T, c });
+    for (let i = 0; i < 16; i++) { const an = -Math.PI / 2 + (Math.random() - 0.5) * 2.4, v = 40 + Math.random() * 90; motes.push({ x: curX + (Math.random() - 0.5) * sz, y: y + (Math.random() - 0.5) * ch * 0.6, vx: Math.cos(an) * v - 40, vy: Math.sin(an) * v, c, at: T, life: 1.6 + Math.random() * 1.2 }); }
+  }
+  if (world) {
+    g.globalCompositeOperation = 'lighter';
+    for (const wv of waves) {                            // the wave: a soft ring travelling out, nudging and tinting the field it passes
+      const age = T - wv.at, r = age * (420 + 300 * energy), fade = clamp01(1 - age / 1.4);   // (its ring is drawn behind the board, faintly)
+      for (const p of field) { const dx = p.x - wv.x, dy = (p.y - wv.y) / 0.62, d = Math.hypot(dx, dy); if (Math.abs(d - r) < 26) { p.kick = Math.max(p.kick, 0.9 * fade * p.z); p.kvx = dx / (d + 1) * 160; p.kvy = dy / (d + 1) * 100; p.tint = wv.c; p.tk = Math.max(p.tk, 0.9 * fade); } }
+    }
+    for (const m of motes) {                             // the note's motes, drifting up and away, slowing, fading into the field
+      const age = T - m.at, k = clamp01(age / m.life); m.vx *= Math.exp(-dt * 1.2); m.vy *= Math.exp(-dt * 1.2); m.vy -= 6 * dt; m.x += m.vx * dt; m.y += m.vy * dt;
+      const r = 5 * (1 - k * 0.5); g.globalAlpha = 0.9 * (1 - k); g.drawImage(sprite(m.c), m.x - r, m.y - r, r * 2, r * 2);
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  }
+  for (let i = waves.length - 1; i >= 0; i--) if (T - waves[i].at > 1.4) waves.splice(i, 1);
+  for (let i = motes.length - 1; i >= 0; i--) if (T - motes[i].at > motes[i].life) motes.splice(i, 1);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -31,6 +31,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <span class="lab">Meter</span><button data-o="meter:board">Under board</button><button data-o="meter:score">Under score</button><span class="sep"></span>
  <span class="lab">Intro</span><button data-o="intro:off">Off</button><button data-o="intro:card">Card</button><button data-o="intro:cinema">Big title</button><button data-t="build">Board opens</button>
  <span class="lab">Card to score</span><button data-o="cardOut:sleeve">Sleeve</button><button data-o="cardOut:flip">Flip</button><button data-o="cardOut:morph">Morph</button><button data-o="cardOut:shrink">Shrink</button><span class="sep"></span>
+ <span class="lab">Hold</span><button data-o="hold:glass">Glass</button><button data-o="hold:ring">Ringing string</button><button data-o="hold:trail">Light trail</button><button data-o="hold:capsule">Capsule</button><span class="sep"></span>
  <span class="lab">Ending</span><button data-o="ending:off">Off</button><button data-o="ending:complete">Song complete</button><button data-o="ending:fc">Full combo</button><span class="sep"></span>
  <span class="lab">Jump to</span><button data-jump="start">Start</button><button data-jump="big">Big moment</button><button data-jump="enc">Encore</button><button data-jump="end">Ending</button><span class="sep"></span>
  <label>Speed <input type="range" id="speed" min="0.4" max="1.5" step="0.05" value="0.7"><span id="speedv">0.7×</span></label>
@@ -38,6 +39,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 </div>
 <div class="note">Space pauses · plays from the intro to the ending and loops (every note counts as hit) · kicks = beats 1 and 3, snares = 2 and 4, big moment = the busiest 4 bars (the game would use the song's light cues)</div>
 <script src="note-styles-data.js"></script>
+<script src="holds-data.js"></script>
+<script>Object.assign(PASSAGES, HOLD_PASSAGES);</script>
 <script>
 const COL=['#6ee7a8','#f8a1a1','#f6d878','#8fb8fa'],NAMES=['E','A','D','G'];   // softer than the game's lane colours
 const FONT='-apple-system,"SF Pro Display",system-ui,sans-serif';
@@ -45,12 +48,12 @@ const MOOD={1:['#f5e6d3','#c08457'],2:['#fcd34d','#f59e0b'],3:['#fb923c','#e11d4
 const NW=0.56,VIS=17.5;
 const cv=document.getElementById('cv'),g=cv.getContext('2d');
 let W=0,H=0,clock=0,last=performance.now(),paused=false,spread=true,speedSet=0.7,size=0.75,   // smaller numbers by default (user: "it's easier to read when the numbers aren't huge")
- song=Object.keys(PASSAGES)[1];
+ song='NARCISISTA (long notes)';   // (Hold looks: the passages with long notes)
 let notes,bars,warp,info,mood={c:[245,230,211],d:[192,132,87]},sweepAt=-9,lastMult=1;
 let holdStyle='glass',scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='center',stagger='joined',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
 const fx={x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
 // the three new things and their looks
-const opt={kick:'off',big:true,land:true,encore:true,goldLook:'caps',meter:'score',intro:'card',cardOut:'flip',build:true,ending:'complete'};   // the user's picks (2026-11-06)
+const opt={kick:'off',big:true,land:true,encore:true,goldLook:'caps',meter:'score',intro:'card',cardOut:'flip',build:true,ending:'complete',hold:'capsule'};   // Capsule: the user's pick for held notes (2026-11-06)   // the user's picks (2026-11-06)
 const GOLD=[251,191,36],OUTRO=6.5;
 let drawRec=null,plaquePos={rx:0,ry:0,r:26,tx:0,ym:0},meterPos={x0:0,w:200,y:0},phr=[],enc=null,bigR=null,lands=[],lastT=24,tStart=0,encK=0,bigK=0,wasEnc=false;
 const SONGS={'Wow! Wow! Wow!':'Royal Republic','Flower Power Madness':'Royal Republic','Baby':'Royal Republic'};
@@ -303,11 +306,13 @@ function frame(ms){
  const vis=notes.filter(n=>{const x=X(n[0]);return x>L-60&&x<R+60});
  // (held notes as in the game's drawArcade, user: "can we improve how held notes look?"; no end marker since "held notes
  // have a bar at the end, can we make it not have that")
- for(const n of vis){const I=info.get(n),end=Math.min(n[1],I.next-0.03);if(end-n[0]<0.3)continue;
-  const x0=X(n[0]),x1=Math.min(R+20,X(end));if(x1<=x0)continue;
+ // As the game now: only notes held longer than a beat, each stopping a keycap short of the next note on its string.
+ holdStyle=opt.hold;const sz0=Math.round(sp*0.6*size*songFit);
+ for(const n of vis){const I=info.get(n),end=Math.min(n[1],I.next-0.03);if(n[1]-n[0]<=0.4||end-n[0]<Math.max(0.4,0.95*beatLen))continue;
+  const x0=X(n[0]),x1=Math.min(R+20,X(end),X(I.next)-sz0*1.05);if(x1-x0<sz0)continue;
   const holding=n[0]<=t&&t<end,y=sy(n[2]),hh=sp*0.2,c3=ease(rgb(COL[n[2]]),[125,211,252],0.4*x4k),pulse=0.5+0.5*Math.sin(clock*1000/70);
   const ribbon=(a,b,w)=>{g.beginPath();g.roundRect(a,y-w/2,Math.max(0,b-a),w,w/2)};
-  if(x0<curX){const a=Math.max(L-40,x0),b=Math.min(curX,x1);if(b>a){const q=g.createLinearGradient(a,0,b,0);q.addColorStop(0,css(c3,0));q.addColorStop(1,css(c3,0.35));ribbon(a,b,hh*0.7);g.fillStyle=q;g.fill()}}
+  if(x0<curX&&holdStyle==='glass'){const a=Math.max(L-40,x0),b=Math.min(curX,x1);if(b>a){const q=g.createLinearGradient(a,0,b,0);q.addColorStop(0,css(c3,0));q.addColorStop(1,css(c3,0.35));ribbon(a,b,hh*0.7);g.fillStyle=q;g.fill()}}
   const a=holding?curX:x0;if(x1<=a)continue;
   // Hold looks (user: "can we make the hold line look more premium like the rest of the app?"):
   //  ribbon   - the game's now: a colour ribbon fading to its end, light dashes flowing while held
@@ -347,6 +352,43 @@ function frame(ms){
    g.restore();
    g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=0.8;g.beginPath();g.moveTo(a+w/2,y-w/2+0.8);g.lineTo(x1-w/2,y-w/2+0.8);g.stroke();
    if(holding)soft(curX,y,sp*0.55,c3,0.4+0.15*pulse)}
+  // New looks (user, 2026-11-06: "I feel like we could improve the look of held notes"):
+  //  ring    - the string itself rings: over the note it's thicker and lit in its colour, thinning toward the end;
+  //            held, it vibrates (a wave running out from the cursor), a white core and a glow where you play
+  //  trail   - a light trail from the keycap, tapering to a point at the end like a comet; held, it brightens, light
+  //            bands run into the cursor and a few sparks fall away behind it
+  //  capsule - the keycap stretches into one long keycap (its dark fill and rim) with a channel of light inside;
+  //            held, it's eaten at the cursor and the light drains into it
+  const len=Math.max(1,x1-a);
+  if(holdStyle==='ring'){
+   const k=2*Math.PI/(sp*0.8),amp=holding?sp*0.06*(0.8+0.2*pulse):0,yy=(x)=>y+amp*Math.sin((x-a)*k-clock*38)*(1-0.7*(x-a)/len);
+   const wAt=(x)=>hh*(holding?1.6:1.3)*(1-0.6*(x-a)/len),band=(wm)=>{g.beginPath();for(let x=a;x<=x1;x+=3)g.lineTo(x,yy(x)-wAt(x)*wm/2);for(let x=x1;x>=a;x-=3)g.lineTo(x,yy(x)+wAt(x)*wm/2);g.closePath()};
+   band(3.2);g.fillStyle=fade(c3,holding?0.22+0.08*pulse:0.1,0);g.fill();   // the glow
+   band(1);g.fillStyle=fade(holding?ease(c3,[255,255,255],0.2):c3,holding?1:0.8,0.12);g.fill();
+   if(holding){g.lineCap='round';g.strokeStyle=fade([255,255,255],0.85,0);g.lineWidth=1.4;g.beginPath();for(let x=a;x<=x1;x+=3)g.lineTo(x,yy(x));g.stroke();g.lineCap='butt';soft(curX,y,sp*0.6,c3,0.5+0.2*pulse)}
+   if(x0<curX&&!holding){}   // (a finished hold just ends: the string goes back to plain)
+  }
+  if(holdStyle==='trail'){
+   const h=sz0*0.82,tip=()=>{g.beginPath();g.moveTo(a,y-h/2);g.quadraticCurveTo(a+len*0.45,y-h*0.32,x1,y);g.quadraticCurveTo(a+len*0.45,y+h*0.32,a,y+h/2);g.closePath()};
+   tip();g.fillStyle=fade(c3,holding?0.55:0.3,0);g.fill();
+   g.save();tip();g.clip();
+   const v=g.createLinearGradient(0,y-h/2,0,y+h/2);v.addColorStop(0,'rgba(255,255,255,.22)');v.addColorStop(0.35,'rgba(255,255,255,0)');v.addColorStop(1,'rgba(0,0,0,.25)');g.fillStyle=v;g.fillRect(a,y-h/2,len,h);   // rounded: light on top
+   if(holding)for(let i=0;i<4;i++){const u=1-(((clock*1.2)+i/4)%1),bx=a+u*len,bq=g.createLinearGradient(bx-sp*0.25,0,bx+sp*0.25,0);bq.addColorStop(0,'rgba(255,255,255,0)');bq.addColorStop(0.5,`rgba(255,255,255,${0.35*(1-u*0.6)})`);bq.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=bq;g.fillRect(bx-sp*0.25,y-h/2,sp*0.5,h)}   // bands running in
+   g.restore();
+   g.strokeStyle=fade(ease(c3,[255,255,255],0.3),holding?0.9:0.6,0);g.lineWidth=1.1;tip();g.stroke();   // its edges
+   if(holding){soft(curX,y,sp*0.6,c3,0.5+0.2*pulse);for(let i=0;i<7;i++){const age=((clock*1.7)+i/7)%1,sx=curX-age*sp*1.1,syy=y+(i%2?-1:1)*(0.2+age)*h*0.55*((i%3)/2+0.5);g.fillStyle=css(ease(c3,[255,255,255],0.5),0.9*(1-age));g.beginPath();g.arc(sx,syy,2.2*(1-age)+0.4,0,7);g.fill()}}
+  }
+  if(holdStyle==='capsule'){
+   const ch=sz0*1.12,sa=holding?curX:x0-sz0*0.5,cap=(p,q,hgt,r)=>{g.beginPath();g.roundRect(p,y-hgt/2,Math.max(0,q-p),hgt,r)};
+   if(holding){cap(sa-4,x1+4,ch+8,(ch+8)*0.3);g.fillStyle=css(c3,0.08+0.05*pulse);g.fill()}
+   cap(sa,x1,ch,ch*0.3);g.fillStyle='rgba(9,10,15,.92)';g.fill();
+   const rim=g.createLinearGradient(sa,0,x1,0);rim.addColorStop(0,css(c3,holding?0.95:0.6));rim.addColorStop(1,css(c3,0.2));g.strokeStyle=rim;g.lineWidth=1.2;g.stroke();
+   const cw=ch*0.24,c0=Math.max(sa+(holding?ch*0.3:sz0*1.2),sa),c1=x1-ch*0.3;
+   if(c1>c0){cap(c0,c1,cw,cw/2);g.fillStyle=css(c3,0.14);g.fill();   // the channel
+    cap(c0,c1,cw,cw/2);g.fillStyle=fade(holding?ease(c3,[255,255,255],0.35):c3,holding?1:0.6,holding?0.55:0.25);g.fill();
+    if(holding){g.save();cap(c0,c1,cw,cw/2);g.clip();for(let i=0;i<3;i++){const u=1-(((clock*0.9)+i/3)%1),gx=c0+u*(c1-c0),q=g.createRadialGradient(gx,y,0,gx,y,cw*2.2);q.addColorStop(0,'rgba(255,255,255,.8)');q.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=q;g.fillRect(gx-cw*3,y-cw,cw*6,cw*2)}g.restore()}}
+   if(holding)soft(curX,y,sp*0.6,c3,0.45+0.2*pulse);
+  }
  }
  // the notes: numbers on dark keycaps
  const nextT=Math.min(...notes.filter(n=>n[0]>t).map(n=>n[0])),ringed=new Set(notes.filter(n=>n[0]>t).slice(0,2));

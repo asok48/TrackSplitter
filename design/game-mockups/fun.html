@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<!-- Board looks, fun but polished (user, 2026-11-06: "I guess my overall goal now is to make the game look more fun, less
+     sanitized", "and the hammer on pull offs", "I want something fun but also look polished and professional"; the slide band
+     "looks bad"). One scrolling board, the same passage (I Love My Friends 3-17 s: slides, slides in / off, hammer-ons and
+     pull-offs), every note auto-hit, four looks to switch between: Now (the game today), Lively, Neon, Chunky. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encore board looks</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #05060a; color: #f5f5f7; font: 500 13px -apple-system, "SF Pro Display", system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 12px 18px; z-index: 2; }
+  #bar b { font-weight: 700; letter-spacing: .02em; margin-right: 6px; }
+  #bar button { background: none; border: 0; color: rgba(245,245,247,.55); font: inherit; padding: 4px 2px; cursor: pointer; }
+  #bar button.on { color: #fff; box-shadow: 0 2px 0 #fff; }
+  #bar .lab { color: rgba(245,245,247,.35); margin-left: 8px; }
+  #desc { position: fixed; left: 18px; right: 18px; bottom: 16px; color: rgba(245,245,247,.6); max-width: 900px; line-height: 1.5; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="bar"><b>Board looks</b>
+  <button data-look="now">Now</button><button data-look="lively">Lively</button><button data-look="neon">Neon</button><button data-look="chunky">Chunky</button>
+  <span class="lab">Speed</span><button data-speed="0.5">½×</button><button data-speed="1">1×</button>
+  <button data-pause>Pause</button>
+</div>
+<div id="desc"></div>
+<script>
+const DATA = {"notes":[[0.164,0.422,2,10,""],[0.423,0.595,2,7,""],[0.595,0.768,2,7,""],[0.768,0.94,2,5,""],[0.94,1.113,2,7,""],[1.113,1.285,2,7,""],[1.285,1.458,2,9,"s"],[1.458,1.63,2,9,""],[1.63,1.803,1,5,""],[1.803,1.975,1,7,"h"],[1.975,2.148,1,7,""],[2.148,2.321,1,7,""],[2.321,2.493,1,7,""],[2.493,2.752,1,7,"d"],[2.756,3.003,1,3,""],[3.003,3.251,1,3,""],[3.251,3.622,1,12,"s"],[3.622,3.993,1,12,""],[3.993,4.365,1,12,""],[4.365,4.86,1,12,"d"],[4.86,5.107,1,2,""],[5.107,5.355,1,2,""],[5.355,5.602,1,7,""],[5.69,5.941,2,10,"b"],[5.942,6.193,2,10,""],[6.194,6.361,2,7,""],[6.362,6.529,2,7,""],[6.53,6.697,2,5,""],[6.698,6.865,2,7,""],[6.865,7.033,2,7,""],[7.033,7.201,2,9,"s"],[7.201,7.369,2,9,""],[7.369,7.537,1,5,""],[7.537,7.705,1,7,"h"],[7.705,7.873,1,7,""],[7.873,8.04,1,7,""],[8.041,8.208,1,7,""],[8.209,8.46,1,7,"d"],[8.473,8.662,1,3,""],[8.663,8.853,1,3,""],[8.853,9.138,1,12,"s"],[9.139,9.423,1,12,""],[9.424,9.709,1,12,""],[9.71,10.089,1,12,"d"],[10.09,10.28,1,2,""],[10.281,10.47,1,2,""],[10.471,10.661,1,7,""],[10.661,10.851,1,7,""],[10.852,11.041,1,7,""],[11.042,11.232,1,5,""],[11.232,11.327,1,7,"h"],[11.416,11.667,2,10,"b"],[11.669,11.921,2,10,""],[11.923,12.091,2,7,""],[12.093,12.26,2,7,""],[12.262,12.429,2,5,""],[12.431,12.599,2,7,""],[12.6,12.768,2,7,""],[12.77,12.937,2,9,"s"],[12.939,13.106,2,9,""],[13.108,13.276,1,5,""],[13.277,13.445,1,7,"h"],[13.447,13.614,1,7,""],[13.616,13.783,1,7,""],[13.785,13.953,1,7,""],[13.954,14.206,1,7,"d"]],"bars":[-0.095,2.756,5.606,8.473,11.331,14.111,16.938]};
+const COL = ['#6ee7a8', '#f8a1a1', '#f6d878', '#8fb8fa'], NAMES = ['E', 'A', 'D', 'G'], FONT = '-apple-system,"SF Pro Display",system-ui,sans-serif';
+const DESC = {
+  now: 'Now: the game today. Dark keycaps with a thin rim in the string\'s colour; slides and hammer-ons as a band joining the notes; small sparks on a hit.',
+  lively: 'Lively: today\'s look with colour and motion. Notes fill with their string\'s colour as they reach you and bob gently on the beat; a slide is a smooth gliding streak of light; a hammer-on / pull-off is an arc of light that hops from note to note; hits flare with a light streak along the string and a spray of sparks.',
+  neon: 'Neon: notes are glowing gems in their string\'s colour, strings glow, slides are neon tubes with light running along them, a hammer-on / pull-off is a small electric arc, hits burst with rays and particles.',
+  chunky: 'Chunky: notes are solid 3D keys with a coloured top that bounce on the beat, a slide is a ramp with arrows moving along it, a hammer-on / pull-off is a hop arrow (the second note squashes as it lands), hits throw a few stars and a +100.',
+};
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), css = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`, mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+const clamp01 = (x) => Math.max(0, Math.min(1, x)), eout = (x) => 1 - (1 - clamp01(x)) ** 3;
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let W = 0, H = 0, look = 'lively', speed = 1, paused = false, clock = 0, last = performance.now();
+const qs = new URLSearchParams(location.search); if (qs.get('look')) look = qs.get('look'); if (qs.get('t')) { clock = +qs.get('t') + 1.2; paused = true; }
+function resize() { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', resize); resize();
+// each note's neighbours on its string, its legato mark (as the game's legatoMarks), repeats
+const notes = DATA.notes, prevOn = {}, nextOn = {};
+notes.forEach((n, i) => { n.i = i; if (prevOn[n[2]] !== undefined) { n.prev = prevOn[n[2]]; notes[prevOn[n[2]]].next = i; } prevOn[n[2]] = i; });
+for (const n of notes) {
+  const c = n[4] || '', p = n.prev !== undefined ? notes[n.prev] : null, up = !p || n[3] >= p[3];
+  n.into = c[0] === 's' && p ? (up ? '/' : '\\') : c[0] === 'h' && p ? (up ? 'h' : 'p') : c[0] === 'b' ? 'in/' : c[0] === 'a' ? 'in\\' : null;
+  n.out = c.includes('d') ? '\\' : c.includes('u') ? '/' : null;
+  n.rep = !!p && p[3] === n[3] && n[0] - p[0] < 1.2 && !n.into;
+}
+const beatLen = (DATA.bars[2] - DATA.bars[1]) / 4, LOOP = 14;
+document.querySelectorAll('#bar button').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.look) look = b.dataset.look; else if (b.dataset.speed) speed = +b.dataset.speed; else paused = !paused; show();
+}));
+addEventListener('keydown', (e) => { if (e.code === 'Space') { paused = !paused; show(); e.preventDefault(); } });
+function show() {
+  document.querySelectorAll('[data-look]').forEach((b) => b.classList.toggle('on', b.dataset.look === look));
+  document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', +b.dataset.speed === speed));
+  document.querySelector('[data-pause]').textContent = paused ? 'Play' : 'Pause';
+  document.getElementById('desc').textContent = DESC[look];
+}
+show();
+function soft(x, y, r, c, a) { const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, css(c, a)); q.addColorStop(1, css(c, 0)); g.fillStyle = q; g.fillRect(x - r, y - r, r * 2, r * 2); }
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!paused) clock += dt * speed;
+  const t = (clock % LOOP) - 1.2;                        // a little lead-in each loop
+  const trackH = Math.min(H * 0.48, 380), trackT = H * 0.52 - trackH / 2, L = Math.max(W * 0.08, 90), R = W * 0.97, curX = L + (R - L) * 0.2, sp = trackH / 4;
+  const pxs = (R - L) / 4.2, X = (tt) => curX + (tt - t) * pxs, sy = (s) => trackT + (3 - s) * sp + sp / 2;
+  const beatPh = (((t - DATA.bars[1]) / beatLen) % 1 + 1) % 1, beat = Math.exp(-beatPh * 6);
+  const sz = Math.round(Math.min(H * 0.3, 250) / 4 * 0.45), ch = sz * 1.15;   // as the game's
+  // ---- background ----
+  g.fillStyle = '#05060a'; g.fillRect(0, 0, W, H);
+  if (look === 'now' || look === 'lively') { soft(curX, trackT + trackH / 2, trackH * 1.4, [192, 132, 87], look === 'lively' ? 0.1 + 0.05 * beat : 0.07); }
+  if (look === 'neon') {
+    const q = g.createLinearGradient(0, 0, 0, H); q.addColorStop(0, '#0b0620'); q.addColorStop(1, '#030208'); g.fillStyle = q; g.fillRect(0, 0, W, H);
+    soft(W * 0.3, trackT + trackH / 2, W * 0.5, [139, 92, 246], 0.16 + 0.06 * beat); soft(W * 0.75, trackT + trackH / 2, W * 0.4, [56, 189, 248], 0.1);
+  }
+  if (look === 'chunky') {
+    const q = g.createLinearGradient(0, 0, 0, H); q.addColorStop(0, '#0d1424'); q.addColorStop(1, '#070a12'); g.fillStyle = q; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(255,255,255,.035)'; for (let y = 20; y < H; y += 26) for (let x = ((y / 26) % 2) * 13; x < W; x += 26) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
+  }
+  // ---- the panel ----
+  const pad = 18;
+  g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, R - L + 74, trackH + pad * 2, look === 'chunky' ? 22 : 18);
+  g.fillStyle = look === 'neon' ? 'rgba(12,8,30,.78)' : look === 'chunky' ? 'rgba(14,20,36,.92)' : 'rgba(10,11,17,.85)'; g.fill();
+  g.strokeStyle = look === 'neon' ? 'rgba(167,139,250,.35)' : 'rgba(255,255,255,.08)'; g.lineWidth = look === 'neon' ? 1.5 : 1; g.stroke();
+  if (look === 'chunky') { g.save(); g.translate(0, 4); g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 3; g.stroke(); g.restore(); }   // a lip under it
+  g.clip();
+  // bars
+  for (const b of DATA.bars) for (let j = 0; j < 4; j++) { const x = X(b + j * beatLen); if (x < L - 20 || x > R + 20) continue; g.fillStyle = j ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.12)'; g.fillRect(x, trackT - 6, 1, trackH + 12); }
+  // strings
+  const hitOn = (s) => { let a = 9; for (const n of notes) if (n[2] === s && n[0] <= t) a = Math.min(a, t - n[0]); return a; };
+  for (let s = 0; s < 4; s++) {
+    const c = rgb(COL[s]), a = Math.exp(-hitOn(s) / 0.25);
+    if (look === 'neon') { g.strokeStyle = css(c, 0.18 + 0.3 * a); g.lineWidth = 8; g.beginPath(); g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); g.stroke(); g.strokeStyle = css(mix(c, [255, 255, 255], 0.3), 0.8 + 0.2 * a); g.lineWidth = 2; g.stroke(); }
+    else if (look === 'chunky') { g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 6; g.beginPath(); g.moveTo(L - 10, sy(s) + 2); g.lineTo(R + 10, sy(s) + 2); g.stroke(); g.strokeStyle = css(c, 0.55 + 0.4 * a); g.lineWidth = 3.5; g.beginPath(); g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); g.stroke(); }
+    else { g.strokeStyle = css(c, 0.1 + 0.25 * a); g.lineWidth = 7; g.beginPath(); g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); g.stroke(); g.strokeStyle = css(c, 0.45 + 0.45 * a); g.lineWidth = 2 - s * 0.3 + a; g.stroke(); }
+  }
+  // the cursor
+  g.fillStyle = look === 'neon' ? 'rgba(196,181,253,.9)' : 'rgba(255,255,255,.55)'; g.fillRect(curX - 1, trackT - pad, 2, trackH + pad * 2);
+  if (look === 'neon') soft(curX, trackT + trackH / 2, trackH * 0.6, [167, 139, 250], 0.15 + 0.1 * beat);
+  if (look === 'lively') { const q = g.createLinearGradient(curX - 24, 0, curX + 24, 0); q.addColorStop(0, 'rgba(245,230,211,0)'); q.addColorStop(0.5, `rgba(245,230,211,${0.08 + 0.08 * beat})`); q.addColorStop(1, 'rgba(245,230,211,0)'); g.fillStyle = q; g.fillRect(curX - 24, trackT - pad, 48, trackH + pad * 2); }
+
+  const vis = notes.filter((n) => X(n[0]) > L - 120 && X(n[0]) < R + 120);
+  const capW = (n) => (n.rep ? sz * 0.75 : Math.max(sz * 1.1, String(n[3]).length * sz * 0.62 + sz * 0.55));
+  // ---- slides and hammer-ons / pull-offs (under the notes) ----
+  for (const n of vis) {
+    const s = n[2], y = sy(s), c = rgb(COL[s]), x = X(n[0]), hw = capW(n) / 2;
+    if (n.into && n.prev !== undefined && !n.into.startsWith('in')) {
+      const p = notes[n.prev], xp = X(p[0]), hp = capW(p) / 2, u = (t - p[0]) / Math.max(0.05, n[0] - p[0]), go = u > 0 && u < 1, ha = t - n[0];
+      const slide = n.into === '/' || n.into === '\\', up = n.into === '/' || n.into === 'h';
+      LEGATO[look](slide, up, xp + hp, x - hw, y, c, go ? u : null, ha, xp, x);
+    }
+    if (n.into && n.into.startsWith('in')) SLIDE_END[look](x - hw, y, c, n.into === 'in/', -1);
+    if (n.out) SLIDE_END[look](x + hw, y, c, n.out === '/', 1);
+  }
+  // ---- the notes ----
+  for (const n of vis.slice().reverse()) {
+    const s = n[2], c = rgb(COL[s]), x = X(n[0]), age = t - n[0], near = age < 0 ? clamp01(1 + age / 0.8) : 0;
+    let y = sy(s);
+    const legatoHit = (n.into === 'h' || n.into === 'p') && age >= 0 && age < 0.25;
+    NOTE[look](n, x, y, c, age, near, beat, legatoHit);
+  }
+  // ---- hits ----
+  for (const n of vis) { const age = t - n[0]; if (age >= 0 && age < 0.6) HIT[look](curX, sy(n[2]), rgb(COL[n[2]]), age, n); }
+  g.restore();
+  for (let s = 0; s < 4; s++) { g.font = `600 15px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css(rgb(COL[s]), 0.85); g.fillText(NAMES[s], L - 34, sy(s)); }
+  requestAnimationFrame(frame);
+
+  // ================= the looks =================
+  function keyText(n, x, y, fill, size = sz) { g.font = `700 ${size}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = fill; g.fillText(n.rep ? '' : String(n[3]), x, y + size * 0.04); }
+}
+// The four looks: a note, a slide / hammer-on between two notes, a slide in / off end, a hit.
+const NOTE = {
+  now(n, x, y, c, age, near) {
+    const w = n.rep ? 0 : Math.max(sz() * 1.1, String(n[3]).length * sz() * 0.62 + sz() * 0.55), h = sz() * 1.15, passed = age > 0.02, a = passed ? 0.4 : 1;
+    g.globalAlpha = a;
+    if (n.rep) { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); const d = sz() * 0.55; g.beginPath(); g.roundRect(-d / 2, -d / 2, d, d, d * 0.3); g.fillStyle = css(c, 0.2); g.fill(); g.strokeStyle = css(c, 1); g.lineWidth = 1.5; g.stroke(); g.restore(); g.globalAlpha = 1; return; }
+    if (near > 0.6) { g.shadowColor = css(c, 1); g.shadowBlur = 16 * near; }
+    g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h * 0.3); g.fillStyle = 'rgba(9,10,15,.94)'; g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = css(c, 0.4 + 0.5 * near); g.lineWidth = 1.2; g.stroke();
+    text(n, x, y, '#f5f5f7'); g.globalAlpha = 1;
+  },
+  lively(n, x, y, c, age, near, beat, legatoHit) {
+    const S = sz(), passed = age > 0.02, bob = passed ? 0 : -beat * S * 0.06 * (0.4 + near), hop = legatoHit ? (n.into === 'p' ? -1 : 1) * S * 0.14 * Math.sin(Math.PI * age / 0.25) : 0;
+    y += bob + hop;
+    const w = n.rep ? 0 : Math.max(S * 1.1, String(n[3]).length * S * 0.62 + S * 0.55), h = S * 1.15, a = passed ? 0.35 : 1, sc = 1 + 0.08 * near;
+    g.globalAlpha = a; g.save(); g.translate(x, y); g.scale(sc, sc);
+    if (n.rep) { g.rotate(Math.PI / 4); const d = S * 0.58; g.beginPath(); g.roundRect(-d / 2, -d / 2, d, d, d * 0.3); g.fillStyle = css(c, 0.25 + 0.5 * near); g.fill(); g.strokeStyle = css(mix(c, [255, 255, 255], 0.3), 1); g.lineWidth = 1.5; g.stroke(); g.restore(); g.globalAlpha = 1; return; }
+    g.shadowColor = css(c, 0.9); g.shadowBlur = 6 + 18 * near;
+    const q = g.createLinearGradient(0, -h / 2, 0, h / 2); q.addColorStop(0, css(mix([14, 15, 22], c, 0.25 + 0.6 * near), 1)); q.addColorStop(1, css(mix([9, 10, 15], c, 0.1 + 0.45 * near), 1));
+    g.beginPath(); g.roundRect(-w / 2, -h / 2, w, h, h * 0.32); g.fillStyle = q; g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = css(mix(c, [255, 255, 255], 0.2), 0.55 + 0.45 * near); g.lineWidth = 1.4; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1; g.beginPath(); g.moveTo(-w / 2 + h * 0.3, -h / 2 + 1.5); g.lineTo(w / 2 - h * 0.3, -h / 2 + 1.5); g.stroke();   // a top highlight
+    text(n, 0, 0, near > 0.75 ? '#0b0c12' : '#fff'); g.restore(); g.globalAlpha = 1;
+  },
+  neon(n, x, y, c, age, near, beat) {
+    const S = sz(), passed = age > 0.02, a = passed ? 0.3 : 1, w = n.rep ? 0 : Math.max(S * 1.1, String(n[3]).length * S * 0.62 + S * 0.55), h = S * 1.15, glow = 0.6 + 0.4 * beat;
+    g.globalAlpha = a;
+    if (n.rep) { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); const d = S * 0.55; g.shadowColor = css(c, 1); g.shadowBlur = 14; g.beginPath(); g.roundRect(-d / 2, -d / 2, d, d, 3); g.fillStyle = css(c, 0.9); g.fill(); g.restore(); g.globalAlpha = 1; return; }
+    g.shadowColor = css(c, 1); g.shadowBlur = (14 + 16 * near) * glow;
+    const q = g.createLinearGradient(0, y - h / 2, 0, y + h / 2); q.addColorStop(0, css(mix(c, [255, 255, 255], 0.35), 1)); q.addColorStop(1, css(mix(c, [0, 0, 0], 0.25), 1));
+    g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h * 0.5); g.fillStyle = q; g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5; g.stroke();
+    g.lineWidth = 3; g.strokeStyle = 'rgba(10,6,24,.55)'; g.font = `800 ${S}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.strokeText(String(n[3]), x, y + S * 0.04);
+    text(n, x, y, '#fff', 800); g.globalAlpha = 1;
+  },
+  chunky(n, x, y, c, age, near, beat, legatoHit) {
+    const S = sz(), passed = age > 0.02, a = passed ? 0.35 : 1, w = n.rep ? S * 0.8 : Math.max(S * 1.15, String(n[3]).length * S * 0.62 + S * 0.6), h = n.rep ? S * 0.8 : S * 1.15, dep = S * 0.2;
+    const squash = legatoHit ? 1 - 0.25 * Math.sin(Math.PI * clamp01((age) / 0.25)) : 1, bounce = passed ? 0 : -beat * S * 0.12;
+    g.globalAlpha = a; g.save(); g.translate(x, y + bounce + (1 - squash) * h * 0.5); g.scale(1 + (1 - squash) * 0.5, squash);
+    g.beginPath(); g.roundRect(-w / 2, -h / 2 + dep, w, h, h * 0.28); g.fillStyle = css(mix(c, [0, 0, 0], 0.55), 1); g.fill();   // its side
+    const q = g.createLinearGradient(0, -h / 2, 0, h / 2); q.addColorStop(0, css(mix(c, [255, 255, 255], 0.25), 1)); q.addColorStop(1, css(c, 1));
+    g.beginPath(); g.roundRect(-w / 2, -h / 2, w, h, h * 0.28); g.fillStyle = q; g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(-w / 2 + h * 0.3, -h / 2 + 1.5); g.lineTo(w / 2 - h * 0.3, -h / 2 + 1.5); g.stroke();
+    if (!n.rep) { g.font = `800 ${S}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(0,0,0,.35)'; g.fillText(String(n[3]), 0, S * 0.1); g.fillStyle = '#16131f'; g.fillText(String(n[3]), 0, S * 0.02); }
+    if (near > 0.5) { g.strokeStyle = css([255, 255, 255], (near - 0.5) * 1.6); g.lineWidth = 2; g.beginPath(); g.roundRect(-w / 2 - 4, -h / 2 - 4, w + 8, h + 8 + dep, h * 0.34); g.stroke(); }
+    g.restore(); g.globalAlpha = 1;
+  },
+};
+const LEGATO = {
+  // a = the first note's edge, b = the second's, xp / xn their centres; u = the spark's place (null: not now); ha = since the second note
+  now(slide, up, a, b, y, c, u) {
+    const dy = slide ? (up ? -1 : 1) * sz() * 0.25 : 0; g.lineCap = g.lineJoin = 'round';
+    const path = () => { g.beginPath(); g.moveTo(a - 6, y - dy); g.lineTo(b + 6, y + dy); };
+    path(); g.strokeStyle = css(c, 0.7); g.lineWidth = sz() * 0.5 + 2.4; g.stroke(); path(); g.strokeStyle = 'rgba(9,10,15,.92)'; g.lineWidth = sz() * 0.5; g.stroke();
+    path(); g.strokeStyle = css(c, 0.18); g.stroke(); path(); g.strokeStyle = css(mix(c, [255, 255, 255], 0.3), 0.8); g.lineWidth = 2.4; g.stroke();
+    if (u !== null) { soft(a + (b - a) * u, y - dy + 2 * dy * u, sz() * 0.6, c, 0.8); }
+    g.lineCap = 'butt';
+  },
+  lively(slide, up, a, b, y, c, u, ha, xp, xn) {
+    g.lineCap = 'round';
+    if (slide) {                                         // a gliding streak: a smooth S from one note to the next, bright at its head
+      const dy = (up ? -1 : 1) * sz() * 0.32, x0 = a - 4, x1 = b + 4, mx = (x0 + x1) / 2, path = () => { g.beginPath(); g.moveTo(x0, y - dy); g.bezierCurveTo(mx, y - dy, mx, y + dy, x1, y + dy); };
+      // (from low on the first note to high on the second for a slide up: an S along the string)
+      const q = g.createLinearGradient(x0, 0, x1, 0); q.addColorStop(0, css(c, 0.15)); q.addColorStop(1, css(mix(c, [255, 255, 255], 0.3), 0.95));
+      g.save(); g.translate(0, -dy / 2 * 0); path(); g.strokeStyle = css(c, u !== null ? 0.35 : 0.18); g.lineWidth = 10; g.stroke(); path(); g.strokeStyle = q; g.lineWidth = 3; g.stroke(); g.restore();
+      if (u !== null) { const k = u, bx = (1 - k) ** 3 * x0 + 3 * (1 - k) ** 2 * k * mx + 3 * (1 - k) * k * k * mx + k ** 3 * x1, by = (1 - k) ** 3 * (y - dy) + 3 * (1 - k) ** 2 * k * (y - dy) + 3 * (1 - k) * k * k * (y + dy) + k ** 3 * (y + dy); soft(bx, by, sz() * 0.7, c, 0.9); g.fillStyle = '#fff'; g.beginPath(); g.arc(bx, by, 3, 0, 7); g.fill(); }
+    } else {                                             // an arc of light hopping from note to note; a ball rides it in time
+      const top = y - sz() * 0.9, mx = (xp + xn) / 2, hgt = Math.min(sz() * 1.4, sz() * 0.6 + (xn - xp) * 0.25), path = () => { g.beginPath(); g.moveTo(xp, y - sz() * 0.5); g.quadraticCurveTo(mx, top - hgt, xn, y - sz() * 0.5); };
+      g.save(); g.setLineDash([2, 6]); path(); g.strokeStyle = css(c, 0.55); g.lineWidth = 2; g.stroke(); g.restore();
+      if (u !== null) { const k = eout(u * 0.5 + 0.25 * 0) * 0 + u, bx = (1 - k) ** 2 * xp + 2 * (1 - k) * k * mx + k * k * xn, by = (1 - k) ** 2 * (y - sz() * 0.5) + 2 * (1 - k) * k * (top - hgt) + k * k * (y - sz() * 0.5); soft(bx, by, sz() * 0.7, c, 0.9); g.fillStyle = '#fff'; g.beginPath(); g.arc(bx, by, 4, 0, 7); g.fill(); }
+      if (ha >= 0 && ha < 0.3) { const k = ha / 0.3; g.strokeStyle = css(mix(c, [255, 255, 255], 0.4), 1 - k); g.lineWidth = 2; g.beginPath(); g.ellipse(xn, y - sz() * 0.62, sz() * (0.4 + 0.8 * k), sz() * (0.12 + 0.2 * k), 0, 0, 7); g.stroke(); }   // landing ring
+    }
+    g.lineCap = 'butt';
+  },
+  neon(slide, up, a, b, y, c, u, ha, xp, xn) {
+    g.lineCap = 'round';
+    if (slide) {
+      const dy = (up ? -1 : 1) * sz() * 0.3, path = () => { g.beginPath(); g.moveTo(a - 4, y - dy); g.lineTo(b + 4, y + dy); };
+      g.shadowColor = css(c, 1); g.shadowBlur = 16; path(); g.strokeStyle = css(c, 0.9); g.lineWidth = 6; g.stroke(); g.shadowBlur = 0;
+      path(); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 2; g.stroke();
+      g.save(); g.setLineDash([6, 10]); g.lineDashOffset = -clock * 60; path(); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3; g.stroke(); g.restore();
+      if (u !== null) soft(a + (b - a) * u, y - dy + 2 * dy * u, sz() * 0.8, c, 1);
+    } else {                                             // a small electric arc, re-drawn jittery each frame
+      const top = y - sz() * 0.75, pts = 9; g.shadowColor = css(c, 1); g.shadowBlur = 12; g.strokeStyle = css(mix(c, [255, 255, 255], 0.5), 0.95); g.lineWidth = 2;
+      g.beginPath(); for (let i = 0; i <= pts; i++) { const k = i / pts, x = xp + (xn - xp) * k, arc = Math.sin(Math.PI * k) * sz() * 0.6, j = i && i < pts ? (Math.sin(clock * 47 + i * 12.9) * 0.5) * sz() * 0.25 : 0; i ? g.lineTo(x, top - arc + j) : g.moveTo(x, top); } g.stroke(); g.shadowBlur = 0;
+      if (u !== null) soft(xp + (xn - xp) * u, top - Math.sin(Math.PI * u) * sz() * 0.6, sz() * 0.7, c, 1);
+    }
+    g.lineCap = 'butt';
+  },
+  chunky(slide, up, a, b, y, c, u, ha, xp, xn) {
+    if (slide) {                                         // a ramp, arrows moving along it
+      const dy = (up ? -1 : 1) * sz() * 0.3, h = sz() * 0.55, len = Math.hypot(b - a + 8, 2 * dy), ang = Math.atan2(2 * dy, b - a + 8);
+      g.save(); g.translate(a - 4, y - dy); g.rotate(ang);
+      g.beginPath(); g.roundRect(0, -h / 2 + 4, len, h, h / 2); g.fillStyle = css(mix(c, [0, 0, 0], 0.6), 1); g.fill();
+      g.beginPath(); g.roundRect(0, -h / 2, len, h, h / 2); g.fillStyle = css(mix(c, [0, 0, 0], 0.15), 1); g.fill();
+      g.beginPath(); g.roundRect(0, -h / 2, len, h, h / 2); g.clip();
+      g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2.2; g.lineCap = 'round'; g.lineJoin = 'round';
+      for (let x = ((clock * 40) % 16) - 16; x < len + 16; x += 16) { g.beginPath(); g.moveTo(x - 3, -h * 0.22); g.lineTo(x + 2, 0); g.lineTo(x - 3, h * 0.22); g.stroke(); }
+      g.restore();
+    } else {                                             // a hop arrow
+      const top = y - sz() * 0.8, hgt = Math.min(sz() * 1.1, sz() * 0.4 + (xn - xp) * 0.2), mx = (xp + xn) / 2, x0 = xp + sz() * 0.15, x1 = xn - sz() * 0.25;
+      const path = () => { g.beginPath(); g.moveTo(x0, top + sz() * 0.15); g.quadraticCurveTo(mx, top - hgt, x1, top + sz() * 0.15); };
+      g.lineCap = 'round'; path(); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 6; g.stroke(); path(); g.strokeStyle = '#fff'; g.lineWidth = 3.2; g.stroke();
+      const ang = Math.atan2(top + sz() * 0.15 - (top - hgt), x1 - mx); g.save(); g.translate(x1, top + sz() * 0.15); g.rotate(ang); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(3, 0); g.lineTo(-6, -5); g.lineTo(-6, 5); g.closePath(); g.fill(); g.restore();
+      if (u !== null) { const k = u, bx = (1 - k) ** 2 * x0 + 2 * (1 - k) * k * mx + k * k * x1, by = (1 - k) ** 2 * (top + sz() * 0.15) + 2 * (1 - k) * k * (top - hgt) + k * k * (top + sz() * 0.15); g.fillStyle = css(c, 1); g.beginPath(); g.arc(bx, by, 5, 0, 7); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke(); }
+      g.lineCap = 'butt';
+    }
+  },
+};
+const SLIDE_END = {   // dir -1: into the note (from x - len to x); 1: off it
+  now(x, y, c, up, dir) { const l = sz() * 1.1, dy = (up ? -1 : 1) * sz() * 0.45, x0 = dir < 0 ? x - l : x, x1 = dir < 0 ? x + 6 : x + l; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, dir < 0 ? y - dy : y); g.lineTo(x1, dir < 0 ? y : y + dy); g.strokeStyle = css(c, 0.6); g.lineWidth = sz() * 0.5; g.stroke(); g.strokeStyle = 'rgba(9,10,15,.9)'; g.lineWidth = sz() * 0.5 - 2.4; g.stroke(); g.lineCap = 'butt'; },
+  lively(x, y, c, up, dir) { const l = sz() * 1.2, dy = (up ? -1 : 1) * sz() * 0.5, x0 = dir < 0 ? x - l : x, x1 = dir < 0 ? x : x + l, y0 = dir < 0 ? y - dy : y, y1 = dir < 0 ? y : y + dy, q = g.createLinearGradient(x0, 0, x1, 0); q.addColorStop(dir < 0 ? 0 : 1, css(c, 0)); q.addColorStop(dir < 0 ? 1 : 0, css(mix(c, [255, 255, 255], 0.3), 0.9)); g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo((x0 + x1) / 2, dir < 0 ? y0 : y1 - dy * 0.0, x1, y1); g.strokeStyle = q; g.lineWidth = 3; g.stroke(); g.lineCap = 'butt'; },
+  neon(x, y, c, up, dir) { const l = sz() * 1.1, dy = (up ? -1 : 1) * sz() * 0.45; g.lineCap = 'round'; g.shadowColor = css(c, 1); g.shadowBlur = 12; g.beginPath(); g.moveTo(dir < 0 ? x - l : x, dir < 0 ? y - dy : y); g.lineTo(dir < 0 ? x : x + l, dir < 0 ? y : y + dy); g.strokeStyle = css(c, 0.9); g.lineWidth = 4; g.stroke(); g.shadowBlur = 0; g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke(); g.lineCap = 'butt'; },
+  chunky(x, y, c, up, dir) { const l = sz() * 1.1, dy = (up ? -1 : 1) * sz() * 0.45; g.lineCap = 'round'; g.beginPath(); g.moveTo(dir < 0 ? x - l : x, (dir < 0 ? y - dy : y) + 3); g.lineTo(dir < 0 ? x : x + l, (dir < 0 ? y : y + dy) + 3); g.strokeStyle = css(mix(c, [0, 0, 0], 0.6), 1); g.lineWidth = sz() * 0.42; g.stroke(); g.beginPath(); g.moveTo(dir < 0 ? x - l : x, dir < 0 ? y - dy : y); g.lineTo(dir < 0 ? x : x + l, dir < 0 ? y : y + dy); g.strokeStyle = css(mix(c, [0, 0, 0], 0.15), 1); g.stroke(); g.lineCap = 'butt'; },
+};
+const HIT = {
+  now(x, y, c, age, n) { const k = age / 0.35; if (k >= 1) return; soft(x, y, sz() * 1.6, c, 0.35 * (1 - k)); g.strokeStyle = css(c, 1 - k); g.lineWidth = 2; g.beginPath(); g.arc(x, y, sz() * (0.6 + k), 0, 7); g.stroke(); for (let j = 0; j < 6; j++) { const an = j * 1.05 + n.i, d = sz() * (0.6 + 1.4 * k); g.fillStyle = css(c, 1 - k); g.beginPath(); g.arc(x + Math.cos(an) * d, y + Math.sin(an) * d, 2.2 * (1 - k) + 0.5, 0, 7); g.fill(); } },
+  lively(x, y, c, age, n) {
+    const k = age / 0.5; if (k >= 1) return;
+    const sw = sz() * 6 * eout(k), q = g.createLinearGradient(x, 0, x + sw, 0); q.addColorStop(0, css(mix(c, [255, 255, 255], 0.5), 0.7 * (1 - k))); q.addColorStop(1, css(c, 0)); g.fillStyle = q; g.fillRect(x, y - 2.5, sw, 5);   // a streak of light along the string
+    soft(x, y, sz() * 2.2, c, 0.45 * (1 - k)); g.strokeStyle = css(mix(c, [255, 255, 255], 0.4), 0.9 * (1 - k)); g.lineWidth = 2.5 * (1 - k) + 0.5; g.beginPath(); g.arc(x, y, sz() * (0.55 + 1.3 * eout(k)), 0, 7); g.stroke();
+    for (let j = 0; j < 10; j++) { const an = j * 0.63 + n.i * 1.7, sp2 = 0.8 + ((j * 37) % 10) / 10, d = sz() * (0.5 + 2.4 * eout(k) * sp2), gy = 40 * k * k; g.fillStyle = css(j % 3 ? c : [255, 255, 255], 1 - k); g.beginPath(); g.arc(x + Math.cos(an) * d, y + Math.sin(an) * d + gy, 2.4 * (1 - k) + 0.4, 0, 7); g.fill(); }
+  },
+  neon(x, y, c, age, n) {
+    const k = age / 0.5; if (k >= 1) return;
+    g.globalCompositeOperation = 'lighter'; soft(x, y, sz() * 3, c, 0.5 * (1 - k));
+    for (let j = 0; j < 12; j++) { const an = j * Math.PI / 6 + n.i, r0 = sz() * (0.4 + k * 1.2), r1 = sz() * (0.9 + k * 2.6); g.strokeStyle = css(mix(c, [255, 255, 255], 0.4), 0.8 * (1 - k)); g.lineWidth = 2; g.beginPath(); g.moveTo(x + Math.cos(an) * r0, y + Math.sin(an) * r0); g.lineTo(x + Math.cos(an) * r1, y + Math.sin(an) * r1); g.stroke(); }
+    for (let j = 0; j < 14; j++) { const an = j * 0.45 + n.i * 2.1, d = sz() * (0.6 + 3 * eout(k) * (0.6 + (j % 5) / 5)); g.fillStyle = css(j % 2 ? c : [255, 255, 255], 1 - k); g.beginPath(); g.arc(x + Math.cos(an) * d, y + Math.sin(an) * d + 30 * k * k, 2 * (1 - k) + 0.6, 0, 7); g.fill(); }
+    g.globalCompositeOperation = 'source-over';
+  },
+  chunky(x, y, c, age, n) {
+    const k = age / 0.6; if (k >= 1) return;
+    for (let j = 0; j < 5; j++) { const an = -Math.PI / 2 + (j - 2) * 0.55, d = sz() * (0.6 + 2.2 * eout(k)), sx = x + Math.cos(an) * d, sy2 = y + Math.sin(an) * d + 60 * k * k, r = sz() * 0.22 * (1 - k * 0.6);
+      g.save(); g.translate(sx, sy2); g.rotate(k * 4 + j); g.globalAlpha = 1 - k; g.fillStyle = j % 2 ? '#fde68a' : css(mix(c, [255, 255, 255], 0.3), 1); g.beginPath(); for (let i = 0; i < 10; i++) { const rr = i % 2 ? r * 0.45 : r, a2 = i * Math.PI / 5; g.lineTo(Math.cos(a2) * rr, Math.sin(a2) * rr); } g.closePath(); g.fill(); g.restore(); }
+    g.globalAlpha = Math.max(0, 1 - k * 1.3); g.font = `800 ${Math.round(sz() * 0.55)}px ${FONT}`; g.textAlign = 'center'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 3; g.strokeText('+100', x, y - sz() * (1 + 1.2 * eout(k))); g.fillText('+100', x, y - sz() * (1 + 1.2 * eout(k))); g.globalAlpha = 1;
+  },
+};
+// the note size and text, shared by the looks
+function sz() { return Math.round(Math.min(innerHeight * 0.3, 250) / 4 * 0.45); }
+function text(n, x, y, fill, weight = 700) { if (n.rep) return; const S = sz(); g.font = `${weight} ${S}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = fill; g.fillText(String(n[3]), x, y + S * 0.04); }
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

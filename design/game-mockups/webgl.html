@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<!-- The concert as a real 3D scene (user, 2026-11-06: "what would a webgl one look like?", after show.html; the drawn 2D
+     versions kept reading as "flash game"). three.js 0.160 (the version the app keeps in static/vendor/three; from the CDN here
+     like board-3d-prototype.html): a dark stage in fog, a truss of moving heads whose beams are glowing volumes (fading with
+     length, soft at the edges, additive), each with a spot light pooling on a glossy floor; an LED wall; drifting haze lit by
+     the rig; crowd silhouettes in front; bloom; a slowly swaying camera. The board is the game's, drawn sharp on a 2D canvas on
+     top. Beat, big moments, streak and Encore as in show.html. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encore stage</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #020205; color: #f5f5f7; font: 500 13px -apple-system, "SF Pro Display", system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 12px 18px; z-index: 3; }
+  #bar b { font-weight: 700; margin-right: 6px; }
+  #bar button { background: none; border: 0; color: rgba(245,245,247,.55); font: inherit; padding: 4px 2px; cursor: pointer; }
+  #bar button.on { color: #fff; box-shadow: 0 2px 0 #fff; }
+  #bar .lab { color: rgba(245,245,247,.35); margin-left: 10px; }
+  #bar input { width: 110px; accent-color: #fff; }
+  #desc { position: fixed; left: 18px; right: 18px; bottom: 14px; color: rgba(245,245,247,.5); max-width: 960px; line-height: 1.5; z-index: 3; }
+  #gl, #board { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #board { z-index: 2; pointer-events: none; }
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="gl"></canvas><canvas id="board"></canvas>
+<div id="bar"><b>Stage (WebGL)</b>
+  <span class="lab">Lights</span><button data-rig="warm">Warm</button><button data-rig="cool">Cool</button><button data-rig="sunset">Sunset</button>
+  <span class="lab">Streak</span><input type="range" id="streak" min="0" max="40" value="12"><span id="mult">2×</span>
+  <button data-encore>Encore</button>
+  <span class="lab">Stage</span><button data-crowd>Crowd</button><button data-board>Board</button>
+  <button data-pause>Pause</button>
+</div>
+<div id="desc">A real 3D stage behind the board: beams from moving heads in fog, pooling light on a glossy floor, an LED wall, haze, a crowd in front, bloom. Pumps on the beat, fans out every 4 bars; drag Streak (more of the rig, blue at 4×), try Encore (gold). Space pauses.</div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const DATA = {"notes":[[0.164,0.422,2,10,""],[0.423,0.595,2,7,""],[0.595,0.768,2,7,""],[0.768,0.94,2,5,""],[0.94,1.113,2,7,""],[1.113,1.285,2,7,""],[1.285,1.458,2,9,"s"],[1.458,1.63,2,9,""],[1.63,1.803,1,5,""],[1.803,1.975,1,7,"h"],[1.975,2.148,1,7,""],[2.148,2.321,1,7,""],[2.321,2.493,1,7,""],[2.493,2.752,1,7,"d"],[2.756,3.003,1,3,""],[3.003,3.251,1,3,""],[3.251,3.622,1,12,"s"],[3.622,3.993,1,12,""],[3.993,4.365,1,12,""],[4.365,4.86,1,12,"d"],[4.86,5.107,1,2,""],[5.107,5.355,1,2,""],[5.355,5.602,1,7,""],[5.69,5.941,2,10,"b"],[5.942,6.193,2,10,""],[6.194,6.361,2,7,""],[6.362,6.529,2,7,""],[6.53,6.697,2,5,""],[6.698,6.865,2,7,""],[6.865,7.033,2,7,""],[7.033,7.201,2,9,"s"],[7.201,7.369,2,9,""],[7.369,7.537,1,5,""],[7.537,7.705,1,7,"h"],[7.705,7.873,1,7,""],[7.873,8.04,1,7,""],[8.041,8.208,1,7,""],[8.209,8.46,1,7,"d"],[8.473,8.662,1,3,""],[8.663,8.853,1,3,""],[8.853,9.138,1,12,"s"],[9.139,9.423,1,12,""],[9.424,9.709,1,12,""],[9.71,10.089,1,12,"d"],[10.09,10.28,1,2,""],[10.281,10.47,1,2,""],[10.471,10.661,1,7,""],[10.661,10.851,1,7,""],[10.852,11.041,1,7,""],[11.042,11.232,1,5,""],[11.232,11.327,1,7,"h"],[11.416,11.667,2,10,"b"],[11.669,11.921,2,10,""],[11.923,12.091,2,7,""],[12.093,12.26,2,7,""],[12.262,12.429,2,5,""],[12.431,12.599,2,7,""],[12.6,12.768,2,7,""],[12.77,12.937,2,9,"s"],[12.939,13.106,2,9,""],[13.108,13.276,1,5,""],[13.277,13.445,1,7,"h"],[13.447,13.614,1,7,""],[13.616,13.783,1,7,""],[13.785,13.953,1,7,""],[13.954,14.206,1,7,"d"]],"bars":[-0.095,2.756,5.606,8.473,11.331,14.111,16.938]};
+const COL = ['#6ee7a8', '#f8a1a1', '#f6d878', '#8fb8fa'], NAMES = ['E', 'A', 'D', 'G'], FONT = '-apple-system,"SF Pro Display",system-ui,sans-serif';
+const RIGS = {
+  warm: { beams: [0xffc478, 0xff7850, 0xffe6be], wash: 0xbe5a28, wall: 0xff965a },
+  cool: { beams: [0x8cb4ff, 0xbe8cff, 0x78e6ff], wash: 0x3c46be, wall: 0x788cff },
+  sunset: { beams: [0xff78aa, 0xffaa5a, 0xb478ff], wash: 0xaa326e, wall: 0xff6e96 },
+};
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+let rig = 'warm', streak = 12, encore = false, crowdOn = true, boardOn = true, paused = false, clock = 0;
+const qs = new URLSearchParams(location.search); if (qs.get('rig')) rig = qs.get('rig'); if (qs.get('streak')) streak = +qs.get('streak'); if (qs.get('encore')) encore = true;
+
+// ---------------- the scene ----------------
+const gl = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.85;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x020205); scene.fog = new THREE.FogExp2(0x05040a, 0.045);
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100); camera.position.set(0, 1.7, 10);
+scene.add(new THREE.AmbientLight(0x1a1424, 0.6));
+// the floor: dark and glossy, so the spots pool on it
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), new THREE.MeshStandardMaterial({ color: 0x0c0b10, roughness: 0.32, metalness: 0.55 }));
+floor.rotation.x = -Math.PI / 2; scene.add(floor);
+// the back wall: an LED wall of soft moving bars
+const wallMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 }, kick: { value: 0 }, big: { value: 0 }, color: { value: new THREE.Color(0xff965a) }, level: { value: 0.5 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+  fragmentShader: `varying vec2 vUv; uniform float time, kick, big, level; uniform vec3 color;
+    void main(){
+      float cols = 36.; float i = floor(vUv.x * cols); float fx = fract(vUv.x * cols);
+      float v = .5 + .5 * sin(time * 1.3 + i * .7) * cos(time * .7 - i * .31);
+      float h = .2 + .55 * v * (.6 + .4 * kick) + .25 * big;
+      float bar = smoothstep(h, h - .25, vUv.y) * smoothstep(.0, .25, fx) * smoothstep(1., .75, fx);
+      float glow = .25 * smoothstep(1., 0., vUv.y);
+      vec3 c = color * (bar * (.55 + .6 * level) + glow * .35);
+      gl_FragColor = vec4(c, 1.);
+    }` });
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(26, 8), wallMat); wall.position.set(0, 4.2, -9); scene.add(wall);
+// the truss: a dark bar of metal across the top
+const metal = new THREE.MeshStandardMaterial({ color: 0x24242c, roughness: 0.5, metalness: 0.8 });
+const truss = new THREE.Mesh(new THREE.BoxGeometry(22, 0.25, 0.25), metal); truss.position.set(0, 7, -3); scene.add(truss);
+// beams: an open cone, apex at the fixture, bright at its core, soft at its edges, fading with distance (additive, in the fog)
+const beamGeo = new THREE.ConeGeometry(1.5, 14, 48, 1, true); beamGeo.translate(0, -7, 0);
+const beamVert = 'varying float vY; varying vec3 vN; varying vec3 vV; void main(){ vY = -position.y / 14.; vec4 mv = modelViewMatrix * vec4(position,1.); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }';
+const beamFrag = 'varying float vY; varying vec3 vN; varying vec3 vV; uniform vec3 color; uniform float opacity; void main(){ float edge = pow(abs(dot(vN, vV)), 2.2); float fade = pow(1. - vY, 1.6) * smoothstep(0., .04, vY); gl_FragColor = vec4(color * edge * fade * opacity, 1.); }';
+const heads = [];
+for (let i = 0; i < 8; i++) {
+  const g = new THREE.Group(); g.position.set(-9 + i * (18 / 7), 6.85, -3); scene.add(g);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.45, 16), metal); g.add(body);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.2, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })); lens.rotation.x = Math.PI / 2; lens.position.y = -0.23; g.add(lens);
+  const mat = new THREE.ShaderMaterial({ uniforms: { color: { value: new THREE.Color(0xffffff) }, opacity: { value: 0.5 } }, vertexShader: beamVert, fragmentShader: beamFrag, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const beam = new THREE.Mesh(beamGeo, mat); g.add(beam);
+  const spot = new THREE.SpotLight(0xffffff, 60, 30, 0.2, 0.6, 1.4); spot.position.copy(g.position); scene.add(spot); scene.add(spot.target);
+  heads.push({ g, beam, mat, lens, spot, i });
+}
+// haze: a few big soft planes drifting, catching the rig's colour
+const hazeTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const q = c.getContext('2d'); for (let k = 0; k < 40; k++) { const x = 40 + Math.random() * 176, y = 40 + Math.random() * 176, r = 30 + Math.random() * 70, gr = q.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.08)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); q.fillStyle = gr; q.fillRect(0, 0, 256, 256); } return new THREE.CanvasTexture(c); })();
+const hazes = [];
+for (let i = 0; i < 7; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(14, 8), new THREE.MeshBasicMaterial({ map: hazeTex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, color: 0xffffff })); m.position.set(-8 + i * 2.7, 3 + (i % 3), -6 + (i % 4)); scene.add(m); hazes.push(m); }
+// the crowd: silhouettes in front of the camera; heads bob, a few hands go up on big moments
+const crowd = new THREE.Group(); scene.add(crowd);
+const black = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+const people = [];
+for (let row = 0; row < 2; row++) for (let i = 0; i < 26; i++) {
+  const p = new THREE.Group(), s = 0.85 + Math.random() * 0.3; p.position.set(-6.5 + i * 0.52 + (row ? 0.26 : 0) + (Math.random() - 0.5) * 0.15, -0.35 - row * 0.05, 6.2 - row * 0.7); p.scale.setScalar(s);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), black); head.position.y = 1.32; p.add(head);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.6, 4, 10), black); body.position.y = 0.75; p.add(body);
+  let arm = null; if (Math.random() < 0.3) { arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.55, 3, 6), black); arm.position.set((Math.random() < 0.5 ? -1 : 1) * 0.2, 1.05, 0); p.add(arm); }
+  crowd.add(p); people.push({ p, arm, ph: Math.random() * 7, base: p.position.y });
+}
+// bloom: the bright parts glow like through a camera
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.55, 0.3); composer.addPass(bloom); composer.addPass(new OutputPass());
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); resizeBoard(); }
+addEventListener('resize', resize);
+
+// ---------------- controls ----------------
+document.querySelectorAll('#bar button').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.rig) rig = b.dataset.rig; else if ('encore' in b.dataset) encore = !encore; else if ('crowd' in b.dataset) crowdOn = !crowdOn; else if ('board' in b.dataset) boardOn = !boardOn; else paused = !paused; ui();
+}));
+document.getElementById('streak').addEventListener('input', (e) => { streak = +e.target.value; ui(); });
+addEventListener('keydown', (e) => { if (e.code === 'Space') { paused = !paused; ui(); e.preventDefault(); } });
+function ui() {
+  document.querySelectorAll('[data-rig]').forEach((b) => b.classList.toggle('on', b.dataset.rig === rig));
+  document.querySelector('[data-encore]').classList.toggle('on', encore); document.querySelector('[data-crowd]').classList.toggle('on', crowdOn); document.querySelector('[data-board]').classList.toggle('on', boardOn);
+  document.querySelector('[data-pause]').textContent = paused ? 'Play' : 'Pause';
+  document.getElementById('streak').value = streak; document.getElementById('mult').textContent = `${Math.min(4, 1 + Math.floor(streak / 10))}×`;
+}
+ui();
+
+// ---------------- the board (2D, sharp, on top) ----------------
+const bc = document.getElementById('board'), g = bc.getContext('2d');
+let W = 0, H = 0;
+function resizeBoard() { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; bc.width = W * d; bc.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); }
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), css = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const notes = DATA.notes, prevOn = {};
+notes.forEach((n, i) => { const p = prevOn[n[2]] !== undefined ? notes[prevOn[n[2]]] : null; n.rep = !!p && p[3] === n[3] && n[0] - p[0] < 1.2 && !(n[4] || '').match(/^[sh]/); prevOn[n[2]] = i; });
+const beatLen = (DATA.bars[2] - DATA.bars[1]) / 4, barLen = beatLen * 4, LOOP = 14;
+function soft(x, y, r, c, a) { if (a <= 0.002) return; const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, css(c, a)); q.addColorStop(1, css(c, 0)); g.fillStyle = q; g.fillRect(x - r, y - r, r * 2, r * 2); }
+function drawBoard(t) {
+  g.clearRect(0, 0, W, H); if (!boardOn) return;
+  const trackH = Math.min(H * 0.44, 370), trackT = H * 0.56 - trackH / 2, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, sp = trackH / 4, pad = 18;
+  const pxs = (R - L) / 4.2, X = (tt) => curX + (tt - t) * pxs, sy = (s) => trackT + (3 - s) * sp + sp / 2, sz = Math.round(Math.min(H * 0.3, 250) / 4 * 0.45), ch = sz * 1.12;
+  g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, R - L + 74, trackH + pad * 2, 18); g.fillStyle = 'rgba(6,6,10,.8)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1; g.stroke(); g.clip();
+  for (const b of DATA.bars) for (let j = 0; j < 4; j++) { const x = X(b + j * beatLen); if (x < L - 20 || x > R + 20) continue; g.fillStyle = j ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.1)'; g.fillRect(x, trackT - 6, 1, trackH + 12); }
+  const lastHit = (s) => { let a = 9; for (const n of notes) if (n[2] === s && n[0] <= t) a = Math.min(a, t - n[0]); return a; };
+  for (let s = 0; s < 4; s++) { const c = rgb(COL[s]), a = Math.exp(-lastHit(s) / 0.25); g.strokeStyle = css(c, 0.08 + 0.22 * a); g.lineWidth = 7; g.beginPath(); g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); g.stroke(); g.strokeStyle = css(c, 0.4 + 0.45 * a); g.lineWidth = 2.2 - s * 0.35 + a; g.stroke(); }
+  g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(curX - 1, trackT - pad, 2, trackH + pad * 2);
+  const vis = notes.filter((n) => X(n[0]) > L - 120 && X(n[0]) < R + 120), capW = (n) => Math.max(sz * 1.05, String(n[3]).length * sz * 0.6 + sz * 0.55);
+  for (const n of vis.slice().reverse()) {
+    const s = n[2], c = rgb(COL[s]), x = X(n[0]), y = sy(s), age = t - n[0], near = age < 0 ? clamp01(1 + age / 0.7) : 0, a = age > 0.02 ? Math.max(0.28, 1 - age / 0.4) : 1;
+    if (age >= 0 && age < 0.3) soft(curX, y, sz * 1.3, c, 0.3 * (1 - age / 0.3));
+    g.globalAlpha = a;
+    if (n.rep) { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); const d = sz * 0.58; g.beginPath(); g.roundRect(-d / 2, -d / 2, d, d, d * 0.3); g.fillStyle = css(c, 0.18); g.fill(); g.strokeStyle = css(c, 1); g.lineWidth = 1.6; g.stroke(); g.restore(); g.globalAlpha = 1; continue; }
+    const w = capW(n); if (near > 0.1) { g.shadowColor = css(c, 1); g.shadowBlur = 14 * near; }
+    g.beginPath(); g.roundRect(x - w / 2, y - ch / 2, w, ch, ch * 0.3); g.fillStyle = 'rgba(9,10,15,.94)'; g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = css(c, 0.4 + 0.55 * near); g.lineWidth = 1.2; g.stroke();
+    g.font = `700 ${sz}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f5f5f7'; g.fillText(String(n[3]), x, y + sz * 0.04); g.globalAlpha = 1;
+  }
+  g.restore();
+  for (let s = 0; s < 4; s++) { g.font = `600 15px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css(rgb(COL[s]), 0.85); g.fillText(NAMES[s], L - 34, sy(s)); }
+}
+
+// ---------------- the loop ----------------
+const lv = { mult: 0.3, enc: 0, big: 0 }, tmp = new THREE.Color(), blue = new THREE.Color(0x6ea0ff), gold = new THREE.Color(0xffc85a);
+let last = performance.now();
+resize();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!paused) clock += dt;
+  const t = (clock % LOOP) - 1.2, T = clock, R0 = RIGS[rig], mult = Math.min(4, 1 + Math.floor(streak / 10)), x4 = mult === 4 && !encore ? 1 : 0;
+  lv.mult += ((mult - 1) / 3 - lv.mult) * Math.min(1, dt * 1.5); lv.enc += ((encore ? 1 : 0) - lv.enc) * Math.min(1, dt * 1.2);
+  const intoB = t - DATA.bars[1], beatPh = ((intoB / beatLen) % 1 + 1) % 1, beatN = Math.floor(((intoB / beatLen) % 4 + 4) % 4), barN = Math.floor(intoB / barLen);
+  const kick = beatN % 2 === 0 ? Math.exp(-beatPh * 6) : 0, snare = beatN % 2 ? Math.exp(-beatPh * 7) : 0, bigOn = ((barN % 4) + 4) % 4 === 3;
+  lv.big += ((bigOn ? 1 : 0) - lv.big) * Math.min(1, dt * (bigOn ? 5 : 1.2));
+  let hitAge = 9; for (const n of notes) if (n[0] <= t) hitAge = Math.min(hitAge, t - n[0]); const flick = Math.exp(-hitAge / 0.18);
+  const tone = (hex) => tmp.set(hex).lerp(blue, 0.55 * x4 * (1 - lv.enc)).lerp(gold, 0.75 * lv.enc).clone();
+  const energy = 0.35 + 0.25 * lv.mult + 0.3 * lv.big + 0.25 * lv.enc;
+  // camera: a slow sway, as if filmed
+  camera.position.x = Math.sin(T * 0.13) * 0.6; camera.position.y = 1.7 + Math.sin(T * 0.21) * 0.12; camera.lookAt(0, 3.2, -4);
+  // the wall
+  wallMat.uniforms.time.value = T; wallMat.uniforms.kick.value = kick; wallMat.uniforms.big.value = lv.big; wallMat.uniforms.level.value = energy; wallMat.uniforms.color.value.copy(tone(R0.wall)).multiplyScalar(0.35);
+  // the rig: more heads lit with the streak; they sway, fan out on big moments and pump on the beat
+  const order = [3, 4, 2, 5, 1, 6, 0, 7], on = 3 + 5 * Math.max(lv.mult, lv.enc, lv.big * 0.8);
+  for (const h of heads) {
+    const lit = clamp01(on - order.indexOf(h.i)), side = (h.i - 3.5) / 3.5, c = tone(R0.beams[h.i % 3]);
+    const sway = Math.sin(T * (0.35 + h.i * 0.04) + h.i * 1.7) * (0.28 + 0.15 * lv.big) + side * (0.15 + 0.4 * lv.big), tilt = 0.25 + 0.12 * Math.sin(T * 0.27 + h.i);
+    h.g.rotation.set(tilt, 0, sway);
+    const pump = 0.25 + 0.35 * energy + 0.5 * (h.i % 2 ? snare : kick) * (0.5 + lv.mult) + 0.35 * flick;
+    h.mat.uniforms.color.value.copy(c); h.mat.uniforms.opacity.value = lit * pump * 0.32; h.beam.visible = lit > 0.01;
+    h.lens.material.color.copy(c).lerp(new THREE.Color(0xffffff), 0.5).multiplyScalar(0.3 + 1.4 * lit * pump);
+    // the spot follows the beam to the floor
+    const dir = new THREE.Vector3(0, -1, 0).applyEuler(h.g.rotation), k = h.g.position.y / Math.max(0.2, -dir.y);
+    h.spot.target.position.set(h.g.position.x + dir.x * k, 0, h.g.position.z + dir.z * k); h.spot.color.copy(c); h.spot.intensity = 60 * lit * pump; h.spot.angle = 0.16 + 0.05 * lv.big;
+  }
+  // haze drifts, tinted by the wash
+  const washC = tone(R0.wash);
+  hazes.forEach((m, i) => { m.position.x += Math.sin(T * 0.05 + i) * dt * 0.3; m.material.color.copy(washC).multiplyScalar(0.25 + 0.25 * energy + 0.15 * kick); m.material.opacity = 0.18 + 0.12 * energy; m.lookAt(camera.position); });
+  // the crowd
+  crowd.visible = crowdOn;
+  for (const p of people) { p.p.position.y = p.base + Math.abs(Math.sin(T * Math.PI / (beatLen * 2) + p.ph)) * 0.05 * (0.4 + lv.mult); if (p.arm) { const up = clamp01(lv.big * 1.4 + lv.enc + (lv.mult > 0.9 ? 0.4 : 0) - (p.ph % 1) * 0.5); p.arm.rotation.z = (p.arm.position.x > 0 ? -1 : 1) * (0.3 + (1 - up) * 2.4) + Math.sin(T * 3 + p.ph) * 0.15 * up; p.arm.position.y = 1.05 + 0.35 * up; } }
+  bloom.strength = 0.55 + 0.3 * lv.big + 0.15 * lv.enc;
+  composer.render();
+  drawBoard(t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

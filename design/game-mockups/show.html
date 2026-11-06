@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<!-- A concert behind the board (user, 2026-11-06: "make the game look and feel overall more fun to play. Think about something
+     like tetris effect", the particle field "super distracting. I want the background to look like a show", "keep going on my
+     concert suggestion"). The board is the game's own; behind its glass: stage lights in haze (beams from the rigs above,
+     swaying and pumping on the beat, fanning out on big moments), an LED wall glowing behind, light on the stage floor, and a
+     crowd (switchable). Your hits flick the lights; the streak brings more of the rig in (blue at 4x), Encore turns it gold.
+     The game would drive it from the song's own light cues (lights.py); here kicks are beats 1 and 3, snares 2 and 4, and a big
+     moment comes every 4 bars. Same passage as fun.html. -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encore show</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #020205; color: #f5f5f7; font: 500 13px -apple-system, "SF Pro Display", system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 12px 18px; z-index: 2; }
+  #bar b { font-weight: 700; margin-right: 6px; }
+  #bar button { background: none; border: 0; color: rgba(245,245,247,.55); font: inherit; padding: 4px 2px; cursor: pointer; }
+  #bar button.on { color: #fff; box-shadow: 0 2px 0 #fff; }
+  #bar .lab { color: rgba(245,245,247,.35); margin-left: 10px; }
+  #bar input { width: 110px; accent-color: #fff; }
+  #desc { position: fixed; left: 18px; right: 18px; bottom: 14px; color: rgba(245,245,247,.5); max-width: 960px; line-height: 1.5; z-index: 2; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="bar"><b>Show</b>
+  <span class="lab">Lights</span><button data-rig="warm">Warm</button><button data-rig="cool">Cool</button><button data-rig="sunset">Sunset</button>
+  <span class="lab">Streak</span><input type="range" id="streak" min="0" max="40" value="12"><span id="mult">2×</span>
+  <button data-encore>Encore</button>
+  <span class="lab">Show</span><button data-cinema>Out of focus</button><button data-crowd>Crowd</button><button data-wall>LED wall</button><button data-off>Off (the game now)</button>
+  <button data-pause>Pause</button>
+</div>
+<div id="desc">Behind the board's glass: beams from the rigs above in haze, swaying and pumping on the beat, fanning out every 4 bars (a big moment); an LED wall and light on the stage floor; a crowd. Hits flick the beams; drag Streak to bring more of the rig in (blue at 4×); try Encore. Space pauses.</div>
+<script>
+const DATA = {"notes":[[0.164,0.422,2,10,""],[0.423,0.595,2,7,""],[0.595,0.768,2,7,""],[0.768,0.94,2,5,""],[0.94,1.113,2,7,""],[1.113,1.285,2,7,""],[1.285,1.458,2,9,"s"],[1.458,1.63,2,9,""],[1.63,1.803,1,5,""],[1.803,1.975,1,7,"h"],[1.975,2.148,1,7,""],[2.148,2.321,1,7,""],[2.321,2.493,1,7,""],[2.493,2.752,1,7,"d"],[2.756,3.003,1,3,""],[3.003,3.251,1,3,""],[3.251,3.622,1,12,"s"],[3.622,3.993,1,12,""],[3.993,4.365,1,12,""],[4.365,4.86,1,12,"d"],[4.86,5.107,1,2,""],[5.107,5.355,1,2,""],[5.355,5.602,1,7,""],[5.69,5.941,2,10,"b"],[5.942,6.193,2,10,""],[6.194,6.361,2,7,""],[6.362,6.529,2,7,""],[6.53,6.697,2,5,""],[6.698,6.865,2,7,""],[6.865,7.033,2,7,""],[7.033,7.201,2,9,"s"],[7.201,7.369,2,9,""],[7.369,7.537,1,5,""],[7.537,7.705,1,7,"h"],[7.705,7.873,1,7,""],[7.873,8.04,1,7,""],[8.041,8.208,1,7,""],[8.209,8.46,1,7,"d"],[8.473,8.662,1,3,""],[8.663,8.853,1,3,""],[8.853,9.138,1,12,"s"],[9.139,9.423,1,12,""],[9.424,9.709,1,12,""],[9.71,10.089,1,12,"d"],[10.09,10.28,1,2,""],[10.281,10.47,1,2,""],[10.471,10.661,1,7,""],[10.661,10.851,1,7,""],[10.852,11.041,1,7,""],[11.042,11.232,1,5,""],[11.232,11.327,1,7,"h"],[11.416,11.667,2,10,"b"],[11.669,11.921,2,10,""],[11.923,12.091,2,7,""],[12.093,12.26,2,7,""],[12.262,12.429,2,5,""],[12.431,12.599,2,7,""],[12.6,12.768,2,7,""],[12.77,12.937,2,9,"s"],[12.939,13.106,2,9,""],[13.108,13.276,1,5,""],[13.277,13.445,1,7,"h"],[13.447,13.614,1,7,""],[13.616,13.783,1,7,""],[13.785,13.953,1,7,""],[13.954,14.206,1,7,"d"]],"bars":[-0.095,2.756,5.606,8.473,11.331,14.111,16.938]};
+const COL = ['#6ee7a8', '#f8a1a1', '#f6d878', '#8fb8fa'], NAMES = ['E', 'A', 'D', 'G'], FONT = '-apple-system,"SF Pro Display",system-ui,sans-serif';
+const RIGS = {   // beam colours (alternating along the rig) and the wall / floor wash
+  warm: { beams: [[255, 196, 120], [255, 120, 80], [255, 230, 190]], wash: [190, 90, 40], wall: [255, 150, 90] },
+  cool: { beams: [[140, 180, 255], [190, 140, 255], [120, 230, 255]], wash: [60, 70, 190], wall: [120, 140, 255] },
+  sunset: { beams: [[255, 120, 170], [255, 170, 90], [180, 120, 255]], wash: [170, 50, 110], wall: [255, 110, 150] },
+};
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), css = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`, mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+const clamp01 = (x) => Math.max(0, Math.min(1, x)), eout = (x) => 1 - (1 - clamp01(x)) ** 3;
+const cv = document.getElementById('cv'), main = cv.getContext('2d'), shot = document.createElement('canvas'), shotG = shot.getContext('2d'), SHOT = 0.35;
+let g = main;   // the show is drawn small into `shot` and laid in out of focus (Cinematic); the board on `main`, sharp
+let cinema = true, W = 0, H = 0, rig = 'warm', streak = 12, encore = false, crowd = true, wall = true, show = true, paused = false, clock = 0, last = performance.now();
+const qs = new URLSearchParams(location.search); if (qs.get('rig')) rig = qs.get('rig'); if (qs.get('streak')) streak = +qs.get('streak'); if (qs.get('encore')) encore = true;
+function resize() { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; main.setTransform(d, 0, 0, d, 0, 0); shot.width = Math.ceil(W * SHOT); shot.height = Math.ceil(H * SHOT); makeCrowd(); }
+// film grain, made once
+const grain = document.createElement('canvas'); grain.width = grain.height = 160; { const q = grain.getContext('2d'), im = q.createImageData(160, 160); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } q.putImageData(im, 0, 0); }
+// the crowd: heads and shoulders along the bottom, a few hands that go up on big moments (made once per size)
+let people = [];
+function makeCrowd() {
+  people = []; let x = -20;
+  while (x < W + 40) { const s = 0.75 + Math.random() * 0.5; people.push({ x, s, row: Math.random() < 0.45 ? 1 : 0, hand: Math.random() < 0.28 ? (Math.random() < 0.5 ? -1 : 1) : 0, ph: Math.random() * 7, bob: Math.random() * 7 }); x += 22 + Math.random() * 26; }
+}
+addEventListener('resize', resize); resize();
+const notes = DATA.notes, prevOn = {};
+notes.forEach((n, i) => { n.i = i; const p = prevOn[n[2]] !== undefined ? notes[prevOn[n[2]]] : null; n.rep = !!p && p[3] === n[3] && n[0] - p[0] < 1.2 && !(n[4] || '').match(/^[sh]/); prevOn[n[2]] = i; });
+const beatLen = (DATA.bars[2] - DATA.bars[1]) / 4, barLen = beatLen * 4, LOOP = 14;
+document.querySelectorAll('#bar button').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.rig) rig = b.dataset.rig; else if ('encore' in b.dataset) encore = !encore; else if ('crowd' in b.dataset) crowd = !crowd; else if ('cinema' in b.dataset) cinema = !cinema; else if ('wall' in b.dataset) wall = !wall; else if ('off' in b.dataset) show = !show; else paused = !paused; ui();
+}));
+document.getElementById('streak').addEventListener('input', (e) => { streak = +e.target.value; ui(); });
+addEventListener('keydown', (e) => { if (e.code === 'Space') { paused = !paused; ui(); e.preventDefault(); } });
+function ui() {
+  document.querySelectorAll('[data-rig]').forEach((b) => b.classList.toggle('on', b.dataset.rig === rig));
+  document.querySelector('[data-encore]').classList.toggle('on', encore); document.querySelector('[data-crowd]').classList.toggle('on', crowd); document.querySelector('[data-cinema]').classList.toggle('on', cinema);
+  document.querySelector('[data-wall]').classList.toggle('on', wall); document.querySelector('[data-off]').classList.toggle('on', !show);
+  document.querySelector('[data-pause]').textContent = paused ? 'Play' : 'Pause';
+  document.getElementById('streak').value = streak; document.getElementById('mult').textContent = `${Math.min(4, 1 + Math.floor(streak / 10))}×`;
+}
+ui();
+function soft(x, y, rx, ry, c, a) { if (a <= 0.002) return; g.save(); g.translate(x, y); g.scale(1, ry / rx); const q = g.createRadialGradient(0, 0, 0, 0, 0, rx); q.addColorStop(0, css(c, a)); q.addColorStop(1, css(c, 0)); g.fillStyle = q; g.fillRect(-rx, -rx, rx * 2, rx * 2); g.restore(); }
+
+let lvl = { mult: 0.3, enc: 0, big: 0, flick: 0 };
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!paused) clock += dt;
+  const t = (clock % LOOP) - 1.2, T = clock, R0 = RIGS[rig];
+  const mult = Math.min(4, 1 + Math.floor(streak / 10)), x4 = mult === 4 && !encore ? 1 : 0;
+  lvl.mult += ((mult - 1) / 3 - lvl.mult) * Math.min(1, dt * 1.5); lvl.enc += ((encore ? 1 : 0) - lvl.enc) * Math.min(1, dt * 1.2);
+  // the music: kicks (beats 1, 3), snares (2, 4), a big moment for a bar every 4 bars
+  const intoB = t - DATA.bars[1], beatPh = ((intoB / beatLen) % 1 + 1) % 1, beatN = Math.floor(((intoB / beatLen) % 4 + 4) % 4), barN = Math.floor(intoB / barLen);
+  const kick = beatN % 2 === 0 ? Math.exp(-beatPh * 6) : 0, snare = beatN % 2 ? Math.exp(-beatPh * 7) : 0, bigOn = ((barN % 4) + 4) % 4 === 3;
+  lvl.big += ((bigOn ? 1 : 0) - lvl.big) * Math.min(1, dt * (bigOn ? 5 : 1.2));
+  let hitAge = 9; for (const n of notes) if (n[0] <= t) hitAge = Math.min(hitAge, t - n[0]);
+  lvl.flick = Math.exp(-hitAge / 0.18);
+  const blue = [110, 160, 255], gold = [255, 200, 90];
+  const tone = (c) => mix(mix(c, blue, 0.55 * x4 * (1 - lvl.enc)), gold, 0.75 * lvl.enc);
+
+  const trackH = Math.min(H * 0.44, 370), trackT = H * 0.56 - trackH / 2, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, sp = trackH / 4, pad = 18;
+  const pxs = (R - L) / 4.2, X = (tt) => curX + (tt - t) * pxs, sy = (s) => trackT + (3 - s) * sp + sp / 2;
+  const sz = Math.round(Math.min(H * 0.3, 250) / 4 * 0.45), ch = sz * 1.12;
+  // ---------------- the show ----------------
+  g.fillStyle = '#020205'; g.fillRect(0, 0, W, H);
+  if (show && cinema) { g = shotG; g.setTransform(SHOT, 0, 0, SHOT, 0, 0); g.fillStyle = '#020205'; g.fillRect(0, 0, W, H); }
+  if (show) {
+    g.globalCompositeOperation = 'lighter';
+    const wash = tone(R0.wash), wallC = tone(R0.wall), energy = 0.35 + 0.25 * lvl.mult + 0.3 * lvl.big + 0.25 * lvl.enc;
+    // haze: the room lit faintly by the rig
+    soft(W * 0.5, H * 0.18, W * 0.7, H * 0.45, wash, 0.07 + 0.05 * energy + 0.04 * kick);
+    // the LED wall behind the stage: a wide soft glow with light bars moving to the music (blurred, never sharp)
+    if (wall) {
+      const wy = H * 0.12, wh = H * 0.62, n = 28;
+      soft(W * 0.5, wy + wh * 0.5, W * 0.55, wh * 0.55, wallC, 0.05 + 0.04 * energy);
+      for (let i = 0; i < n; i++) {
+        const x = W * (0.06 + 0.88 * (i + 0.5) / n), v = 0.5 + 0.5 * Math.sin(T * 1.3 + i * 0.7) * Math.cos(T * 0.7 - i * 0.31), h = wh * (0.25 + 0.55 * v * (0.6 + 0.4 * kick) + 0.2 * lvl.big);
+        const q = g.createLinearGradient(0, wy + wh, 0, wy + wh - h); q.addColorStop(0, css(wallC, 0.07 + 0.05 * energy)); q.addColorStop(1, css(wallC, 0));
+        g.fillStyle = q; g.fillRect(x - W * 0.012, wy + wh - h, W * 0.024, h);
+      }
+    }
+    // bokeh: far stage lights out of focus, soft discs pulsing with the music
+    for (let i = 0; i < 26; i++) {
+      const bx = W * ((i * 0.381966 + 0.07) % 1), by = H * (0.06 + 0.5 * ((i * 0.618034 + 0.3) % 1)), r = 14 + ((i * 37) % 50), c = tone(R0.beams[i % R0.beams.length]);
+      const a = (0.05 + 0.06 * energy) * (0.6 + 0.4 * Math.sin(T * (0.5 + (i % 5) * 0.13) + i)) * (1 + (i % 2 ? snare : kick) * 0.8);
+      const q = g.createRadialGradient(bx, by, r * 0.6, bx, by, r); q.addColorStop(0, css(c, a)); q.addColorStop(0.85, css(c, a * 1.3)); q.addColorStop(1, css(c, 0)); g.fillStyle = q; g.beginPath(); g.arc(bx, by, r, 0, 7); g.fill();
+    }
+    // the beams: moving heads on a rig above, in haze. More come in with the streak; they fan out on big moments and flick on your hits.
+    const heads = 8, on = Math.round(3 + 5 * Math.max(lvl.mult, lvl.enc, lvl.big * 0.8));
+    for (let i = 0; i < heads; i++) {
+      const sx = W * (0.08 + 0.84 * i / (heads - 1)), sy0 = -10, side = i < heads / 2 ? -1 : 1, rank = [3, 4, 2, 5, 1, 6, 0, 7].indexOf(i);
+      const lit = clamp01(on - rank); if (lit <= 0) continue;
+      const fan = 0.15 + 0.35 * lvl.big, sway = Math.sin(T * (0.35 + i * 0.04) + i * 1.7) * (0.18 + 0.12 * lvl.big) + side * fan * (Math.abs(i - (heads - 1) / 2) / ((heads - 1) / 2));
+      const ang = Math.PI / 2 + sway, len = H * 1.25, width = 0.06 + 0.03 * lvl.big, c = tone(R0.beams[i % R0.beams.length]);
+      const a = lit * (0.06 + 0.07 * energy + 0.1 * (i % 2 ? snare : kick) * (0.5 + lvl.mult) + 0.1 * lvl.flick);
+      const ex = sx + Math.cos(ang) * len, ey = sy0 + Math.sin(ang) * len, px = Math.cos(ang + Math.PI / 2), py = Math.sin(ang + Math.PI / 2), wEnd = len * width;
+      for (const [wk, ak] of [[2.2, 0.35], [1, 1]]) {      // a wide soft cone (haze) and the beam inside it
+        const q = g.createLinearGradient(sx, sy0, ex, ey); q.addColorStop(0, css(c, a * ak)); q.addColorStop(0.55, css(c, a * ak * 0.35)); q.addColorStop(1, css(c, 0));
+        g.fillStyle = q; g.beginPath(); g.moveTo(sx - px * 3, sy0 - py * 3); g.lineTo(ex - px * wEnd * wk, ey - py * wEnd * wk); g.lineTo(ex + px * wEnd * wk, ey + py * wEnd * wk); g.lineTo(sx + px * 3, sy0 + py * 3); g.closePath(); g.fill();
+      }
+      soft(sx, 4, 40, 26, mix(c, [255, 255, 255], 0.5), lit * (0.35 + 0.3 * kick + 0.2 * lvl.flick));   // the fixture's glare
+    }
+    // light on the stage floor under the board, and a white lift on big moments
+    soft(W * 0.5, H * 0.96, W * 0.6, H * 0.16, wash, 0.12 + 0.08 * energy + 0.06 * kick);
+    soft(W * 0.5, H * 0.3, W * 0.8, H * 0.5, [255, 255, 255], 0.035 * lvl.big * (0.6 + 0.4 * kick) + 0.05 * Math.max(0, lvl.enc - 0.6) * kick);
+    g.globalCompositeOperation = 'source-over';
+    // the crowd: silhouettes along the bottom, rim-lit by the stage; heads bob on the beat, hands up on big moments
+    if (crowd) {
+      const base = H + 6, rim = tone(R0.wash);
+      for (const row of [1, 0]) {
+        for (const p of people) {
+          if (p.row !== row) continue;
+          const s = p.s * (row ? 0.82 : 1) * Math.min(1.2, H / 800), bob = Math.sin(T * Math.PI * 2 / (beatLen * 2) + p.bob) * 2 * s * (0.4 + lvl.mult), hx = p.x + (row ? 11 : 0), hy = base - (row ? 74 : 58) * s + bob;
+          g.fillStyle = row ? '#07060a' : '#030305';
+          g.beginPath(); g.ellipse(hx, hy + 44 * s, 26 * s, 34 * s, 0, Math.PI, 0); g.lineTo(hx + 26 * s, base); g.lineTo(hx - 26 * s, base); g.fill();   // shoulders
+          g.beginPath(); g.ellipse(hx, hy, 10.5 * s, 12.5 * s, 0, 0, 7); g.fill();   // head
+          const up = p.hand ? clamp01(lvl.big * 1.4 + lvl.enc + (lvl.mult > 0.9 ? 0.4 : 0) - (p.ph % 1) * 0.5) : 0;
+          if (up > 0.02) { const ax = hx + p.hand * 16 * s, wav = Math.sin(T * 3 + p.ph) * 6 * s; g.lineWidth = 7 * s; g.lineCap = 'round'; g.strokeStyle = g.fillStyle; g.beginPath(); g.moveTo(ax, hy + 30 * s); g.lineTo(ax + p.hand * 8 * s + wav, hy + 30 * s - 62 * s * up); g.stroke(); }
+          g.strokeStyle = css(rim, 0.18 + 0.12 * kick); g.lineWidth = 1.2; g.beginPath(); g.ellipse(hx, hy, 10.5 * s, 12.5 * s, 0, Math.PI * 1.1, Math.PI * 1.9); g.stroke();   // rim light
+        }
+      }
+    }
+  }
+  if (show && cinema) {                                  // laid in out of focus, a little brighter for the blur; grain and a vignette over it
+    g = main; g.save(); g.filter = 'blur(5px) saturate(1.15)'; g.drawImage(shot, -8, -8, W + 16, H + 16); g.restore();
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.35; g.filter = 'blur(14px)'; g.drawImage(shot, 0, 0, W, H); g.filter = 'none'; g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';   // bloom
+  }
+  if (show) {
+    const vg = g.createRadialGradient(W / 2, H * 0.5, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    g.globalAlpha = 0.045; g.fillStyle = g.createPattern(grain, 'repeat'); g.save(); g.translate((T * 997) % 160, (T * 613) % 160); g.fillRect(-160, -160, W + 320, H + 320); g.restore(); g.globalAlpha = 1;
+  }
+  // ---------------- the board (the game's look; its glass dims the show behind it) ----------------
+  g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, R - L + 74, trackH + pad * 2, 18);
+  g.fillStyle = show ? 'rgba(6,6,10,.8)' : 'rgba(10,11,17,.85)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1; g.stroke(); g.clip();
+  for (const b of DATA.bars) for (let j = 0; j < 4; j++) { const x = X(b + j * beatLen); if (x < L - 20 || x > R + 20) continue; g.fillStyle = j ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.1)'; g.fillRect(x, trackT - 6, 1, trackH + 12); }
+  const lastHit = (s) => { let a = 9; for (const n of notes) if (n[2] === s && n[0] <= t) a = Math.min(a, t - n[0]); return a; };
+  for (let s = 0; s < 4; s++) { const c = rgb(COL[s]), a = Math.exp(-lastHit(s) / 0.25); g.strokeStyle = css(c, 0.08 + 0.22 * a); g.lineWidth = 7; g.beginPath(); g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); g.stroke(); g.strokeStyle = css(c, 0.4 + 0.45 * a); g.lineWidth = 2.2 - s * 0.35 + a; g.stroke(); }
+  g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(curX - 1, trackT - pad, 2, trackH + pad * 2);
+  const vis = notes.filter((n) => X(n[0]) > L - 120 && X(n[0]) < R + 120), capW = (n) => Math.max(sz * 1.05, String(n[3]).length * sz * 0.6 + sz * 0.55);
+  for (const n of vis.slice().reverse()) {
+    const s = n[2], c = rgb(COL[s]), x = X(n[0]), y = sy(s), age = t - n[0], near = age < 0 ? clamp01(1 + age / 0.7) : 0, a = age > 0.02 ? Math.max(0.28, 1 - age / 0.4) : 1;
+    if (age >= 0 && age < 0.3) { soft(curX, y, sz * 1.3, sz * 1.3, c, 0.3 * (1 - age / 0.3)); }
+    g.globalAlpha = a;
+    if (n.rep) { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); const d = sz * 0.58; g.beginPath(); g.roundRect(-d / 2, -d / 2, d, d, d * 0.3); g.fillStyle = css(c, 0.18); g.fill(); g.strokeStyle = css(c, 1); g.lineWidth = 1.6; g.stroke(); g.restore(); g.globalAlpha = 1; continue; }
+    const w = capW(n); if (near > 0.1) { g.shadowColor = css(c, 1); g.shadowBlur = 14 * near; }
+    g.beginPath(); g.roundRect(x - w / 2, y - ch / 2, w, ch, ch * 0.3); g.fillStyle = 'rgba(9,10,15,.94)'; g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = css(c, 0.4 + 0.55 * near); g.lineWidth = 1.2; g.stroke();
+    g.font = `700 ${sz}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f5f5f7'; g.fillText(String(n[3]), x, y + sz * 0.04); g.globalAlpha = 1;
+  }
+  g.restore();
+  for (let s = 0; s < 4; s++) { g.font = `600 15px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css(rgb(COL[s]), 0.85); g.fillText(NAMES[s], L - 34, sy(s)); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

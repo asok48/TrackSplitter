@@ -258,6 +258,9 @@ Song select tuner (`#arc-tune`, `songTuning`, `readTuner`, `input.tunerSemis`): 
 Arcade board (`drawArcade` / `arcadePrep` / `arcadeBoard`; mockup `design/game-mockups/arcade.html`):
 the tab glides under a still cursor, numbers on keycaps, echoes for repeats, song-driven background, blue x4.
 Moments (`moments.html`): Encore (`encorePlan`, `game.enc`, `encoreTick`, `addScore`), intro (`game.intro`), ending (`arcadeBoard.ending`).
+Arcade also draws chord frames (`chords`), held tubes only past a beat (`tails`), slurs / slides (`legatoMarks`); bass double stops
+judged as one (`bassChordPluck`, `chordNear`; `game.strums` = guitar's strum path); `gameNotesFor` sorts notes by time.
+Board mood from the song's cover (`songPalette`, `songMood`, `arcadeBoard.pal`); hits pop / ring / pulse the cursor; the streak warms the board (`build`, `warm`).
 
 ## Guitar game (step 2)
 
