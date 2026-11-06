@@ -1175,3 +1175,91 @@ def _place_in_bars(track, notes, playable, heard, bar_audio, bar_starts_t, bar_e
             nxt = next((out[j][0] for j in range(k + 1, len(out)) if out[j][0] > out[k][0]), out[k][0] + 0.3)
             out[k][1] = min(nxt, out[k][0] + 1.0)
     return out, matched, lines
+
+
+# ---------- Writing Guitar Pro 5 (the .gp5 download) ----------
+
+# A gap in 16ths -> Guitar Pro durations (value, dotted), longest first.
+_GP_PIECES = [(16, 1, False), (12, 2, True), (8, 2, False), (6, 4, True), (4, 4, False), (3, 8, True), (2, 8, False), (1, 16, False)]
+
+
+def write_gp5(notes, lines, bpm, opens, title="", artist="", instrument="bass"):
+    """A tab as the page shows it (notes [start, end, string, fret, ...], string 0 the lowest; lines [[start, end,
+    [bar starts inside]]]; opens: each string's MIDI note, low to high) as Guitar Pro 5 bytes. Bars are the tab's own;
+    each note goes to the nearest 16th of its bar (beats per bar from the tempo, n/4), lasts until the next note or its
+    own end (tied over), and gaps are rests. One tempo for the song (bars that drift are still bars, just evened out).
+    Dead notes are written as dead; a 5th value "h" (hammered / pulled from the note before on its string) or "s" (slid)
+    marks that note before with a hammer or a slide, as Guitar Pro writes them."""
+    import io
+    import guitarpro
+    from guitarpro import models as gp
+    bpm = float(bpm or 120)
+    bars = sorted({round(t, 4) for a, b, inner in lines for t in (a, b, *inner)})
+    if len(bars) < 2:   # no bars: 4/4 at the tempo
+        end = max((n[1] for n in notes), default=4.0)
+        step = 240 / bpm
+        bars = [i * step for i in range(int(end / step) + 2)]
+    if notes:
+        first, last = min(n[0] for n in notes), max(n[0] for n in notes)
+        while first < bars[0] - 0.05:   # notes before the first bar: bars of the first one's length before it
+            bars.insert(0, bars[0] - (bars[1] - bars[0]))
+        while last >= bars[-1] - 0.02:
+            bars.append(bars[-1] + (bars[-1] - bars[-2]))
+    song = gp.Song(title=title, artist=artist, tempo=max(30, min(300, round(bpm))))
+    song.measureHeaders = []
+    track = song.tracks[0]
+    track.name = "Bass" if instrument == "bass" else "Guitar"
+    track.strings = [gp.GuitarString(number=len(opens) - i, value=v) for i, v in enumerate(opens)][::-1]   # number 1 = highest
+    track.channel.instrument = 33 if instrument == "bass" else 29   # GM fingered bass / overdriven guitar
+    track.measures = []
+    by_bar = {}
+    for n in sorted(notes, key=lambda n: n[0]):
+        i = max(0, min(len(bars) - 2, bisect.bisect_right(bars, n[0] + 1e-3) - 1))
+        by_bar.setdefault(i, []).append(n)
+    start, last_on = 960, {}   # last_on: each string's latest written note (a hammer / slide marks it)
+    for i in range(len(bars) - 1):
+        length = bars[i + 1] - bars[i]
+        beats = max(2, min(7, round(length * bpm / 60))) if bpm else 4
+        slots = beats * 4
+        header = gp.MeasureHeader(number=i + 1, start=start, timeSignature=gp.TimeSignature(numerator=beats, denominator=gp.Duration(value=4)))
+        song.measureHeaders.append(header)
+        measure = gp.Measure(track, header)
+        voice = measure.voices[0]
+        # notes per 16th slot (a chord shares one), and how long each lasts in slots
+        at = {}
+        for n in by_bar.get(i, []):
+            slot = max(0, min(slots - 1, round((n[0] - bars[i]) / length * slots)))
+            at.setdefault(slot, []).append((n, max(1, round((n[1] - n[0]) / length * slots))))
+        cursor, order = 0, sorted(at)
+
+        def put(gap, chord=None, tie=False):
+            nonlocal cursor
+            for units, value, dotted in _GP_PIECES:
+                while gap >= units:
+                    beat = gp.Beat(voice, duration=gp.Duration(value=value, isDotted=dotted), status=gp.BeatStatus.normal if chord else gp.BeatStatus.rest)
+                    for n, _ in chord or []:
+                        dead = n[3] == "x" or not isinstance(n[3], (int, float))
+                        note = gp.Note(beat, value=0 if dead else int(n[3]), string=len(opens) - int(n[2]),
+                                       type=gp.NoteType.dead if dead else gp.NoteType.tie if tie else gp.NoteType.normal)
+                        beat.notes.append(note)
+                        code = n[4] if len(n) > 4 and isinstance(n[4], str) else ""
+                        before = last_on.get(note.string)
+                        if not tie and before is not None and code.startswith("h"): before.effect.hammer = True
+                        if not tie and before is not None and code.startswith("s"): before.effect.slides = [gp.SlideType.shiftSlideTo]
+                        if not tie: last_on[note.string] = note
+                    voice.beats.append(beat)
+                    gap -= units; cursor += units
+                    if chord: tie = True   # the rest of a long note is tied over
+        for k, slot in enumerate(order):
+            if slot > cursor: put(slot - cursor)
+            if slot < cursor: continue   # two notes rounded onto one 16th: the first wins
+            nxt = order[k + 1] if k + 1 < len(order) else slots
+            held = min(nxt - slot, max(d for _, d in at[slot]))
+            put(held, at[slot])
+            if nxt > cursor and k + 1 == len(order): put(nxt - cursor)
+        if cursor < slots: put(slots - cursor)
+        track.measures.append(measure)
+        start += slots * 240
+    out = io.BytesIO()
+    guitarpro.write(song, out, version=(5, 1, 0))
+    return out.getvalue()

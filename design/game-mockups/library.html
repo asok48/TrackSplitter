@@ -1,0 +1,674 @@
+<!doctype html><meta charset="utf-8"><title>Encore Library mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Track Splitter moved into Encore (user: "I would just like to move track splitter into encore. Using the same
+     styling", then "Yes, mockup first"). Encore's title menu gains Library and Add songs; the Library is Track
+     Splitter's song list + song details + player bar in Encore's look: the picked song's cover blurred behind,
+     light type for big things, small spaced capitals for labels, hairlines instead of boxes, white pill buttons,
+     text tabs with an underline. Song names and covers are the user's library (covers load from the running app:
+     ?port=7860 by default). Nothing here is wired to the app. -->
+<style>
+:root{color-scheme:dark;--ink:#f5f5f7;--dim:rgba(245,245,247,.6);--faint:rgba(245,245,247,.36);--line:rgba(255,255,255,.09);
+ --glass:rgba(12,13,20,.55);--mood:245,230,211;--font:-apple-system,"SF Pro Display","SF Pro Text",system-ui,sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#070504;color:var(--ink);font:400 14px var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.caps{font:600 10.5px var(--font);letter-spacing:.24em;text-transform:uppercase;color:var(--faint)}
+.hidden{display:none!important}
+
+/* backdrop: the picked song's cover, blurred */
+.bg{position:fixed;inset:-80px;background-size:cover;background-position:center;filter:blur(70px) brightness(.32) saturate(1.2);transition:background-image .5s;z-index:0}
+.bg::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,transparent,rgba(7,5,4,.6))}
+.screen{position:fixed;inset:0;z-index:1;display:flex;flex-direction:column}
+
+/* buttons, as in Encore */
+.btn{height:40px;padding:0 22px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);
+ font:600 11.5px var(--font);letter-spacing:.2em;text-transform:uppercase;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.35)}
+.btn.primary{background:#f5f5f7;color:#0a0b10;border-color:transparent;box-shadow:0 8px 30px rgba(var(--mood),.18)}
+.btn.primary:hover{background:#fff}
+.btn.small{height:32px;padding:0 14px;font-size:10.5px}
+.icon{width:40px;height:40px;padding:0;justify-content:center;border-radius:50%}
+.icon.small{width:32px;height:32px}
+.ghost{border:0;background:none;color:var(--dim);padding:6px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.ghost:hover{color:#fff;background:rgba(255,255,255,.06)}
+.tabs{display:flex;gap:18px}
+.tabs button{white-space:nowrap;height:34px;padding:0 2px;border:0;background:none;color:rgba(245,245,247,.45);font:600 11px var(--font);letter-spacing:.2em;text-transform:uppercase;border-bottom:2px solid transparent}
+.tabs button:hover{color:#fff}
+.tabs button.on{color:#fff;border-bottom-color:#fff}
+.tabs button:disabled{opacity:.3;cursor:default}
+
+/* ---------- title ---------- */
+#title{justify-content:center;padding:0 9vw}
+.brand b{display:block;font:200 clamp(48px,5.4vw,72px) var(--font);letter-spacing:.34em;line-height:1;background:linear-gradient(#fff,#c3c9d2);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand small{display:block;margin:12px 0 54px}
+.menu{display:flex;flex-direction:column;gap:6px;padding-left:28px;position:relative}
+.menu button{border:0;background:none;text-align:left;padding:0;font:200 40px var(--font);color:rgba(245,245,247,.38);line-height:1.15;transition:color .15s,transform .15s;display:flex;align-items:baseline;gap:18px}
+.menu button.big{font-size:48px}
+.menu button small{font:600 10.5px var(--font);letter-spacing:.24em;text-transform:uppercase;color:var(--faint);opacity:0;transition:opacity .15s}
+.menu button:hover,.menu button.on{color:#fff;transform:translateX(4px)}
+.menu button:hover small,.menu button.on small{opacity:1}
+.menu .new{font:600 9.5px var(--font);letter-spacing:.2em;color:#0a0b10;background:#f6d878;padding:3px 7px;border-radius:999px;align-self:center;opacity:1}
+.menu-bar{position:absolute;left:0;width:2px;border-radius:2px;background:#fff;box-shadow:0 0 12px rgba(var(--mood),.9),0 0 3px #fff;transition:top .2s,height .2s}
+.title-foot{position:absolute;bottom:26px;left:9vw;right:9vw;display:flex;justify-content:space-between}
+
+/* ---------- library ---------- */
+.top{display:flex;align-items:center;gap:18px;padding:22px 32px 0}
+.top h2{margin:0;font:200 34px var(--font);letter-spacing:.01em}
+.top .count{margin-left:4px;margin-top:8px;white-space:nowrap}
+.tools{margin-left:auto;display:flex;align-items:center;gap:28px}
+.search{height:34px;width:clamp(150px,16vw,240px);border:0;border-bottom:1px solid rgba(255,255,255,.25);background:none;padding:0 2px;font:300 15px var(--font);outline:none}
+.search:focus{border-bottom-color:#fff}
+.search::placeholder{color:var(--faint)}
+.jobs{display:flex;align-items:center;gap:12px;margin:14px 32px 0;padding:10px 16px;border:1px solid var(--line);border-radius:12px;background:var(--glass);backdrop-filter:blur(18px)}
+.jobs .bar{flex:0 0 180px;height:2px;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden}
+.jobs .bar i{display:block;height:100%;width:42%;background:#fff;box-shadow:0 0 10px rgba(var(--mood),.9)}
+.jobs .what{font:300 14px var(--font)}
+.jobs .what b{font-weight:500}
+.jobs .left{color:var(--dim);font:300 13px var(--font)}
+.body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(340px,30vw,430px);column-gap:36px;padding:0 32px 0 0}
+.list{overflow-y:auto;padding:14px 0 18px 32px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent}
+.group{display:flex;align-items:center;gap:12px;margin:22px 0 6px 6px}
+.group:first-child{margin-top:4px}
+.group h3{margin:0;font:300 20px var(--font)}
+.group .n{color:var(--faint);font:300 13px var(--font)}
+.group .ghost{opacity:0;margin-left:-4px}
+.group:hover .ghost{opacity:1}
+.by-artist .row .a{display:none}   /* the heading already says it */
+.row{position:relative;display:grid;grid-template-columns:44px minmax(150px,1.2fr) minmax(0,1fr) 92px 96px;align-items:center;gap:16px;padding:6px 14px 6px 6px;border-radius:10px;cursor:pointer}
+.row:hover{background:rgba(255,255,255,.04)}
+.row.on{background:rgba(255,255,255,.07)}
+.row.on::before{content:"";position:absolute;left:-10px;top:12px;bottom:12px;width:2px;border-radius:2px;background:#fff;box-shadow:0 0 10px rgba(var(--mood),.9)}
+.row .t{font:400 15px var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .a{font:400 13px var(--font);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vers{display:flex;flex-wrap:wrap;gap:4px 12px;font:300 13px var(--font);color:var(--dim)}
+.vers span{white-space:nowrap}
+.hq{font:600 8.5px var(--font);letter-spacing:.16em;color:#f6d878;margin-left:5px;vertical-align:2px}
+.tagcell{display:flex;gap:4px;justify-content:flex-end}
+.tag{font:600 9.5px var(--font);letter-spacing:.18em;text-transform:uppercase;background:rgba(255,255,255,.06);color:var(--dim);border-radius:999px;padding:3px 8px}
+.tag.none{background:none;color:var(--faint)}
+.when{text-align:right;color:var(--faint);font:300 13px var(--font)}
+.cover{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:linear-gradient(135deg,hsl(var(--h),45%,32%),hsl(calc(var(--h) + 40),50%,14%));display:grid;place-items:center}
+.cover b{font:300 15px var(--font);color:rgba(255,255,255,.75);letter-spacing:.06em}
+.cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+/* the picked song */
+.panel{overflow-y:auto;padding:18px 0 18px;scrollbar-width:none;display:flex;flex-direction:column;gap:22px}
+.now{display:grid;grid-template-columns:132px minmax(0,1fr);gap:20px;align-items:end}
+.now .cover{border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+.now .cover b{font-size:34px}
+.now h1{margin:0;font:200 34px var(--font);line-height:1.08;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.now .by{margin-top:6px;color:var(--dim);font:400 15px var(--font)}
+.sec{border-top:1px solid var(--line);padding-top:14px}
+.sec-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.sec-head .tabs{margin-left:auto}
+.ver{display:flex;align-items:center;gap:12px;height:44px;padding:0 6px 0 12px;border-radius:10px;cursor:pointer}
+.ver:hover{background:rgba(255,255,255,.04)}
+.ver.on{background:rgba(255,255,255,.07)}
+.ver .name{font:300 16px var(--font)}
+.ver .meta{color:var(--faint);font:300 12.5px var(--font)}
+.ver .acts{margin-left:auto;display:flex;gap:2px;opacity:0}
+.ver:hover .acts,.ver.on .acts{opacity:1}
+.ver .dot{width:6px;height:6px;border-radius:50%;background:transparent;flex:none}
+.ver.on .dot{background:#fff;box-shadow:0 0 8px rgba(var(--mood),.9)}
+.add-ver{margin:6px 0 0 12px;border:0;background:none;padding:0;color:var(--dim);font:600 10.5px var(--font);letter-spacing:.2em;text-transform:uppercase}
+.add-ver:hover{color:#fff}
+.tabcard{display:flex;align-items:center;gap:14px;padding:6px 0 4px 12px}
+.tabcard .src{font:300 16px var(--font)}
+.tabcard .src small{display:block;color:var(--faint);font:300 12.5px var(--font);margin-top:2px}
+.tabcard .btn{margin-left:auto}
+.tab-acts{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0 0 12px}
+.beat{display:flex;align-items:center;gap:6px;margin-left:auto;color:var(--dim);font:300 13px var(--font)}
+.panel .go{display:flex;gap:10px;align-items:center;margin-top:auto;padding-top:6px}
+.panel .go .btn.primary{height:48px;padding:0 40px;font-size:12px}
+
+/* player bar */
+.player{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,280px) minmax(240px,1fr) auto;align-items:center;gap:28px;height:84px;padding:0 28px;
+ margin:0 16px 16px;border-radius:18px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.np{display:flex;align-items:center;gap:14px;min-width:0}
+.np .cover{width:48px;flex:none}
+.np .t{font:400 15px var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np .a{font:300 12.5px var(--font);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mid{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.transport{display:flex;align-items:center;gap:14px}
+.play{width:42px;height:42px;border-radius:50%;border:0;background:#f5f5f7;color:#0a0b10;display:grid;place-items:center;box-shadow:0 6px 24px rgba(var(--mood),.25)}
+.scrub{display:flex;align-items:center;gap:12px;width:100%;max-width:560px;font:300 12px var(--font);color:var(--faint);font-variant-numeric:tabular-nums}
+.track{flex:1;height:3px;border-radius:3px;background:rgba(255,255,255,.12);position:relative}
+.track i{position:absolute;left:0;top:0;bottom:0;width:34%;border-radius:3px;background:#fff}
+.track i::after{content:"";position:absolute;right:-5px;top:-4px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(var(--mood),.9)}
+.track .trim{position:absolute;top:-5px;bottom:-5px;width:1px;background:rgba(255,255,255,.4)}
+.right{display:flex;align-items:center;gap:24px}
+.vol{display:flex;align-items:center;gap:8px;color:var(--dim)}
+.vol .track{width:80px;flex:none}
+.vol .track i{width:70%}
+.vol .track i::after{display:none}
+.input-pill{display:flex;align-items:center;gap:10px;height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);color:var(--dim);font:300 13px var(--font)}
+.input-pill .lvl{width:40px;height:2px;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden}
+.input-pill .lvl i{display:block;height:100%;width:55%;background:linear-gradient(90deg,#6ee7a8,#f6d878)}
+
+/* ---------- add songs (a full screen, like Settings and Pause) ---------- */
+#add{background:rgba(7,5,4,.72);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);z-index:5;padding:0 0 24px}
+.add-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:48px;padding:26px 64px 0;max-width:1280px;width:100%;margin:0 auto}
+.drop{border:1px dashed rgba(255,255,255,.22);border-radius:18px;height:150px;display:grid;place-items:center;text-align:center}
+.drop b{display:block;font:200 26px var(--font)}
+.drop span{color:var(--dim);font:300 13px var(--font)}
+.or{display:flex;align-items:center;gap:14px;margin:18px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.link{display:flex;gap:10px}
+.link input{flex:1;height:44px;border:0;border-bottom:1px solid rgba(255,255,255,.25);background:none;font:300 16px var(--font);outline:none}
+.link input::placeholder{color:var(--faint)}
+.staged{margin-top:26px}
+.st{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr) auto;gap:16px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.st input{height:34px;border:0;border-bottom:1px solid transparent;background:none;font:300 15px var(--font);outline:none;width:100%}
+.st input:hover,.st input:focus{border-bottom-color:rgba(255,255,255,.25)}
+.st .dup{color:#f6d878;font:300 12.5px var(--font)}
+.opts{display:flex;flex-direction:column;gap:22px}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.chip{height:62px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.025);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font:300 15px var(--font)}
+.chip small{font:600 9px var(--font);letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+.chip.on{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.07);box-shadow:0 0 30px rgba(var(--mood),.12)}
+.slider{display:flex;align-items:center;gap:14px;margin-top:12px;font:300 14px var(--font);color:var(--dim)}
+.slider .track{flex:1}
+.slider .track i{width:0}
+.add-go{display:flex;justify-content:flex-end;gap:10px;margin-top:auto}
+
+/* narrower windows (down to ~1024 wide): drop the Added column, the volume slider and the input name */
+@media (max-width:1300px){
+ .row{grid-template-columns:44px minmax(140px,1.2fr) minmax(0,1fr) 92px}
+ .row .when{display:none}
+ .vol .track,.input-pill .name{display:none}
+ .right{gap:16px}
+ .now{grid-template-columns:104px minmax(0,1fr)}
+ .now h1{font-size:28px}
+}
+
+/* ---------- practice (in the game) ---------- */
+#practice{background:#070504}
+#practice .bg2{position:absolute;inset:-80px;background-size:cover;background-position:center;filter:blur(80px) brightness(.22) saturate(1.2)}
+.p-top{position:relative;display:flex;align-items:center;gap:16px;padding:20px 28px 0}
+.p-song .t{font:300 20px var(--font)}
+.p-song .a{font:300 13px var(--font);color:var(--dim)}
+.p-badge{font:600 9.5px var(--font);letter-spacing:.24em;color:#0a0b10;background:#9be7c4;padding:4px 9px;border-radius:999px;margin-left:6px}
+.p-tools{margin-left:auto;display:flex;align-items:center;gap:26px}
+.sw{display:flex;align-items:center;gap:9px;font:600 10.5px var(--font);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);cursor:pointer;user-select:none}
+.sw i{width:30px;height:18px;border-radius:999px;background:rgba(255,255,255,.14);position:relative;transition:background .2s}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}
+.sw.on{color:#fff}.sw.on i{background:#9be7c4}.sw.on i::after{left:14px}
+.p-stage{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:220px minmax(0,1fr) 220px}
+.p-stage canvas{width:100%;height:100%;display:block}
+.p-side{padding:30px 28px;display:flex;flex-direction:column;gap:22px}
+.p-big{font:200 44px var(--font);line-height:1;background:linear-gradient(#fff,#c3c9d2);-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums}
+.p-small{font:300 13px var(--font);color:var(--dim);margin-top:6px}
+.p-dots{display:flex;gap:6px;margin-top:10px}
+.p-dots i{width:22px;height:4px;border-radius:2px;background:rgba(255,255,255,.12)}
+.p-dots i.g{background:#9be7c4}.p-dots i.m{background:#f6d878}.p-dots i.b{background:#f8a1a1}
+.p-wait{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font:200 30px var(--font);color:#fff;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s}
+.p-wait small{display:block;margin-top:8px}
+.p-wait.on{opacity:1}
+.p-bottom{position:relative;padding:0 28px 18px}
+.tl{position:relative;height:74px;margin-top:6px;user-select:none}
+.tl-secs{position:absolute;left:0;right:0;top:0;height:22px;display:flex}
+.tl-sec{border-left:1px solid rgba(255,255,255,.14);padding:4px 0 0 7px;font:600 9.5px var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;cursor:pointer}
+.tl-sec:hover{color:#fff;background:rgba(255,255,255,.04)}
+.tl-sec.in{color:#fff}
+.tl-dens{position:absolute;left:0;right:0;top:24px;height:34px;width:100%;cursor:pointer}
+.tl-loop{position:absolute;top:20px;height:44px;border-radius:6px;background:rgba(155,231,196,.1);border:1px solid rgba(155,231,196,.55);pointer-events:none}
+.tl-h{position:absolute;top:-2px;bottom:-2px;width:12px;cursor:ew-resize;pointer-events:auto;display:grid;place-items:center}
+.tl-h::after{content:"";width:3px;height:22px;border-radius:2px;background:#9be7c4}
+.tl-h.a{left:-7px}.tl-h.b{right:-7px}
+.tl-head{position:absolute;top:16px;height:52px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 10px rgba(var(--mood),.9);pointer-events:none}
+.tl-bars{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;font:300 11px var(--font);color:var(--faint);font-variant-numeric:tabular-nums}
+.p-ctrl{display:flex;align-items:center;gap:22px;margin-top:8px}
+.p-ctrl .transport{gap:6px}
+.p-ctrl .play{width:46px;height:46px}
+.p-hint{margin-left:auto;color:var(--faint);font:300 12px var(--font)}
+.p-hint kbd{font:500 10px var(--font);border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin:0 2px;color:var(--dim)}
+.loop-info{font:300 14px var(--font);color:var(--dim)}
+.loop-info b{color:#fff;font-weight:400}
+/* mockup switcher */
+.mock{position:fixed;left:50%;bottom:4px;transform:translateX(-50%);z-index:9;display:flex;align-items:center;opacity:.35;transition:opacity .2s;gap:4px;padding:8px;border-radius:14px;background:rgba(0,0,0,.55);border:1px solid var(--line);backdrop-filter:blur(10px)}
+.mock:hover{opacity:1}
+.mock button{border:0;background:none;color:var(--dim);font:500 11px var(--font);padding:6px 10px;border-radius:8px;text-align:left}
+.mock button.on{background:rgba(255,255,255,.1);color:#fff}
+.mock .caps{padding:2px 10px 4px;font-size:8.5px}
+</style>
+
+<div class="bg" id="bg"></div>
+
+<!-- Title: Library and Add songs join Play and Settings -->
+<section class="screen" id="title">
+  <div class="brand"><b>ENCORE</b><small class="caps">Play along with your songs</small></div>
+  <div class="menu" id="menu">
+    <div class="menu-bar" id="menu-bar"></div>
+    <button class="big on" data-go="select">Play <small>Pick a song and play along</small></button>
+    <button data-go="practice">Practice <span class="new">NEW</span><small>Loop a part, slow it down, no score</small></button>
+    <button data-go="library">Library <span class="new">NEW</span><small>Your songs, versions and tabs</small></button>
+    <button data-go="add">Add songs <small>Upload a file or paste a link</small></button>
+    <button>Settings</button>
+  </div>
+  <div class="title-foot"><span class="caps">43 songs · Apple GPU</span><span class="caps">Quit</span></div>
+</section>
+
+<!-- Library: Track Splitter's main screen -->
+<section class="screen hidden" id="library">
+  <div class="top">
+    <button class="btn icon" data-go="title" title="Back (Esc)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <h2>Library</h2><span class="caps count" id="count"></span>
+    <div class="tools">
+      <input class="search" id="search" type="search" placeholder="Search songs, artists, instruments">
+      <div class="tabs" id="sort"><button data-sort="recent" class="on">Recent</button><button data-sort="title">A–Z</button><button data-sort="artist">Artist</button></div>
+      <button class="btn primary" data-go="add">+ Add songs</button>
+    </div>
+  </div>
+  <div class="jobs" id="jobs">
+    <span class="caps">Splitting</span>
+    <span class="what"><b>Hysteria</b> · no drums, high quality</span>
+    <span class="bar"><i></i></span>
+    <span class="left">Separating drums · about 1 min 30 s left</span>
+    <button class="ghost" style="margin-left:auto" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+  </div>
+  <div class="body">
+    <div class="list" id="list"></div>
+    <div class="panel" id="panel"></div>
+  </div>
+  <div class="player">
+    <div class="np" id="np"></div>
+    <div class="mid">
+      <div class="transport">
+        <button class="ghost" title="Back 5 s"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+        <button class="play" title="Play"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg></button>
+        <button class="ghost" title="Forward 5 s"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+      </div>
+      <div class="scrub"><span>1:12</span><div class="track"><i></i><span class="trim" style="left:2%"></span><span class="trim" style="left:97%"></span></div><span>3:47</span></div>
+    </div>
+    <div class="right">
+      <div class="tabs" id="hear"><button class="on">Without</button><button>Original</button><button>Only</button><button disabled title="Record your own bass first">My bass</button></div>
+      <div class="vol" title="Song, instrument and master volume"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg><div class="track"><i></i></div></div>
+      <div class="input-pill" title="Bass input: hear myself, tuner, record"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span class="name">Scarlett · Bass</span><span class="lvl"><i></i></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Add songs: a full screen over the library -->
+<section class="screen hidden" id="add">
+  <div class="top">
+    <button class="btn icon" data-go="back" title="Close (Esc)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <h2>Add songs</h2>
+  </div>
+  <div class="add-body">
+    <div style="overflow-y:auto;scrollbar-width:none">
+      <div class="drop"><div><b>Drop songs here</b><span>MP3, WAV, FLAC, M4A … or click to choose</span></div></div>
+      <div class="or caps">or</div>
+      <div class="link"><input placeholder="Paste a YouTube or other video link"><button class="btn">Add link</button></div>
+      <div class="staged">
+        <div class="caps" style="margin-bottom:6px">Ready · 3 songs</div>
+        <div class="st"><div class="cover" style="--h:200"><b>H</b></div><input value="Muse"><input value="Hysteria"><button class="ghost" title="Remove">✕</button></div>
+        <div class="st"><div class="cover" style="--h:20"><b>P</b></div><input value="White Reaper"><input value="Pages"><button class="ghost" title="Remove">✕</button></div>
+        <div class="st"><div class="cover" style="--h:300"><b>D</b></div><input value="The Warning"><div><input value="Dust to Dust"><div class="dup">Already in your library · will add a version</div></div><button class="ghost" title="Remove">✕</button></div>
+      </div>
+    </div>
+    <div class="opts">
+      <div>
+        <div class="caps">Take out</div>
+        <div class="chips" id="chips">
+          <button class="chip on">Bass<small>4 or 5 string</small></button><button class="chip">Drums</button><button class="chip">Vocals</button>
+          <button class="chip">Guitar<small>All</small></button><button class="chip">Lead guitar<small>Centre</small></button><button class="chip">Rhythm<small>Sides</small></button>
+          <button class="chip">Piano</button>
+        </div>
+      </div>
+      <div>
+        <div class="caps">Quality</div>
+        <div class="tabs" style="margin-top:6px"><button>Standard</button><button class="on">High quality</button><button>Faster</button></div>
+      </div>
+      <div>
+        <div class="caps">Keep a little of it</div>
+        <div class="slider"><span>Gone</span><div class="track"><i></i></div><span>0%</span></div>
+      </div>
+      <div>
+        <div class="caps">Then</div>
+        <div class="tabs" style="margin-top:6px"><button class="on">Make the bass tab</button><button>Just split</button></div>
+      </div>
+      <div class="add-go"><button class="btn" data-go="back">Cancel</button><button class="btn primary" data-go="library">Split 3 songs</button></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- Practice: the game's board with no score or fail; move anywhere, loop a part, slow it down -->
+<section class="screen hidden" id="practice">
+  <div class="bg2" id="p-bg"></div>
+  <div class="p-top">
+    <button class="btn icon" data-go="back" title="Menu (Esc)"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+    <div class="p-song" id="p-song"></div><span class="p-badge">PRACTICE</span>
+    <div class="p-tools">
+      <div><div class="caps" style="margin-bottom:2px">Speed</div><div class="tabs" id="p-speed"><button data-s="50">50%</button><button data-s="75" class="on">75%</button><button data-s="90">90%</button><button data-s="100">100%</button></div></div>
+      <span class="sw on" id="sw-up" title="After a clean loop the speed goes up 5%, until 100%"><i></i>Speed up when clean</span>
+      <span class="sw" id="sw-wait" title="The song waits at each note until you play it"><i></i>Wait for me</span>
+      <span class="sw on" id="sw-click" title="A click on the beat, and one bar counted in before each loop"><i></i>Click</span>
+    </div>
+  </div>
+  <div class="p-stage">
+    <div class="p-side">
+      <div><div class="caps">Loop</div><div class="p-big" id="p-loopn">1</div><div class="p-small" id="p-loopwhere"></div></div>
+      <div><div class="caps">This time</div><div class="p-big" id="p-clean">–</div><div class="p-small">clean notes</div><div class="p-dots" id="p-dots"></div></div>
+    </div>
+    <div style="position:relative;min-width:0"><canvas id="p-board"></canvas><div class="p-wait" id="p-wait">Play <b>3</b> on E<small class="caps">waiting for you</small></div></div>
+    <div class="p-side" style="align-items:flex-end;text-align:right">
+      <div><div class="caps">Speed</div><div class="p-big" id="p-spd">75%</div><div class="p-small" id="p-bpm"></div></div>
+      <div><div class="caps">Trouble spots</div><div class="p-small" id="p-trouble" style="line-height:1.7"></div></div>
+    </div>
+  </div>
+  <div class="p-bottom">
+    <div class="tl" id="tl">
+      <div class="tl-secs" id="tl-secs"></div>
+      <canvas class="tl-dens" id="tl-dens"></canvas>
+      <div class="tl-loop" id="tl-loop"><span class="tl-h a" data-h="a"></span><span class="tl-h b" data-h="b"></span></div>
+      <div class="tl-head" id="tl-head"></div>
+      <div class="tl-bars" id="tl-bars"></div>
+    </div>
+    <div class="p-ctrl">
+      <div class="transport">
+        <button class="ghost" id="p-prevsec" title="Previous part (↑)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="2.4" height="14" rx="1"/><path d="M19 5v14L8.5 12z"/></svg></button>
+        <button class="ghost" id="p-prevbar" title="Back a bar (←)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14L7.5 12z"/></svg></button>
+        <button class="play" id="p-play" title="Play / pause (Space)"></button>
+        <button class="ghost" id="p-nextbar" title="Forward a bar (→)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14l10.5-7z"/></svg></button>
+        <button class="ghost" id="p-nextsec" title="Next part (↓)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="16.6" y="5" width="2.4" height="14" rx="1"/><path d="M5 5v14l10.5-7z"/></svg></button>
+      </div>
+      <div class="loop-info" id="p-loopinfo"></div>
+      <button class="btn small" id="p-noloop">Clear loop</button>
+      <button class="btn small" data-go="select">Play it for score</button>
+      <span class="p-hint"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> bar · <kbd>↑</kbd><kbd>↓</kbd> part · <kbd>[</kbd><kbd>]</kbd> loop start / end · click a part to loop it</span>
+    </div>
+  </div>
+</section>
+
+<div class="mock"><span class="caps">Mockup</span><button data-go="title">Title</button><button data-go="library">Library</button><button data-go="add">Add songs</button><button data-go="practice">Practice</button><button id="mock-jobs">Toggle job bar</button></div>
+
+<script>
+const SONGS = [{"id": "Iron Maiden/The Number Of The Beast", "t": "The Number Of The Beast", "a": "Iron Maiden", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793073327}, {"id": "Nothing But Thieves/Welcome to the DCC", "t": "Welcome to the DCC", "a": "Nothing But Thieves", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793664761}, {"id": "Nothing But Thieves/Amsterdam", "t": "Amsterdam", "a": "Nothing But Thieves", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792796598}, {"id": "Nothing But Thieves/American Confidence", "t": "American Confidence", "a": "Nothing But Thieves", "v": ["(no guitar)", "[HQ] (no rhythm guitar)", "[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792639060}, {"id": "Royal Republic/Flower Power Madness", "t": "Flower Power Madness", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793418003}, {"id": "Royal Republic/Fireman & Dancer", "t": "Fireman & Dancer", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792817818}, {"id": "Royal Republic/Baby", "t": "Baby", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792987756}, {"id": "Royal Republic/Lazerlove", "t": "Lazerlove", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793067137}, {"id": "Royal Republic/Sha-La-La-Lady", "t": "Sha-La-La-Lady", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792811337}, {"id": "Royal Republic/Getting Along", "t": "Getting Along", "a": "Royal Republic", "v": ["[HQ] (no drums)", "(no lead guitar)", "(no rhythm guitar)", "[HQ] (no bass)", "[HQ] (no lead guitar)", "(no guitar)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792631016}, {"id": "Royal Republic/Wow! Wow! Wow!", "t": "Wow! Wow! Wow!", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792765840}, {"id": "Royal Republic/Royal Republic - Electra (Visualizer)", "t": "Royal Republic - Electra (Visualizer)", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": false, "added": 1792630482}, {"id": "Royal Republic/Royal Republic - Fireman & Dancer (Download Festival 2019)", "t": "Royal Republic - Fireman & Dancer (Download Festival 2019)", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": false, "guitar": false}, "c": false, "added": 1792630482}, {"id": "Royal Republic/Cry Baby Cry", "t": "Cry Baby Cry", "a": "Royal Republic", "v": ["[HQ] (no bass)", "[HQ] (no rhythm guitar)", "(no lead guitar)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792675972}, {"id": "Royal Republic/LoveCop", "t": "LoveCop", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793067118}, {"id": "Royal Republic/Addictive", "t": "Addictive", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792953296}, {"id": "Royal Republic/Freakshow", "t": "Freakshow", "a": "Royal Republic", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793067100}, {"id": "My Chemical Romance/Planetary (GO!)", "t": "Planetary (GO!)", "a": "My Chemical Romance", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792988239}, {"id": "My Chemical Romance/Helena", "t": "Helena", "a": "My Chemical Romance", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793477841}, {"id": "My Chemical Romance/Thank You for the Venom", "t": "Thank You for the Venom", "a": "My Chemical Romance", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793071991}, {"id": "My Chemical Romance/You Know What They Do to Guys Like Us in Prison", "t": "You Know What They Do to Guys Like Us in Prison", "a": "My Chemical Romance", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793072489}, {"id": "My Chemical Romance/Save Yourself, I'll Hold Them Back", "t": "Save Yourself, I'll Hold Them Back", "a": "My Chemical Romance", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792814757}, {"id": "The Warning/Burnout", "t": "Burnout", "a": "The Warning", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793893567}, {"id": "The Warning/MONEY", "t": "MONEY", "a": "The Warning", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793893617}, {"id": "The Warning/NARCISISTA", "t": "NARCISISTA", "a": "The Warning", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793893689}, {"id": "The Warning/EVOLVE", "t": "EVOLVE", "a": "The Warning", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793801474}, {"id": "The Warning/Dull Knives (Cut Better)", "t": "Dull Knives (Cut Better)", "a": "The Warning", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793893502}, {"id": "The Warning/Dust to Dust", "t": "Dust to Dust", "a": "The Warning", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793893315}, {"id": "Bury Tomorrow/The Eternal", "t": "The Eternal", "a": "Bury Tomorrow", "v": ["[HQ] (no bass)", "(no lead guitar)", "[HQ] (no lead guitar)", "(no rhythm guitar)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792676383}, {"id": "Arctic Monkeys/Brianstorm", "t": "Brianstorm", "a": "Arctic Monkeys", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793073661}, {"id": "Muse/Hysteria", "t": "Hysteria", "a": "Muse", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793021235}, {"id": "Less Than Jake/All My Best Friends Are Metalheads", "t": "All My Best Friends Are Metalheads", "a": "Less Than Jake", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792986471}, {"id": "Less Than Jake/Look What Happened", "t": "Look What Happened", "a": "Less Than Jake", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792986962}, {"id": "Foo Fighters/The Feast and The Famine", "t": "The Feast and The Famine", "a": "Foo Fighters", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793391907}, {"id": "Foo Fighters/Outside", "t": "Outside", "a": "Foo Fighters", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793391357}, {"id": "The Strokes/You Only Live Once", "t": "You Only Live Once", "a": "The Strokes", "v": ["(no guitar)", "[HQ] (no bass)", "(no lead guitar)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792636521}, {"id": "White Reaper/Eggplant", "t": "Eggplant", "a": "White Reaper", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793635946}, {"id": "White Reaper/Pink Slip", "t": "Pink Slip", "a": "White Reaper", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793635422}, {"id": "Foster The People/I Love My Friends", "t": "I Love My Friends", "a": "Foster The People", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793635235}, {"id": "Franz Ferdinand/No You Girls", "t": "No You Girls", "a": "Franz Ferdinand", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793666290}, {"id": "Billy Talent/Devil On My Shoulder", "t": "Devil On My Shoulder", "a": "Billy Talent", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793665917}, {"id": "Nothing But Thieves/Reset Me", "t": "Reset Me", "a": "Nothing But Thieves", "v": ["[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1793665515}, {"id": "Green Day/American Idiot", "t": "American Idiot", "a": "Green Day", "v": ["(no guitar)", "[HQ] (no vocals)", "[HQ] (no bass)"], "tab": {"bass": true, "guitar": false}, "c": true, "added": 1792635766}];
+const port = new URLSearchParams(location.search).get('port') || '7860';
+const $ = (s) => document.querySelector(s);
+const hue = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+const ago = (t) => { const d = (Date.now() / 1000 - t) / 86400; return d < 1 ? 'Today' : d < 2 ? 'Yesterday' : d < 30 ? `${Math.round(d)} days ago` : `${Math.round(d / 30)} mo ago`; };
+function cover(song, cls = '') {
+  const c = document.createElement('div');
+  c.className = `cover ${cls}`; c.style.setProperty('--h', hue(song.a + song.t));
+  c.innerHTML = `<b>${song.t.replace(/^.* - /, '').charAt(0)}</b>`;
+  if (song.c) { const i = new Image(); i.onerror = () => i.remove(); i.src = `http://localhost:${port}/api/cover?song=${encodeURIComponent(song.id)}`; c.append(i); }
+  return c;
+}
+// "[HQ] (no bass & drums)" -> {name: "No bass & drums", hq: true}
+function version(v) {
+  const hq = v.includes('[HQ]'), m = v.match(/\(no (.*)\)/);
+  return { name: m ? `No ${m[1]}` : v, hq };
+}
+const verHtml = (v) => { const x = version(v); return `<span>${x.name}${x.hq ? '<span class="hq">HQ</span>' : ''}</span>`; };
+
+let sort = 'recent', picked = SONGS[0]?.id, verOn = 0, tabInst = 'bass', back = 'title';
+function songs() {
+  const q = $('#search').value.trim().toLowerCase();
+  let l = SONGS.filter((s) => !q || `${s.t} ${s.a} ${s.v.join(' ')}`.toLowerCase().includes(q));
+  const by = (f) => (a, b) => f(a).localeCompare(f(b), undefined, { sensitivity: 'base' });
+  if (sort === 'title') l = [...l].sort(by((s) => s.t));
+  if (sort === 'artist') l = [...l].sort((a, b) => by((s) => s.a)(a, b) || by((s) => s.t)(a, b));
+  return l;
+}
+function renderList() {
+  const box = $('#list'), l = songs();
+  box.replaceChildren();
+  box.classList.toggle('by-artist', sort === 'artist');
+  let artist = null;
+  for (const s of l) {
+    // Sorted by artist, the sidebar's artists become headings (rename / merge from the ⋯)
+    if (sort === 'artist' && s.a !== artist) {
+      artist = s.a;
+      const g = document.createElement('div');
+      g.className = 'group';
+      g.innerHTML = `<h3>${s.a}</h3><span class="n">${l.filter((x) => x.a === s.a).length}</span><button class="ghost" title="Rename or merge artist">⋯</button>`;
+      box.append(g);
+    }
+    const r = document.createElement('div');
+    r.className = `row${s.id === picked ? ' on' : ''}`;
+    r.append(cover(s));
+    r.insertAdjacentHTML('beforeend', `<div style="min-width:0"><div class="t">${s.t}</div><div class="a">${s.a}</div></div>
+      <div class="vers">${s.v.map(verHtml).join('')}</div>
+      <div class="tagcell">${s.tab.bass ? '<span class="tag">Bass</span>' : ''}${s.tab.guitar ? '<span class="tag">Guitar</span>' : ''}${!s.tab.bass && !s.tab.guitar ? '<span class="tag none">No tab</span>' : ''}</div>
+      <div class="when">${ago(s.added)}</div>`);
+    r.onclick = () => { picked = s.id; verOn = 0; renderAll(); };
+    box.append(r);
+  }
+  $('#count').textContent = `${l.length} songs · ${l.reduce((n, s) => n + s.v.length, 0)} versions`;
+}
+const ICON = {
+  redo: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
+  bin: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
+  dl: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+};
+function renderPanel() {
+  const s = SONGS.find((x) => x.id === picked), p = $('#panel');
+  if (!s) { p.innerHTML = ''; return; }
+  const hasTab = s.tab[tabInst];
+  p.innerHTML = `
+    <div class="now"><div id="now-cover"></div><div style="min-width:0"><h1>${s.t}</h1><div class="by">${s.a}</div></div></div>
+    <div class="sec">
+      <div class="sec-head"><span class="caps">Versions</span><button class="ghost" style="margin-left:auto" title="Trim silence / start and end" style="white-space:nowrap">✂︎ <span class="caps" style="margin-left:6px">Trim</span></button></div>
+      ${s.v.map((v, i) => { const x = version(v); return `<div class="ver${i === verOn ? ' on' : ''}" data-i="${i}"><span class="dot"></span><span class="name">${x.name}</span>${x.hq ? '<span class="hq">HQ</span>' : ''}<span class="meta">${x.hq ? '· fully removed' : '· 30% kept'}</span>
+        <span class="acts"><button class="ghost" title="Redo">${ICON.redo}</button><button class="ghost" title="Move to Trash">${ICON.bin}</button></span></div>`; }).join('')}
+      <button class="add-ver">+ New version</button>
+    </div>
+    <div class="sec">
+      <div class="sec-head"><span class="caps">Tab</span><div class="tabs" id="tab-inst"><button data-i="bass" class="${tabInst === 'bass' ? 'on' : ''}">Bass</button><button data-i="guitar" class="${tabInst === 'guitar' ? 'on' : ''}">Guitar</button></div></div>
+      ${hasTab ? `<div class="tabcard"><div class="src">${tabInst === 'bass' ? 'Automatic · Standard (E A D G)' : 'Imported · Standard'}<small>${tabInst === 'bass' ? '128 bpm · 96 bars · imported tab available' : 'from a Guitar Pro file · track 2 of 4'}</small></div><button class="btn small">Open tab</button></div>
+        <div class="tab-acts"><button class="btn small">Import tab</button><button class="btn small">${ICON.dl} .gp5</button><button class="btn small">Record mine</button>
+          <span class="beat">Beat 1 <button class="ghost">◀</button><button class="ghost">▶</button></span></div>`
+      : `<div class="tabcard"><div class="src">No ${tabInst} tab yet<small>${tabInst === 'bass' ? 'Make one from the recording, or bring a Guitar Pro / text tab' : 'Bring a Guitar Pro, MusicXML or text tab'}</small></div></div>
+        <div class="tab-acts">${tabInst === 'bass' ? '<button class="btn small">Make the bass tab</button>' : ''}<button class="btn small">Import tab</button></div>`}
+    </div>
+    <div class="go"><button class="btn primary" data-go="select">Play in Encore</button><button class="btn" data-go="practice">Practice</button></div>`;
+  $('#now-cover').append(cover(s));
+  p.querySelectorAll('.ver').forEach((v) => v.onclick = () => { verOn = +v.dataset.i; renderPanel(); });
+  p.querySelectorAll('#tab-inst button').forEach((b) => b.onclick = () => { tabInst = b.dataset.i; renderPanel(); });
+  p.querySelectorAll('[data-go]').forEach(wire);
+  const np = $('#np'); np.replaceChildren(cover(s));
+  np.insertAdjacentHTML('beforeend', `<div style="min-width:0"><div class="t">${s.t}</div><div class="a">${version(s.v[verOn] || '').name} · ${s.a}</div></div>`);
+  if (s.c) $('#bg').style.backgroundImage = `url("http://localhost:${port}/api/cover?song=${encodeURIComponent(s.id)}")`;
+}
+function renderAll() { renderList(); renderPanel(); }
+
+function show(id) {
+  if (id === 'select') return alert('This would open Encore\'s song select with this song picked.');
+  if (id === 'back') id = back;
+  if (id !== 'add' && id !== 'practice') back = id;
+  document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('hidden', s.id !== id && !(id === 'add' && s.id === back)));
+  document.querySelectorAll('.mock [data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === id));
+  if (id === 'title') moveBar(document.querySelector('.menu button.on'));
+  if (id === 'practice') pStart();
+}
+function wire(b) { b.addEventListener('click', () => show(b.dataset.go)); }
+document.querySelectorAll('[data-go]').forEach(wire);
+function moveBar(b) { if (!b) return; $('#menu-bar').style.top = `${b.offsetTop + 8}px`; $('#menu-bar').style.height = `${b.offsetHeight - 16}px`; }
+document.querySelectorAll('.menu button').forEach((b) => b.addEventListener('mouseenter', () => {
+  document.querySelectorAll('.menu button').forEach((x) => x.classList.toggle('on', x === b)); moveBar(b);
+}));
+document.querySelectorAll('#sort button').forEach((b) => b.onclick = () => {
+  sort = b.dataset.sort; document.querySelectorAll('#sort button').forEach((x) => x.classList.toggle('on', x === b)); renderList();
+});
+document.querySelectorAll('#hear button:not(:disabled)').forEach((b) => b.onclick = () => document.querySelectorAll('#hear button').forEach((x) => x.classList.toggle('on', x === b)));
+document.querySelectorAll('#chips .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+$('#search').oninput = renderList;
+$('#mock-jobs').onclick = () => $('#jobs').classList.toggle('hidden');
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') show(!$('#add').classList.contains('hidden') || !$('#practice').classList.contains('hidden') ? 'back' : 'title');
+  if (!$('#library').classList.contains('hidden') && $('#add').classList.contains('hidden') && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && document.activeElement.tagName !== 'INPUT') {
+    const l = songs(), i = l.findIndex((s) => s.id === picked), n = l[Math.max(0, Math.min(l.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+    if (n) { picked = n.id; verOn = 0; renderAll(); document.querySelector('.row.on')?.scrollIntoView({ block: 'nearest' }); e.preventDefault(); }
+  }
+});
+
+// ---------- practice ----------
+// A made-up bass line for the mockup: 56 bars at 128 bpm, parts as the real build would find them
+// (bars that repeat get the same letter; the names here are placeholders the user could change).
+const P = { bpm: 128, bars: 56, t: 0, playing: false, speed: 75, loop: [13, 21], loopN: 1, last: 0, lastLoopAt: 0, dots: [], waitUntil: 0 };
+P.bar = 240 / P.bpm;
+P.parts = [['Intro', 1, 5], ['Verse', 5, 13], ['Chorus', 13, 21], ['Verse', 21, 29], ['Chorus', 29, 37], ['Bridge', 37, 45], ['Chorus', 45, 53], ['Outro', 53, 57]];
+P.notes = [];
+{
+  const riff = { Intro: [[0, 0], [0, 0], [0, 3], [0, 5]], Verse: [[0, 3], [0, 3], [1, 2], [0, 5], [0, 3], [0, 3], [1, 5], [1, 3]],
+    Chorus: [[1, 5], [1, 5], [1, 7], [2, 5], [1, 3], [1, 3], [0, 5], [1, 3]], Bridge: [[2, 2], [2, 4], [3, 2], [2, 4]], Outro: [[0, 0], [0, 0]] };
+  for (const [name, a, b] of P.parts) {
+    const r = riff[name], step = P.bar / r.length;
+    for (let bar = a; bar < b; bar++) r.forEach(([str, fret], k) => P.notes.push({ t: (bar - 1) * P.bar + k * step, str, fret, ok: null }));
+  }
+}
+P.len = P.bars * P.bar;
+const barAt = (t) => Math.floor(t / P.bar) + 1, tOf = (bar) => (bar - 1) * P.bar;
+const partAt = (bar) => P.parts.find(([, a, b]) => bar >= a && bar < b);
+const STR = ['E', 'A', 'D', 'G'], STR_COL = ['#f8a1a1', '#f6d878', '#8fd0ff', '#b9a4ff'];
+function pStart() {
+  const s = SONGS.find((x) => x.id === picked) || SONGS[0];
+  $('#p-song').innerHTML = `<div class="t">${s.t}</div><div class="a">${s.a}</div>`;
+  if (s.c) $('#p-bg').style.backgroundImage = `url("http://localhost:${port}/api/cover?song=${encodeURIComponent(s.id)}")`;
+  P.t = tOf(P.loop[0]); P.playing = false; renderTL(); pUI(); requestAnimationFrame(pFrame);
+}
+function renderTL() {
+  const secs = $('#tl-secs'); secs.replaceChildren();
+  for (const [name, a, b] of P.parts) {
+    const d = document.createElement('div');
+    d.className = `tl-sec${P.loop && a >= P.loop[0] && b <= P.loop[1] ? ' in' : ''}`;
+    d.style.width = `${(b - a) / P.bars * 100}%`;
+    d.textContent = name; d.title = `${name} · bars ${a}–${b - 1}: click to loop it`;
+    d.onclick = () => { P.loop = [a, b]; P.t = tOf(a); P.loopN = 1; renderTL(); pUI(); };
+    secs.append(d);
+  }
+  const c = $('#tl-dens'), w = c.clientWidth, h = c.clientHeight, g = c.getContext('2d');
+  c.width = w * 2; c.height = h * 2; g.scale(2, 2); g.clearRect(0, 0, w, h);
+  const bins = new Array(Math.ceil(w / 3)).fill(0);
+  for (const n of P.notes) bins[Math.min(bins.length - 1, Math.floor(n.t / P.len * bins.length))] += 1;
+  const mx = Math.max(...bins);
+  bins.forEach((v, i) => { const bh = Math.max(2, v / mx * h * .9); const tt = i / bins.length * P.len;
+    const inLoop = P.loop && tt >= tOf(P.loop[0]) && tt < tOf(P.loop[1]);
+    g.fillStyle = inLoop ? 'rgba(155,231,196,.75)' : 'rgba(255,255,255,.22)'; g.fillRect(i * 3, (h - bh) / 2, 2, bh); });
+  $('#tl-bars').innerHTML = [1, 9, 17, 25, 33, 41, 49, 56].map((b) => `<span>${b}</span>`).join('');
+  const L = $('#tl-loop');
+  L.classList.toggle('hidden', !P.loop);
+  if (P.loop) { L.style.left = `${(P.loop[0] - 1) / P.bars * 100}%`; L.style.width = `${(P.loop[1] - P.loop[0]) / P.bars * 100}%`; }
+}
+function pUI() {
+  $('#p-play').innerHTML = P.playing ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>';
+  document.querySelectorAll('#p-speed button').forEach((b) => b.classList.toggle('on', +b.dataset.s === P.speed));
+  $('#p-spd').textContent = `${P.speed}%`; $('#p-bpm').textContent = `${Math.round(P.bpm * P.speed / 100)} of ${P.bpm} bpm`;
+  const part = P.loop && partAt(P.loop[0]);
+  $('#p-loopinfo').innerHTML = P.loop ? `Looping <b>${part && part[1] === P.loop[0] && part[2] === P.loop[1] ? part[0] + ' · ' : ''}bars ${P.loop[0]}–${P.loop[1] - 1}</b>` : 'No loop · plays on through the song';
+  $('#p-noloop').classList.toggle('hidden', !P.loop);
+  $('#p-loopn').textContent = P.loop ? P.loopN : '–';
+  $('#p-loopwhere').textContent = P.loop ? `bars ${P.loop[0]}–${P.loop[1] - 1}` : 'no loop';
+  $('#p-dots').innerHTML = P.dots.slice(-8).map((v) => `<i class="${v >= .9 ? 'g' : v >= .7 ? 'm' : 'b'}"></i>`).join('');
+  $('#p-trouble').innerHTML = 'Bar 15 · beat 3<br>Bar 18 · beat 1<br>Bar 31 · beat 4';
+}
+function seek(t) { P.t = Math.max(0, Math.min(P.len - .01, t)); P.notes.forEach((n) => { if (n.t >= P.t) n.ok = null; }); }
+function pFrame(now) {
+  if ($('#practice').classList.contains('hidden')) return;
+  const dt = Math.min(.05, (now - (P.last || now)) / 1000); P.last = now;
+  if (P.playing) {
+    const next = P.notes.find((n) => n.t >= P.t && n.ok === null);
+    if ($('#sw-wait').classList.contains('on') && next && next.t - P.t < .01) {
+      // Wait for me: stops on the note until it's played (here: as if played after 0.7 s)
+      if (!P.waitUntil) P.waitUntil = now + 700;
+      $('#p-wait').innerHTML = `Play <b>${next.fret}</b> on ${STR[next.str]}<small class="caps">waiting for you</small>`;
+      $('#p-wait').classList.add('on');
+      if (now > P.waitUntil) { next.ok = true; P.waitUntil = 0; $('#p-wait').classList.remove('on'); }
+    } else {
+      P.t += dt * P.speed / 100;
+      for (const n of P.notes) if (n.ok === null && n.t < P.t) n.ok = Math.random() < .86;
+    }
+    if (P.loop && P.t >= tOf(P.loop[1])) {
+      const inL = P.notes.filter((n) => n.t >= tOf(P.loop[0]) && n.t < tOf(P.loop[1])), clean = inL.filter((n) => n.ok).length / inL.length;
+      P.dots.push(clean); $('#p-clean').textContent = `${Math.round(clean * 100)}%`;
+      if (clean >= .9 && $('#sw-up').classList.contains('on') && P.speed < 100) P.speed = Math.min(100, P.speed + 5);
+      P.loopN++; seek(tOf(P.loop[0])); pUI();
+    }
+    if (P.t >= P.len - .02) { P.playing = false; pUI(); }
+  }
+  drawBoard(); $('#tl-head').style.left = `${P.t / P.len * 100}%`;
+  requestAnimationFrame(pFrame);
+}
+function drawBoard() {
+  const c = $('#p-board'), w = c.clientWidth, h = c.clientHeight, g = c.getContext('2d');
+  if (w < 60 || h < 60) return;
+  if (c.width !== w * 2) { c.width = w * 2; c.height = h * 2; }
+  g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, w, h);
+  const hitY = h * .86, far = h * .06, cx = w / 2, W = Math.min(w * .82, 620), AHEAD = 3.2;
+  const P2 = (d) => 1 / (1 + d * 1.6);                  // depth: 1 at the hit line
+  const Y = (d) => far + (hitY - far) * (P2(d) - P2(AHEAD)) / (1 - P2(AHEAD));
+  const X = (lane, d) => cx + (lane - 1.5) * W / 4 * (.28 + .72 * (P2(d) - P2(AHEAD)) / (1 - P2(AHEAD)));
+  // the board: a dark glass trapezoid, string lanes, bar lines; outside the loop it's dimmer
+  g.fillStyle = 'rgba(255,255,255,.035)';
+  g.beginPath(); g.moveTo(X(-.5, AHEAD), far); g.lineTo(X(3.5, AHEAD), far); g.lineTo(X(3.5, 0), hitY + 30); g.lineTo(X(-.5, 0), hitY + 30); g.fill();
+  for (let l = 0; l < 4; l++) { g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 1 + l * .4; g.beginPath(); g.moveTo(X(l, AHEAD), far); g.lineTo(X(l, -.1), hitY + 30); g.stroke(); }
+  for (let b = barAt(P.t); tOf(b) - P.t < AHEAD; b++) {
+    const d = tOf(b) - P.t; if (d < 0) continue;
+    const loopEdge = P.loop && (b === P.loop[0] || b === P.loop[1]);
+    g.strokeStyle = loopEdge ? 'rgba(155,231,196,.8)' : 'rgba(255,255,255,.14)'; g.lineWidth = loopEdge ? 2 : 1;
+    g.beginPath(); g.moveTo(X(-.5, d), Y(d)); g.lineTo(X(3.5, d), Y(d)); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.3)'; g.font = '300 11px -apple-system,system-ui'; g.fillText(String(b), X(3.5, d) + 8, Y(d) + 4);
+  }
+  // hit line
+  g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 2; g.shadowColor = 'rgba(245,230,211,.9)'; g.shadowBlur = 12;
+  g.beginPath(); g.moveTo(X(-.5, 0), hitY); g.lineTo(X(3.5, 0), hitY); g.stroke(); g.shadowBlur = 0;
+  for (let l = 0; l < 4; l++) { g.fillStyle = 'rgba(255,255,255,.5)'; g.font = '500 11px -apple-system,system-ui'; g.textAlign = 'center'; g.fillText(STR[l], X(l, 0), hitY + 24); }
+  // notes, far first
+  const vis = P.notes.filter((n) => n.t - P.t > -.25 && n.t - P.t < AHEAD).reverse();
+  for (const n of vis) {
+    const d = Math.max(0, n.t - P.t), s = (P2(d) - P2(AHEAD)) / (1 - P2(AHEAD)), r = 8 + 20 * s, x = X(n.str, d), y = Y(d);
+    const outside = P.loop && (n.t < tOf(P.loop[0]) || n.t >= tOf(P.loop[1]));
+    g.globalAlpha = outside ? .25 : n.t < P.t ? .5 : 1;
+    g.fillStyle = n.t < P.t ? (n.ok ? '#9be7c4' : '#f8a1a1') : STR_COL[n.str];
+    g.beginPath(); g.roundRect(x - r * 1.15, y - r * .62, r * 2.3, r * 1.24, r * .4); g.fill();
+    g.fillStyle = '#0a0b10'; g.font = `600 ${Math.round(r * .9)}px -apple-system,system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(n.fret), x, y + 1);
+    g.globalAlpha = 1; g.textBaseline = 'alphabetic';
+  }
+}
+$('#p-play').onclick = () => { P.playing = !P.playing; pUI(); };
+$('#p-prevbar').onclick = () => seek(tOf(barAt(P.t) - 1));
+$('#p-nextbar').onclick = () => seek(tOf(barAt(P.t) + 1));
+$('#p-prevsec').onclick = () => { const b = barAt(P.t), cur = partAt(b), i = P.parts.indexOf(cur); seek(tOf(b > cur[1] ? cur[1] : (P.parts[i - 1] || cur)[1])); };
+$('#p-nextsec').onclick = () => { const i = P.parts.indexOf(partAt(barAt(P.t))); if (P.parts[i + 1]) seek(tOf(P.parts[i + 1][1])); };
+$('#p-noloop').onclick = () => { P.loop = null; renderTL(); pUI(); };
+document.querySelectorAll('#p-speed button').forEach((b) => b.onclick = () => { P.speed = +b.dataset.s; pUI(); });
+document.querySelectorAll('#practice .sw').forEach((s) => s.onclick = () => s.classList.toggle('on'));
+// timeline: click or drag to move; drag the loop's ends
+{
+  const tl = $('#tl'), at = (e) => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); };
+  let drag = null;
+  tl.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.tl-sec')) return;
+    drag = e.target.dataset.h || 'head'; tl.setPointerCapture(e.pointerId);
+    if (drag === 'head') seek(at(e) * P.len);
+  });
+  tl.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (drag === 'head') return seek(at(e) * P.len);
+    const bar = Math.round(at(e) * P.bars) + 1;
+    if (drag === 'a') P.loop[0] = Math.min(bar, P.loop[1] - 1); else P.loop[1] = Math.max(bar, P.loop[0] + 1);
+    renderTL(); pUI();
+  });
+  tl.addEventListener('pointerup', () => { drag = null; });
+}
+document.addEventListener('keydown', (e) => {
+  if ($('#practice').classList.contains('hidden')) return;
+  const b = barAt(P.t);
+  if (e.key === ' ') { P.playing = !P.playing; pUI(); }
+  else if (e.key === 'ArrowLeft') seek(tOf(b - 1));
+  else if (e.key === 'ArrowRight') seek(tOf(b + 1));
+  else if (e.key === 'ArrowUp') $('#p-prevsec').click();
+  else if (e.key === 'ArrowDown') $('#p-nextsec').click();
+  else if (e.key === '[') { P.loop = [b, Math.max(b + 1, P.loop?.[1] || b + 4)]; renderTL(); pUI(); }
+  else if (e.key === ']') { P.loop = [Math.min(P.loop?.[0] || b - 4, b), b + 1]; P.loop[0] = Math.max(1, Math.min(P.loop[0], b)); renderTL(); pUI(); }
+  else return;
+  e.preventDefault();
+});
+renderAll();
+show(location.hash.slice(1) || 'title');
+</script>

@@ -53,7 +53,7 @@ from demucs.apply import apply_model
 from demucs.pretrained import get_model
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from send2trash import send2trash
@@ -1517,8 +1517,9 @@ def get_library():
     return library()
 
 
-def shifted(source, semitones):
+def shifted(source, semitones, speed=100):
     """source raised/lowered by whole semitones at the same tempo, as a cached float WAV.
+    speed (50-100, percent) also slows it down at the same pitch, for Encore's practice mode.
 
     Played faster by the pitch ratio (resample), then stretched back to the original
     length (ffmpeg's atempo; this ffmpeg has no rubberband). For playing along on a bass
@@ -1526,12 +1527,16 @@ def shifted(source, semitones):
     The stretch works on each file separately, so shifted parts no longer add up to the
     shifted original sample for sample (they stay within ~1 ms); the player knows."""
     stat = source.stat()
-    key = hashlib.sha1(f"{source}|{stat.st_mtime_ns}|{semitones}".encode()).hexdigest()
+    key = hashlib.sha1(f"{source}|{stat.st_mtime_ns}|{semitones}{'' if speed == 100 else f'|{speed}'}".encode()).hexdigest()
     dest = SHIFT_DIR / f"{key}.wav"
     if not dest.exists():
         SHIFT_DIR.mkdir(parents=True, exist_ok=True)
         r = 2 ** (semitones / 12)
-        f = f"aresample={SAMPLERATE},asetrate={SAMPLERATE * r:.4f},aresample={SAMPLERATE},atempo={1 / r:.6f}"
+        tempo, steps = speed / 100 / r, []
+        while tempo < 0.5:                     # one atempo goes down to 0.5x (50% on a raised song is lower)
+            steps.append(0.5); tempo /= 0.5
+        steps.append(tempo)
+        f = f"aresample={SAMPLERATE},asetrate={SAMPLERATE * r:.4f},aresample={SAMPLERATE}," + ",".join(f"atempo={x:.6f}" for x in steps)
         part = dest.with_suffix(".part")
         subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(source), "-ac", "2", "-af", f,
                         "-c:a", "pcm_f32le", "-f", "wav", str(part)], check=True)
@@ -1540,11 +1545,14 @@ def shifted(source, semitones):
 
 
 @api.get("/api/audio")
-def audio(version: str, part: str, shift: int = 0):
-    """A version's without/only file or the song's original; shift: semitones (-2..2)."""
+def audio(version: str, part: str, shift: int = 0, speed: int = 100):
+    """A version's without/only file or the song's original; shift: semitones (-2..2); speed: percent (50-100,
+    Encore's practice mode)."""
     path = library_path(version, 3)
     if not -2 <= shift <= 2:
         raise HTTPException(400, "The pitch can be moved by up to 2 semitones.")
+    if not 50 <= speed <= 100:
+        raise HTTPException(400, "The speed can be 50 to 100%.")
     if part == "mine":   # the user's recorded takes ("With my bass")
         return FileResponse(my_bass(path.parent, shift), media_type="audio/wav")
     if part == "original":
@@ -1555,8 +1563,8 @@ def audio(version: str, part: str, shift: int = 0):
         source = original_file(path.parent)
         if not source:
             raise HTTPException(404, "This song has no saved original.")
-        if shift:
-            return FileResponse(shifted(source, shift), media_type="audio/wav")
+        if shift or speed != 100:
+            return FileResponse(shifted(source, shift, speed), media_type="audio/wav")
         cmd = [FFMPEG, "-v", "error", "-i", str(source), "-ac", "2", "-ar", str(SAMPLERATE),
                "-c:a", "pcm_f32le", "-f", "wav", "-"]
         return Response(subprocess.run(cmd, capture_output=True, check=True).stdout, media_type="audio/wav")
@@ -1564,8 +1572,8 @@ def audio(version: str, part: str, shift: int = 0):
     path = without if part == "without" else only
     if not path.exists():
         raise HTTPException(404, "That version doesn't exist.")
-    if shift:
-        return FileResponse(shifted(path, shift), media_type="audio/wav")
+    if shift or speed != 100:
+        return FileResponse(shifted(path, shift, speed), media_type="audio/wav")
     return FileResponse(path, media_type="audio/mpeg")
 
 
@@ -3072,6 +3080,22 @@ class BarShift(BaseModel):
     beats: int             # +1: bar lines a beat later, -1: a beat earlier
 
 
+@api.get("/api/tab/gp5")
+def tab_gp5(song: str, tuning: Optional[str] = None, source: str = "auto", instrument: str = "bass"):
+    """The tab as shown (same choices as /api/tab) as a Guitar Pro 5 file to download (tabimport.write_gp5)."""
+    view = get_tab(song, tuning=tuning, source=source, instrument=instrument)
+    if not view.get("exists") or not view.get("notes"):
+        raise HTTPException(404, "This song has no tab to save yet.")
+    opens = next((t["open"] for t in view["tunings"] if t["key"] == view["tuning"]), None)
+    if not opens:
+        raise HTTPException(400, "This tab's tuning isn't one a Guitar Pro file can be written in.")
+    artist, title = song.split("/", 1)
+    data = tabimport.write_gp5(view["notes"], view.get("lines") or [], view.get("bpm"), opens, title, artist, instrument)
+    name = re.sub(r'[\\/:*?"<>|]', "", f"{artist} - {title} ({instrument}).gp5")
+    return Response(data, media_type="application/octet-stream",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(name)}"})
+
+
 @api.post("/api/tab/bars")
 def move_bars(req: BarShift):
     """Move the automatic tab's bar lines a beat at a time, so they start on beat 1 (user:
@@ -3537,6 +3561,13 @@ def quit_app():
 
 
 # --- Game screen ---------------------------------------------------------------
+
+@api.get("/")
+def home():
+    """Track Splitter's own screen is retired (user: "move track splitter into encore"): / opens Encore, so the old
+    shortcut and bookmarks land there. /index.html still serves the page as it was."""
+    return RedirectResponse("/game")
+
 
 @api.get("/game")
 def game_page():

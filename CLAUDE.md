@@ -183,8 +183,8 @@ standard, drop D, half step down, 5-string, with a suggestion) and saves
   `audioNow()` minus output latency; Line timing (`track-splitter-line-sync`); Raise ½
   step (`/api/audio?shift=1`, `track-splitter-raise`). Show my timing
   (`practiceListen`, `track-splitter-show-timing`) works in every view.
-- Game section: `startGame` / `endGame`, `drawGame` (Rock Band look, 3D/Flat board
-  `track-splitter-game-board`, play on Board/Tab `track-splitter-game-view`), difficulty
+- Game section: `startGame` / `endGame`, `drawGame` (the Arcade board only; its 2D board stays just for guitar
+  chords; play on Board/Tab `track-splitter-game-view`), difficulty
   (`gameNotesFor`), timing windows (`TIMINGS`, `MISS_AFTER`, `PITCH_WAIT`), plays the
   no-bass version, pause/settings dialogs (`#pause-dlg`, `#settings-dlg`), best scores
   (`bestKey`). Judging (`judge`, `gameListen`): a pluck (attack, `plucked`, `clicked`,
@@ -236,19 +236,28 @@ input) -> `arcadePlay` -> `startGame`. Mac icon "Track Splitter Game" (`install_
 `app.py --game`). Stars kept per best key (`STARS_KEY`), shown everywhere as records (`drawRecord`, `recordEl`). Menus in the Arcade
 look (`drawArcMesh`, mockup `ui.html`), song select carousel (`renderCarousel`), Settings in tabs. In-game look "clean and premium" (mockups in `design/game-mockups/`):
 `drawStage` mood background, `drawMultiplier` + `drawRingFire` by the score (`rbScore`); test
-streak `track-splitter-game-streak`. Phases 2-3 (scoring depth, practice mode) to come.
+streak `track-splitter-game-streak`. Phase 2 (scoring depth) to come.
+Practice (title › Practice, or Play | Practice `#arc-mode` on song select; `arcade.mode`, `game.pr`): no score, strip
+`#pr-hud` (`renderPractice`, timeline `#pr-line`: click to move, drag bars to loop), `practiceSeek` / `practiceGo` /
+`practiceTick` / `practiceHeld` (Wait for me), Click, speed via `/api/audio?speed=50-100` (`shifted()`, `player.rate`);
+settings `encore-practice`.
+Library (stage 2 of moving Track Splitter into Encore; title › Library / Add songs, `#arc-library`, `lib`, `renderLibrary`,
+`renderLibPanel`, `libPlayerSync`, `renderLibJob`; sort `encore-library-sort`): songs, versions, tab actions, a player bar;
+reuses Track Splitter's functions. `.gp5` download: `GET /api/tab/gp5` (`tabimport.write_gp5`). Stage 3: Open tab shows
+Track Splitter's own tab view, player and Bass input drawer over Encore (`libOpenTab`, `body.tab-encore`, back
+`#tab-back-lib` / `closeEncoreTab`). Stage 4: every Track Splitter dialog in Encore's look (`body.arcade dialog:not(.game-screen)`),
+its palette on `:root:has(> body.arcade)` (amber accent `#c08457` for violet), and the old screen retired: `GET /` redirects to
+`/game` (`/index.html` still serves it), Quit on Encore's title (`#arc-app`).
+Only the Arcade board (2026-11-06): 3D / Flat and their settings are gone; game3d.js / board-lab.html no longer loaded.
 Stage lights from the song: `GET /api/lights` (made at separation via `separate(keep=)`, else on first request;
-vocals by `vocals_worker` under `gpu_lock`), `songLights` / `cuesAt` in the page, `PATTERNS` in game3d.js.
-Big moments setting `encore-big-moments` (off); ratings on `/lights-check.html` -> `.light-ratings.json`, tuned by
-`tools/lights_tune.py` against `lights.BIG`.
-Board looks being tried (`v.look` reflect / strings / minimal in game3d.js, off in the game): `/board-lab.html`.
-Reading aids: fret numbers on the HUD (`v.hudNumbers`, `Game3D.labels()`), hand-move labels (`d.handTargets`), hand
-guide neck (`drawHandGuide`, Settings › Hand guide `encore-hand-guide`, off by default).
+vocals by `vocals_worker` under `gpu_lock`), `songLights` / `cuesAt` in the page (the Arcade background).
+Ratings on `/lights-check.html` -> `.light-ratings.json`, tuned by `tools/lights_tune.py` against `lights.BIG`.
 Virtual drop D (Settings, `encore-virtual-dropd`, off): `playOpens` scores a drop D tab's low string as a standard E;
 Hear myself's PSOLA shifter (`SHIFT_WORKLET`, `input.monShift`, `updateMonShift`) lowers those notes a whole step.
 Song select tuner (`#arc-tune`, `songTuning`, `readTuner`, `input.tunerSemis`): the song's tuning and each open string's cents.
-Arcade board (Settings › Board: Arcade, `drawArcade` / `arcadePrep` / `arcadeBoard`; mockup `design/game-mockups/arcade.html`):
+Arcade board (`drawArcade` / `arcadePrep` / `arcadeBoard`; mockup `design/game-mockups/arcade.html`):
 the tab glides under a still cursor, numbers on keycaps, echoes for repeats, song-driven background, blue x4.
+Moments (`moments.html`): Encore (`encorePlan`, `game.enc`, `encoreTick`, `addScore`), intro (`game.intro`), ending (`arcadeBoard.ending`).
 
 ## Guitar game (step 2)
 
@@ -301,6 +310,8 @@ user's real guitar.
 
 ## UI (static/index.html)
 
+Track Splitter's own screen (below) is retired since stage 4 (`/` opens Encore); its parts live on inside Encore.
+
 - Sidebar (artists, rename/merge, drag a song to an artist), searchable song list with
   version chips (click loads paused; hover ↻ Redo via `POST /api/version/redo`, 🗑).
 - Player bar: Web Audio, without + only decoded and started on one clock; Without /
@@ -346,11 +357,4 @@ fast takes, each position labelled), made with a small local recorder page.
 
 ## Open ideas / to do
 
-- Windows polish: make the
-  desktop shortcut install package updates like the Mac one, use an NVIDIA GPU (needs
-  the CUDA build of torch; the default Windows build is CPU-only).
-- Playlists / practice sets that pull songs from any artist.
-- The user once asked for "filters": interpreted as folders; filtering the song list
-  (by instrument removed, HQ, etc.) may still be wanted.
-- Mac-only paths (app shortcut, MPS fallback, certificate fix) were written on Windows;
-  they have been reported working on Mac but have no automated checks.
+Kept in `NOTES.md` (same heading): Windows polish, playlists, filtering the song list, Mac-only paths unchecked.

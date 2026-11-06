@@ -1943,6 +1943,126 @@ Phase 1 redesign (same day):
     edges), so it sat scrolled 68 px right, 72 down. Now `overflow: clip`.
   - List view "too much empty space": the picked song's big cover tops the right panel (`#arc-now-art`, list mode
     only) and rows have a best-score column (`.arc-row-best`).
+  - Track Splitter into Encore (2026-11-06; user: "tired of moving back and forth between my encore and track
+    splitter", wants Add songs and tabs in Encore plus a Guitar Pro download, then "I would just like to move track
+    splitter into encore. Using the same styling"). A tab-page URL -> .gp converter was asked for and declined
+    (Songsterr / UG terms); pasted text or a file the user brings -> Import tab -> .gp5 instead. Plan: 1 mockup,
+    2 Library + player bar + Add songs in Encore, 3 tab view + recording, 4 remaining dialogs and retiring the old
+    screen (old screen keeps working until then). Mockup: `design/game-mockups/library.html` (title menu Play ·
+    Library · Add songs · Settings; Library = song list with versions / tab tags, Artist sort as headings in place
+    of the sidebar, picked-song panel with versions, Trim, tab actions incl. .gp5, Play in Encore; glass player bar;
+    job strip; Add songs as a full screen). Real song list baked in; covers load from the running app (`?port=`,
+    default 7860). Not wired to anything.
+    Practice in the game added to the mockup (user: "it would be nice if we could have a practice mode in the
+    actual game and move around the song in there too"; the long-planned phase-3 practice mode): Practice on the
+    title menu and the Library's Practice button open the board with no score or fail; a timeline of parts (bars
+    that repeat get the same name; placeholder names in the mockup) with note density, a draggable playhead and loop
+    ends, click a part to loop it; ←/→ bar, ↑/↓ part, [ ] loop start/end, Space; speed 50/75/90/100% (+5% after a
+    loop with >= 90% clean, "Speed up when clean"), Wait for me (the song holds at each note until it's played),
+    Click (beat + a counted-in bar each loop); sides show loop number, clean % per loop as dots, trouble spots;
+    "Play it for score" goes to the normal game. The mockup's board is a flat canvas stand-in for game3d.js. To build:
+    slowed audio needs the server (ffmpeg atempo, cached like `shift`), part detection for automatic tabs is new.
+  - Practice built in the real game (user: "I want the same look at the real game though", "Yes, build it"). Entry:
+    Practice on the title (`#arc-practice`) or Play | Practice by the Play button (`#arc-mode`, `arcade.mode`); startGame
+    sets `game.pr` (newPractice) and hands off to `startPractice` (no 3-2-1: `practiceGo` counts in a bar of clicks when
+    Click is on, `game.countdown` shows the beats). No score, multiplier or record (`multiplier()` is 1, the HUDs skip the
+    score, endGame returns before results / bests / game checks); the calls (Perfect/Good/Miss) stay. Strip `#pr-hud`
+    (fixed, 112 px; `body.game-on.practice .tab-body` stops above it): canvas timeline (note density, bar numbers, loop,
+    playhead; click = move, drag across bars = loop, drag a loop end), transport, status / loop dots (green >= 90%,
+    amber >= 70%) / most-missed bars, speed 50/75/90/100, Speed up when clean (+5% after a >= 90% loop), Wait for me,
+    Click; kept in `encore-practice`. Moving (`practiceSeek`) stops, clears results from there (`practiceReset`) and
+    counts in again. Wait for me stops the audio on the note's time and `practiceHeld` (the listen loop's not-playing
+    branch) takes a pluck plus that pitch (any pluck for a dead note, any chord note for a chord), then plays on.
+    Speed: `/api/audio?speed=` (50-100) through `shifted()` (atempo, chained below 0.5x for raised songs; cached in
+    SHIFT_DIR); the page swaps in slowed buffers and `player.rate` (song s per audio s) scales `currentTime`, `duration`,
+    `play`'s offsets, `tabTime`'s output delay, and gameListen's calibration / reading delays (`sc`). Light cues fall
+    back to none when slowed. Parts (Verse/Chorus) not done: ↑/↓ move 4 bars.
+    Tested on a library copy (port 7871, Hysteria, simulated input: an oscillator stream): practice starts on both
+    boards, keys / loop / speed 75% (107 MB WAV, ~0.5 s server) / looping with loop count and dots, Wait for me waited
+    on each note and went on after the right pitch (a dead note after any pluck). Not tried on a real bass yet.
+  - Stage 2, the Library in Encore (user: "Yes, start the Library"; mockup design/game-mockups/library.html). Title menu:
+    Play · Practice · Library · Add songs · Settings (Add songs opens the Library, then Track Splitter's upload dialog).
+    `#arc-library`: every song (with or without versions), Recent / A–Z / Artist (artists as headings with ⋯ =
+    artistMenu, in place of the sidebar; `encore-library-sort`), search like Track Splitter's (instruments too); a
+    row: cover, title (▶ / ❚❚ on the loaded one), versions, tab tags, added. ↑/↓ pick, Enter listens, double-click
+    listens, Esc back; a refresh comes back to it (`encore-place`). Panel: cover, title, ⋯ = songMenu (edit, trim,
+    import, delete); Versions (click listens / play-pause, Redo, Trash, Trim, + New version = openUpload(song)); Tab
+    with Bass | Guitar: Make the bass tab (`libMakeTab`, like song select's), Import tab (openImport), .gp5;
+    Play in Encore / Practice open song select with the song picked and the mode set. Job strip from state.job
+    (`renderJob` calls `renderLibJob`; Stop is a `.stop-job`). Player bar mirrors Track Splitter's (togglePlay, seekTo,
+    state.mode + applyMode, the master volume through `#volume`); hooks in renderPlayer / refreshLibrary re-render
+    it (guarded by `state.libReady`, set once the module has run). Add songs / Import tab dialogs over Encore:
+    `body.arcade dialog.fancy-dlg` swaps the violet for white and Encore's type (their full redesign is stage 4).
+  - .gp5 download: `GET /api/tab/gp5?song&tuning&source&instrument` takes the tab as /api/tab gives it (the page sends
+    the tab view's saved source and tuning) through `tabimport.write_gp5`: the tab's bars, beats per bar from the
+    tempo (n/4), notes on the nearest 16th, held notes tied over, rests in gaps, dead notes dead, "h"/"s" legato as a
+    hammer / slide on the note before; one tempo for the song. Read back with read_gp5: a test bar and Hysteria's
+    imported tab (1314 notes -> 173 bars, 1315 incl. one tie). Not opened in Guitar Pro itself yet.
+  - Tested on a library copy (port 7871): Library at 1512x900 and 1024x768, search / sort / artist headings,
+    listening (player bar time, mode, play / pause), Add songs and Import tab dialogs open over it, Play / Practice
+    to song select, the title menu, Track Splitter's page. Not tried: a real upload / split or Make the bass tab from
+    the Library (the job strip has only been seen in code), and the stage 3 bits (Open tab, Beat 1).
+  - Stage 3, the tab view in Encore (user: "Yes, start stage 3"). Not rebuilt: Library › Open tab (`libOpenTab`) loads
+    the song (the no-bass / no-guitar version, `gameVersion`), sets the tab instrument, opens Track Splitter's tab view
+    and adds `body.tab-encore`, which hides #arcade, the sidebar, the song list's header, the tab view's Game section
+    and its ✕, shows a ‹ back button (`#tab-back-lib` -> `closeEncoreTab`: closes the tab, back to the Library) and
+    restyles everything through Track Splitter's own CSS variables (dark, white for violet, Encore's type), the song's
+    cover blurred behind (`--tab-cover`), the player as a glass bar, pill buttons, the Bass input drawer centred on
+    the window (`--side-w: 0`). Encore's keys stand aside while it's open. Everything in it is the tab view as it was:
+    Imported / Automatic / Draft, Lines / Highway / Whole tab (+ Scroll), tuning, View, Beat 1 ◀ ▶, Edit, Bass input
+    (Hear myself, Tuner, Record), More (takes, import, redo, repeats). Colours drawn in canvases (a few violet
+    accents, e.g. the line playhead) are unchanged.
+    Tested on the copy (port 7871): Open tab from the Library, Lines / Highway / Whole tab, the Automatic source with
+    Beat 1, the Bass input drawer with a simulated input, Back to the Library; no console errors. Not tried: a
+    recorded take or editing notes inside Encore (same code as Track Splitter's).
+  - Stage 4 (user: "Yes, start stage 4"): the dialogs and retiring the old screen.
+    - Track Splitter's colour variables are swapped for all of Encore on `:root:has(> body.arcade)` (on :root because
+      canvases read them from document.documentElement): dark panels, white text, and Encore's warm amber `#c08457`
+      as the accent instead of violet (white wasn't usable: the playing note in Lines is the accent with white text).
+      Colours written as violet instead of the accent are overridden under body.arcade (Lines playhead, playing
+      note glow, slide / hammer marks, segmented buttons, instrument rows, repeat choices, the chosen import file)
+      and in a few canvases (Trim's waveform, Scroll's held-note tails and legato marks, the tab game's progress).
+    - Every Track Splitter dialog in Encore (`body.arcade dialog:not(.game-screen)`: Add songs, Import tab, Trim,
+      Your takes, Make repeats match, Edit song & versions, prompts) is a glass panel over a blurred screen like
+      Settings, light 24 px headings, spaced capitals for labels, pill buttons with the main one white; menus and
+      toasts in the same glass. Markup unchanged.
+    - Retired: `GET /` redirects to `/game` (so the old Track Splitter.app shortcut and bookmarks open Encore);
+      `/index.html` still serves the old screen for checking. Encore's title link "Back to Track Splitter" is now
+      Quit (asks, then POST /api/quit). The Library got "Open folder" (the sidebar's). Encore's texts that said "in
+      Track Splitter" now point to the Library. The old screen's code stays (the tab view, dialogs and player are
+      shared); the Mac shortcuts are unchanged (both now land in Encore; untested on the Mac).
+    - Tested on the copy (port 7871): / -> /game (307), Trim, Edit song, the song menu, the Quit prompt and the tab
+      view in the new colours (playhead amber), no console errors.
+  - Tab view in Encore, readable and tidier (user: "its hard to see the tab view with the current background. Also, can
+    we clean it up?"; Hysteria's grey cover washed it out): the cover is only a faint tint (brightness .16, a dark
+    vignette over it), the tab sits on one solid panel (#0c0c11, `.tab-stage`), notes' boxes are the panel's colour so
+    they cut the strings, strings / bars / numbers brighter, the current line a faint band, the next one dimmer.
+    Toolbar: segmented groups as Encore's text tabs (spaced capitals, white underline), ghost pills for the buttons
+    (Edit no longer white), the tuning as an underlined select, Bass input wide enough (`#tab-input` 13.5em). Selectors
+    are `body.tab-encore.arcade` where `body.arcade .segmented button.active` (white fill) would otherwise win.
+  - Getting around (user: "maybe a way to get there [the tab view] from the song select screen?", then "I don't want to
+    have to go back to the main menu to get to the library screen every time"): song select has View tab (`#arc-tab`,
+    or T; `selectOpenTab`) and a Library button (`#arc-to-library`, or L); the Library has Play (`#lib-to-select`, or P;
+    `libToSelect`), each keeping the picked song. The tab view's ‹ goes back where it was opened from (`lib.tabFrom`).
+    Back / Esc on song select and the Library go to the screen you came from (user: "when I click back from the library
+    when I came from song select, it brought me back to the main menu"): `arcade.backTo` per screen, `screenBack`;
+    going back clears the other's way back, so a second back reaches the title instead of bouncing. Checked:
+    title > select > library > (back) select > (back) title, and title > library > select > (Esc) library > (Esc) title.
+  - Keyboard focus lines (user: "I get the white lines when I use keyboard"): Chrome outlined the button or row last
+    clicked once a key was pressed. No focus outlines anywhere in Encore now (`.arc-screen`, the tab view in Encore,
+    the practice strip), and after a mouse click on a button the keys go back to the screen (`#lib-list` in the
+    Library, the song list on song select, the page in the tab view; not when a dialog opened), also when the panel
+    was drawn again under the click. Space no longer re-presses the clicked button. Checked with real clicks and keys.
+  - Only the Arcade board (user, mid-build: "get rid of the old game highways and just use arcade"): removed
+    drawGame3D, drawRockHud, the Board / Fretboard / Hand guide / Big moments settings (3D-only), the game3d.js script
+    tag and its CSS; `drawGame` sends every non-chord game to `drawArcade`. Guitar games with chords still use the 2D
+    board (`flat = false` path) because Arcade can't draw chords yet. game3d.js, board-lab.html and the hand-move code
+    (`handMoves`, used by the 2D board) are left in place. The old `track-splitter-game-board` pref is ignored.
+  - List view "all jank" (2026-11-06): the list-mode grid's middle row was a plain `1fr`, which grew to the whole
+    list's height, so Play and the key hints sat below the window (page ~80 px taller than the screen). Now
+    `minmax(0, 1fr)`; the right panel scrolls if it still can't fit, hides the empty song note, and the cover is 24vh
+    (16vh under 820 px tall). Rows: fixed tag (128 px) and score (116 px, `.arc-row-score` = best + record) columns so
+    played and unplayed rows line up; 44 px cover without the inner padding.
   - Long names "cut off in the cover menu": `fitText(node, min)` shrinks the song title (and Jump back in's) until no
     line is hidden (2-line clamp kept below the minimum); drawn covers use a smaller font past 24 characters.
   - Logo: the sidebar card is a dark card with the pick mark (inline SVG, `.encore-mark`) and the gold wordmark (was
@@ -2590,3 +2710,82 @@ progessing the new one, just do a ring on the outside").
   saved the score as a best and stars from its accuracy). Results then say "Not saved: you stopped early" (with your
   best, if any); a finished song is unchanged. Checked on the library copy: quit from pause → no record, the saved
   bests and records untouched.
+- "How can we improve the game view? I feel like it's still pretty basic" (2026-11-06). Of six ideas offered (timing
+  feedback, results breakdown, board reacting to the music, Encore phrases, intro / ending moments, crowd sound) the user
+  picked "3/4/5". Mockup first: `design/game-mockups/moments.html` (served by `.claude/launch.json` "mockups", port 7881),
+  built on arcade.html with the game's picks. Options: Beat (Off / Glow: light rising in the glass on kicks, a flick from
+  the top on snares / Edge: the board's edge flashes), Big moments (rim lit, haze, fuller mesh, a flash and band on the
+  way in), Landings (a ring of light from the cursor and every string lit on a note after a 0.8 s gap); Encore phrases
+  (2-bar gold phrases as Gold notes / Lane / Both, each fills half a meter Under board or Under score; full, Encore runs
+  4 bars on its own: gold board and outline, 8× badge, ENCORE banner, "+N ENCORE BONUS" after); Intro (Card where the
+  score goes, or Big title before the board; Board opens from the cursor on the count-in); Ending (Song complete /
+  Full combo over the dimmed board, score counting up, See results). Kicks / snares / big moments are faked from the
+  beat grid and note density; in the game they'd come from `lights.py`'s cues. Waiting on the user's picks.
+  User: "I like the bar under the score, we may need to clean it up though". It had crowded the record and sat on the
+  board's edge, with ENCORE / READY labels out to the sides and a width that moved with the score. Now it's the plaque's
+  last row: two slim segments (one per phrase) under the score's column, the plaque laid out for the widest score (raised
+  12 px to fit); no side labels: the tier line reads ENCORE READY (pulsing) when full and ENCORE · DOUBLE POINTS during
+  Encore, then goes back to the record tier. Under score is the mockup's default now.
+- Picks for the game (2026-11-06): Beat Glow, Gold notes, Big moments, Landings, Board opens, the ending moment, the
+  meter under the score. Intro: the user liked Card "but I also like how the board appeared on the big title comes in
+  without the countdown. One of my complaints before was that it just started from the first note and was hard to time.
+  Maybe show the song info where the score is and transition into the score when the song is about to start". So in the
+  mockup: the card sits where the score goes, the board opens on the count-in's first beat and the first notes glide in
+  during the count, the big 3-2-1 over the board is gone (the cursor's badge counts 4, 3, 2, 1 on the beats, a ring
+  going out and the line flashing), and on the last beat the cover flies to the record's spot and rounds into it while
+  the words lift away and the score fades in.
+  The card-to-score hand-over had to change (user picked "Card to score" as the tweak). Mockup options under "Card to
+  score": Sleeve (default: the record slides half out of the cover like vinyl from its sleeve, then shrinks into the
+  plaque's record while the sleeve fades; 2 beats), Flip (the cover shrinks to the record's place and turns over, the
+  record on its back), Morph (each line goes to its place: cover to record, title to the score, artist to the tier line),
+  Shrink (the first version, 1 beat). The intro draws the plaque's own record (`drawRec`, `plaquePos`).
+  User picked Flip ("Flip"); it's the mockup's default now. Asked how often Encore triggers: the mockup's phrases are
+  placed by hand (once per 24 s passage); proposed for the game: a gold phrase about every 8 bars on busier stretches with
+  a clear start and end, two to fill the meter, a missed note voids the phrase -> about every 16-20 bars when playing
+  well, ~2-4 times a song (not yet confirmed).
+  "Can we make the score show a little sooner?": with Flip the score now fades in over 30-65% of the hand-over (was the
+  last 20%), alongside the cover as it reaches the record's place; the plaque's own record stays hidden until the flipped
+  cover lands (92%), so there's never two records.
+- "Can we remove the double points text and then build" (2026-11-06): the mockup lost DOUBLE POINTS (the banner has no
+  line under ENCORE; the tier line shows the record during Encore), then it went into the game (drawArcade):
+  - Encore phrases: `encorePlan(d)` per song (cached on the tab data): in each 8 bars from the 3rd, the 2 bars with the
+    most notes (>= 4) are a gold phrase; Baby (184 s, 79 bars) gets 10. `game.enc` (Arcade board only: not the tab view,
+    guitar chords' board or practice): phrase states (done / broken by a miss or a messy note / skip: before a later start
+    or overlapping Encore), the meter (half a phrase each), `on` {t0, t1}: Encore from the bar after the meter fills, 4
+    bars. `encoreTick(now)` after each `judge`; every score goes through `addScore(pts, now)` (x2 in Encore, its extra
+    kept as the bonus). Note: records come from `perfectScore`, which doesn't count Encore, so Encore makes them a bit
+    easier to reach.
+  - Look as in the mockup: gold keycaps (warm fill, gold rim and glow, a glint), the board and its outline gold in Encore
+    (x4's blue gives way), the badge doubled (1× reads 2×), ENCORE over the score (no sub line), "+N ENCORE BONUS" after,
+    a gold flare and motes into the meter when a phrase is done; the meter is the plaque's last row (plaque 12 px higher),
+    ENCORE READY on its tier line while full.
+  - Reacting to the music: big moments (a big cue in the last 12 s while the level stays > 0.45: rim lit, haze, fuller
+    mesh; a flash and band as it comes in) and landings (`plan.land`: a note after 0.8 s with nothing ringing; when hit, a
+    ring from the cursor and every string lit). Kicks and snares lighting the glass were built, then taken out (user: "the
+    board flashing to the song is distracting"; off in the mockup too).
+  - Intro (`startGame`, `game.intro`, `introCard()`): the card (the song's picture from /api/cover, else a drawn cover in
+    coverEl's hues; title, artist, difficulty, best) for 1.8 s with `game.countdown` = 9 (nothing judged), then 4 beats at
+    the song's tempo (median bar / 4, 0.4-0.75 s; timed from the start, not chained timeouts) while the board opens from
+    the cursor and the tab glides in (drawArcade draws an earlier time), the badge counting 4-3-2-1 (also 3-2-1 after a
+    pause; the big numbers over the board are gone), the last two beats flipping the cover into the record. The tab view
+    and guitar chords keep the old 3-2-1.
+  - Ending: once every note's judged and the last has ended (+0.5 s), or the song stops then (`game.songEnded`: the board
+    holds its last frame; Baby's audio ends 2 s after its last note, which used to end the game first), SONG COMPLETE /
+    FULL COMBO (all hits, nothing messy) over the dimmed board, the score counting up with its record, See results; a
+    click or Space (pauseGame) or 6 s goes to the results.
+  - Tested on a library copy (Baby and Flower Power Madness, port 7883) with a simulated Scarlett playing Baby's bass-only
+    track: intro card and opening, gold phrases (broken ones turning plain), hits and holds scoring, Encore forced by
+    filling the meter (gold board, banner, 2× badge, meter draining, +3,200 bonus), the ending from a late start (moment,
+    then the results by themselves, finished), practice unchanged; no console errors but the service worker's. Not yet
+    played with a real bass; a phrase completing on its own wasn't caught (the simulated input slips now and then).
+
+## Open ideas / to do
+
+- Windows polish: make the
+  desktop shortcut install package updates like the Mac one, use an NVIDIA GPU (needs
+  the CUDA build of torch; the default Windows build is CPU-only).
+- Playlists / practice sets that pull songs from any artist.
+- The user once asked for "filters": interpreted as folders; filtering the song list
+  (by instrument removed, HQ, etc.) may still be wanted.
+- Mac-only paths (app shortcut, MPS fallback, certificate fix) were written on Windows;
+  they have been reported working on Mac but have no automated checks.

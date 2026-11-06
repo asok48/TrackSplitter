@@ -1074,21 +1074,26 @@
   .arc-tune-s.live { background: rgba(255, 245, 230, .07); border-radius: 6px 6px 0 0; }
   #arc-panel .arc-input select { flex: 1; max-width: none; }
   #arc-panel .arc-input .btn { margin-left: auto; }
-  #arc-select.list-mode { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); grid-template-rows: auto 1fr auto; column-gap: 36px; }
+  /* minmax(0, 1fr): a plain 1fr row grew to the list's full height and pushed Play and the hints off the bottom */
+  #arc-select.list-mode { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 36px; }
   #arc-select.list-mode .arc-top, #arc-select.list-mode .arc-foot { grid-column: 1 / -1; }
   #arc-select.list-mode .arc-carousel { display: none; }
-  #arc-select.list-mode .arc-panel { grid-template-columns: 1fr; align-items: start; align-content: start; gap: 18px; padding: 24px 32px 0 0; margin: 0; }
+  #arc-select.list-mode .arc-panel { grid-template-columns: 1fr; align-items: start; align-content: start; gap: 18px; padding: 18px 32px 12px 0; margin: 0;
+    min-height: 0; overflow-y: auto; scrollbar-width: none; }
   #arc-select.list-mode .arc-now h1 { font-size: 40px; }
+  #arc-select.list-mode .arc-song-note:empty { display: none; }
   .arc-list { overflow-y: auto; padding: 18px 0 12px 32px; outline: none; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
-  .arc-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto 84px auto; align-items: center; gap: 14px; padding: 6px 14px 6px 6px; border-radius: 6px;
+  /* Fixed tag and score columns so every row lines up, played or not */
+  .arc-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 128px 116px; align-items: center; gap: 14px; padding: 6px 14px 6px 6px; border-radius: 6px; flex: none;
     border: 1px solid transparent; background: none; color: #fff; text-align: left; font-family: var(--arc-font); cursor: pointer; }
   .arc-row:hover { background: rgba(255, 240, 220, .05); }
   .arc-row.on { background: linear-gradient(90deg, rgba(245, 158, 11, .22), rgba(245, 158, 11, .04)); border-color: rgba(245, 158, 11, .6); }
-  .arc-row .arc-cover { width: 52px; --card: 52px; border-radius: 6px; padding: 4px; box-shadow: none; }
+  .arc-row .arc-cover { width: 44px; --card: 44px; border-radius: 6px; padding: 0; box-shadow: none; }
   .arc-row .arc-cover-title, .arc-row .arc-cover-artist { display: none; }
   .arc-row-title { font-size: 18px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .arc-row-artist { font-size: 14px; font-weight: 600; color: #a8a29e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .arc-row-tags { display: flex; gap: 4px; }
+  .arc-row-tags { display: flex; gap: 4px; justify-content: flex-end; }
+  .arc-row-score { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
   .arc-row-tags i { font-style: normal; font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px;
     background: rgba(255, 240, 220, .08); color: #d6c7b0; }
   .arc-row-tags i.none { color: #78716c; }
@@ -1096,8 +1101,12 @@
   .arc-row-best { text-align: right; font-size: 15px; font-weight: 700; color: #a8a29e; font-variant-numeric: tabular-nums; }
   /* List view: the picked song's cover fills the panel beside the list (it was mostly empty) */
   .arc-now-art { display: none; }
-  #arc-select.list-mode .arc-now-art { display: block; width: min(100%, 30vh); margin-bottom: 18px; }
-  #arc-select.list-mode .arc-now-art .arc-cover { --card: min(440px, 30vh); width: 100%; border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .6); }
+  #arc-select.list-mode .arc-now-art { display: block; width: min(100%, 24vh); margin-bottom: 16px; }
+  #arc-select.list-mode .arc-now-art .arc-cover { --card: min(440px, 24vh); width: 100%; border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .6); }
+  @media (max-height: 820px) {   /* a smaller cover keeps Play on screen at ~1024x768 */
+    #arc-select.list-mode .arc-now-art { width: min(100%, 16vh); }
+    #arc-select.list-mode .arc-now-art .arc-cover { --card: min(440px, 16vh); }
+  }
   .arc-list-empty { color: #a8a29e; padding: 40px 0; font-size: 17px; }
   /* Song select and loading, modern: the song's cover blurred across the background, chips for difficulty,
      light glass buttons instead of metal plates */
@@ -1134,6 +1143,248 @@
   .arc-back:hover { color: #fff; background: none !important; }
   #arc-panel .arc-input { border-radius: 10px; }
   #arc-panel .arc-input select { border-radius: 6px; }
+  /* The tab view inside Encore (stage 3; Library › Open tab): Track Splitter's tab view, player bar and Bass input drawer
+     over Encore with its look: the sidebar and song list hidden, the picked song's cover blurred behind, white for violet */
+  body.arcade.tab-encore .arcade { display: none; }
+  /* Track Splitter's colours inside Encore (stage 4): dark, Encore's warm amber for the accent (white text stays readable
+     on it; the violet is gone), on :root so canvases that read the variables follow */
+  :root:has(> body.arcade) { --bg: #070504; --panel: rgba(12, 13, 20, .6); --panel-2: rgba(255, 255, 255, .05); --hover: rgba(255, 255, 255, .09);
+    --border: rgba(255, 255, 255, .1); --text: #f5f5f7; --muted: rgba(245, 245, 247, .6); --faint: rgba(245, 245, 247, .36);
+    --accent: #c08457; --accent-hover: #d9a074; --accent-soft: rgba(192, 132, 87, .18); --ring: 0 0 0 2px rgba(245, 245, 247, .35); }
+  body.tab-encore .app { font-family: var(--arc-font); grid-template-columns: 0 1fr; background: #070504; position: relative; }
+  body.tab-encore .app::before { content: ""; position: fixed; inset: -80px; z-index: 0; pointer-events: none; background: var(--tab-cover, none) center / cover;
+    filter: blur(80px) brightness(.25) saturate(1.2); }
+  body.tab-encore .app > * { position: relative; z-index: 1; }
+  body.tab-encore .sidebar, body.tab-encore .main-head, body.tab-encore #songs, body.tab-encore #job-banner, body.tab-encore #tab-section,
+  body.tab-encore #tab-btn, body.tab-encore #tab-close { display: none !important; }
+  body.tab-encore .tab-view { background: none; }
+  body.tab-encore .tab-head h2 { font: 200 30px var(--arc-font); letter-spacing: 0; }
+  body.tab-encore .tab-back { display: inline-grid; }
+  .tab-back { display: none; width: 38px; height: 38px; margin-right: 14px; place-items: center; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(255, 255, 255, .04); color: #f5f5f7; cursor: pointer; flex: none; vertical-align: middle; }
+  .tab-back:hover { background: rgba(255, 255, 255, .1); }
+  body.tab-encore .tab-titles { display: flex; align-items: center; }
+  body.tab-encore .btn { border-radius: 999px; border-color: rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .04); font-weight: 600; }
+  body.tab-encore .btn.primary { background: #f5f5f7; color: #0a0b10; border-color: transparent; }
+  body.tab-encore .btn.primary:hover:not(:disabled) { background: #fff; }
+  body.tab-encore .segmented { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .1); }
+  body.tab-encore .segmented button.active { background: #f5f5f7; color: #0a0b10; }
+  body.tab-encore .player { margin: 0 16px 16px; border-radius: 18px; border: 1px solid rgba(255, 255, 255, .09); background: rgba(12, 13, 20, .6);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
+  body.tab-encore .app { grid-template-rows: 1fr calc(var(--player-h) + 16px); }
+  /* Readable and tidier (user: "its hard to see the tab view with the current background. Also, can we clean it up?"):
+     the cover only as a faint tint at the edges, the tab on one solid dark panel (notes cut the strings as on paper, the
+     strings and bars brighter), the toolbar as Encore's text tabs and small ghost pills instead of boxed groups */
+  body.tab-encore .app::before { filter: blur(90px) brightness(.16) saturate(1.1); }
+  body.tab-encore .app::after { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 45%, rgba(6, 6, 9, .82) 40%, rgba(6, 6, 9, .45) 100%); }
+  body.tab-encore .tab-view { gap: 14px; padding: 20px 28px 14px; }
+  body.tab-encore .tab-head { align-items: center; }
+  body.tab-encore .tab-head h2 { font: 300 26px var(--arc-font); }
+  body.tab-encore .tab-stage { background: #0c0c11; border: 1px solid rgba(255, 255, 255, .07); border-radius: 20px; padding: 10px 18px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .5); }
+  body.tab-encore .tab-line, body.tab-encore .tab-line.cur { background: none; border: 0; box-shadow: none; padding: 10px 6px; }
+  body.tab-encore .tab-line.cur { background: rgba(255, 255, 255, .025); border-radius: 14px; }
+  body.tab-encore .tab-line.next { opacity: .6; }
+  body.tab-encore .tab-line .string { stroke: rgba(245, 245, 247, .22); }
+  body.tab-encore .tab-line .bar { stroke: rgba(245, 245, 247, .4); }
+  body.tab-encore .tab-line .beat { stroke: rgba(255, 255, 255, .06); }
+  body.tab-encore .tab-line .name { fill: rgba(245, 245, 247, .5); }
+  body.tab-encore .tab-line .note rect { fill: #0c0c11; }
+  body.tab-encore .tab-line .note text { fill: #f5f5f7; font-family: var(--arc-font); font-weight: 600; }
+  body.tab-encore .tab-line .note.done text { fill: rgba(245, 245, 247, .45); }
+  body.tab-encore .tab-line .note.editable:hover rect { fill: rgba(255, 255, 255, .1); }
+  body.tab-encore .tab-tools { gap: 10px 26px; padding: 2px 2px 0; }
+  body.tab-encore.arcade .segmented { background: none; border: 0; padding: 0; gap: 16px; box-shadow: none; }
+  body.tab-encore.arcade .segmented button, body.tab-encore.arcade .segmented button.active { height: 30px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+    background: none; box-shadow: none; color: rgba(245, 245, 247, .45); font: 600 10.5px var(--arc-font); letter-spacing: .18em; text-transform: uppercase; }
+  body.tab-encore.arcade .segmented button:hover:not(:disabled) { color: #fff; background: none; }
+  body.tab-encore.arcade .segmented button.active { color: #fff; border-bottom-color: #fff; }
+  body.tab-encore .tab-tools .btn, body.tab-encore .tab-head .btn { height: 30px; padding: 0 14px; font: 600 10.5px var(--arc-font); letter-spacing: .16em; text-transform: uppercase; }
+  body.tab-encore .tab-tools .btn.primary { background: rgba(255, 255, 255, .04); color: #f5f5f7; border-color: rgba(255, 255, 255, .2); box-shadow: none; }
+  body.tab-encore .tab-tools .btn { max-width: none; white-space: nowrap; box-shadow: none; }
+  body.tab-encore #tab-input { width: 13.5em; }      /* fixed (its label changes), wide enough for the spaced capitals */
+  body.tab-encore .tab-tools select { height: 30px; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .2); border-radius: 0; background: none; padding: 0 4px;
+    font: 300 14px var(--arc-font); }
+  body.tab-encore .tab-sync { gap: 6px; }
+  body.tab-encore .player .segmented button { height: 34px; }
+  body.tab-encore { --side-w: 0px; }                   /* the Bass input drawer centres on the whole window */
+  body.tab-encore .input-bar { bottom: calc(var(--player-h) + 26px); }
+  body.tab-encore #cover { background: rgba(255, 255, 255, .06); color: #f5f5f7; box-shadow: none; }
+  body.tab-encore .tab-more, body.tab-encore .input-bar, body.tab-encore .menu { background: rgba(14, 15, 22, .97); border-color: rgba(255, 255, 255, .12); backdrop-filter: blur(20px); }
+  /* Library (Encore): Track Splitter's songs in the song select's look; a player bar of glass at the bottom */
+  #arc-library { display: flex; flex-direction: column; }
+  #arc-library.hidden { display: none; }
+  #arc-library .arc-top { padding-top: 26px; }
+  .lib-count { font: 600 10.5px var(--arc-font); letter-spacing: .24em; text-transform: uppercase; color: var(--arc-faint); margin-top: 6px; white-space: nowrap; }
+  #arc-library .arc-top-tools .arc-search { width: clamp(150px, 16vw, 240px); }
+  #lib-add, .arc-switch { white-space: nowrap; }
+  .lib-caps { font: 600 10.5px var(--arc-font); letter-spacing: .24em; text-transform: uppercase; color: var(--arc-faint); }
+  .lib-job { position: relative; z-index: 3; display: flex; align-items: center; gap: 14px; margin: 14px 32px 0; padding: 10px 16px; border: 1px solid var(--arc-line);
+    border-radius: 12px; background: rgba(12, 13, 20, .55); backdrop-filter: blur(18px); font: 300 14px var(--arc-font); }
+  .lib-job-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
+  .lib-job-bar { flex: 0 0 180px; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+  .lib-job-bar i { display: block; height: 100%; width: 0; background: #fff; box-shadow: 0 0 10px rgba(var(--arc-mood), .9); transition: width .4s; }
+  .lib-job-step { color: var(--arc-dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .lib-body { position: relative; z-index: 3; flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 430px); column-gap: 36px; padding-right: 32px; }
+  .lib-list { overflow-y: auto; padding: 14px 0 18px 32px; outline: none; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .15) transparent; }
+  .lib-group { display: flex; align-items: center; gap: 12px; margin: 22px 0 6px 6px; }
+  .lib-group:first-child { margin-top: 4px; }
+  .lib-group h3 { margin: 0; font: 300 20px var(--arc-font); }
+  .lib-group .n { color: var(--arc-faint); font: 300 13px var(--arc-font); }
+  .lib-group .pr-icon { width: 28px; height: 28px; opacity: 0; }
+  .lib-group:hover .pr-icon, .lib-group .pr-icon:focus-visible { opacity: 1; }
+  .lib-row { position: relative; display: grid; grid-template-columns: 44px minmax(150px, 1.2fr) minmax(0, 1fr) 92px 96px; align-items: center; gap: 16px;
+    padding: 6px 14px 6px 6px; border-radius: 10px; cursor: pointer; }
+  .lib-row:hover { background: rgba(255, 255, 255, .04); }
+  .lib-row.on { background: rgba(255, 255, 255, .07); }
+  .lib-row.on::before { content: ""; position: absolute; left: -10px; top: 12px; bottom: 12px; width: 2px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px rgba(var(--arc-mood), .9); }
+  .lib-row .arc-cover { width: 44px; --card: 44px; border-radius: 6px; padding: 0; box-shadow: none; }
+  .lib-row .arc-cover-title, .lib-row .arc-cover-artist { display: none; }
+  .lib-row .t { font: 400 15px var(--arc-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lib-row .a { font: 400 13px var(--arc-font); color: var(--arc-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lib-list.by-artist .lib-row .a { display: none; }
+  .lib-row .playing { color: #9be7c4; margin-left: 6px; font-size: 11px; }
+  .lib-vers { display: flex; flex-wrap: wrap; gap: 2px 12px; font: 300 13px var(--arc-font); color: var(--arc-dim); }
+  .lib-vers span { white-space: nowrap; }
+  .lib-hq { font: 600 8.5px var(--arc-font); letter-spacing: .16em; color: #f6d878; margin-left: 5px; vertical-align: 2px; }
+  .lib-tags { display: flex; gap: 4px; justify-content: flex-end; }
+  .lib-tag { font: 600 9.5px var(--arc-font); letter-spacing: .18em; text-transform: uppercase; background: rgba(255, 255, 255, .06); color: var(--arc-dim); border-radius: 999px; padding: 3px 8px; }
+  .lib-tag.none { background: none; color: var(--arc-faint); }
+  .lib-when { text-align: right; color: var(--arc-faint); font: 300 13px var(--arc-font); }
+  .lib-empty { color: var(--arc-dim); padding: 40px 6px; font: 300 16px var(--arc-font); }
+  .lib-panel { overflow-y: auto; padding: 18px 0; scrollbar-width: none; display: flex; flex-direction: column; gap: 22px; }
+  .lib-now { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; gap: 20px; align-items: end; }
+  .lib-now .arc-cover { width: 132px; --card: 132px; border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .5); }
+  .lib-now h1 { margin: 0; font: 200 32px var(--arc-font); line-height: 1.08; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  .lib-now .by { margin-top: 6px; color: var(--arc-dim); font: 400 15px var(--arc-font); }
+  .lib-sec { border-top: 1px solid var(--arc-line); padding-top: 14px; }
+  .lib-sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .lib-sec-head > :last-child { margin-left: auto; }
+  .lib-ver { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 6px 0 12px; border-radius: 10px; cursor: pointer; }
+  .lib-ver:hover { background: rgba(255, 255, 255, .04); }
+  .lib-ver.on { background: rgba(255, 255, 255, .07); }
+  .lib-ver .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .lib-ver.on .dot { background: #fff; box-shadow: 0 0 8px rgba(var(--arc-mood), .9); }
+  .lib-ver .name { font: 300 16px var(--arc-font); }
+  .lib-ver .meta { color: var(--arc-faint); font: 300 12.5px var(--arc-font); }
+  .lib-ver .acts { margin-left: auto; display: flex; gap: 2px; opacity: 0; }
+  .lib-ver:hover .acts, .lib-ver.on .acts, .lib-ver .acts:focus-within { opacity: 1; }
+  .lib-ver .pr-icon { width: 30px; height: 30px; }
+  .lib-tabinfo { padding: 4px 0 2px 12px; font: 300 16px var(--arc-font); }
+  .lib-tabinfo small { display: block; color: var(--arc-faint); font: 300 12.5px var(--arc-font); margin-top: 2px; }
+  .lib-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0 0 12px; }
+  .lib-acts .btn, .lib-go .btn:not(.primary) { height: 34px; padding: 0 16px; font-size: 10.5px; }
+  .lib-go { display: flex; gap: 10px; align-items: center; margin-top: auto; padding-top: 6px; }
+  .lib-go .btn.primary { height: 46px; padding: 0 36px; font-size: 12px; }
+  .lib-player { position: relative; z-index: 4; display: grid; grid-template-columns: minmax(0, 280px) minmax(240px, 1fr) auto; align-items: center; gap: 28px; height: 82px;
+    margin: 0 16px 16px; padding: 0 26px; border-radius: 18px; background: rgba(12, 13, 20, .6); border: 1px solid var(--arc-line);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 20px 60px rgba(0, 0, 0, .45); font-family: var(--arc-font); }
+  .lp-now { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .lp-cover { width: 48px; height: 48px; flex: none; border-radius: 6px; overflow: hidden; background: rgba(255, 255, 255, .05); }
+  .lp-cover .arc-cover { width: 48px; --card: 48px; border-radius: 6px; padding: 0; box-shadow: none; }
+  .lp-cover .arc-cover-title, .lp-cover .arc-cover-artist { display: none; }
+  .lp-text { min-width: 0; }
+  .lp-title { font: 400 15px var(--arc-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lp-sub { font: 300 12.5px var(--arc-font); color: var(--arc-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lp-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+  .lp-transport { display: flex; align-items: center; gap: 12px; }
+  .lp-scrub { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 560px; font: 300 12px var(--arc-font); color: var(--arc-faint); font-variant-numeric: tabular-nums; }
+  .lp-seek, #lp-vol { flex: 1; -webkit-appearance: none; appearance: none; height: 3px; border-radius: 3px; cursor: pointer;
+    background: linear-gradient(90deg, #fff var(--fill, 0%), rgba(255, 255, 255, .14) var(--fill, 0%)); }
+  .lp-seek::-webkit-slider-thumb, #lp-vol::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(var(--arc-mood), .9); }
+  .lp-right { display: flex; align-items: center; gap: 24px; }
+  .lp-hear button:disabled { opacity: .3; cursor: default; }
+  .lp-vol { display: flex; align-items: center; gap: 8px; color: var(--arc-dim); }
+  #lp-vol { width: 80px; flex: none; }
+  @media (max-width: 1300px) {
+    .lib-row { grid-template-columns: 44px minmax(140px, 1.2fr) minmax(0, 1fr) 92px; }
+    .lib-when { display: none; }
+    .lp-vol { display: none; }
+    .lib-now { grid-template-columns: 104px minmax(0, 1fr) auto; } .lib-now .arc-cover { width: 104px; --card: 104px; }
+    .lib-now h1 { font-size: 26px; }
+  }
+  /* Track Splitter's Add songs / Import tab dialogs over Encore: its type, white instead of violet */
+  body.arcade dialog.fancy-dlg { font-family: var(--arc-font); background: rgba(12, 13, 20, .96); border-color: rgba(255, 255, 255, .12); }
+  body.arcade dialog.fancy-dlg::backdrop { background: rgba(5, 4, 3, .7); backdrop-filter: blur(16px); }
+  body.arcade .fancy-dlg .dropzone { border-color: rgba(255, 255, 255, .22); background: rgba(255, 255, 255, .02); }
+  body.arcade .fancy-dlg .dropzone:hover, body.arcade .fancy-dlg .dropzone.over { border-color: rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .05); }
+  body.arcade .fancy-dlg .toggle-chip:hover { border-color: rgba(255, 255, 255, .4); }
+  body.arcade .fancy-dlg .toggle-chip[aria-pressed=true] { background: #f5f5f7; color: #0a0b10; box-shadow: none; }
+  body.arcade .fancy-dlg .btn.primary { background: #f5f5f7; color: #0a0b10; box-shadow: none; }
+  body.arcade .fancy-dlg .import-text { color: #f5f5f7; }
+  body.arcade .fancy-dlg .import-text::placeholder { color: rgba(245, 245, 247, .3); }
+  body.arcade dialog.fancy-dlg { box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+  body.arcade .fancy-dlg .up-title h2 { font: 300 24px var(--arc-font); letter-spacing: 0; }
+  body.arcade .fancy-dlg .up-badge { background: rgba(255, 255, 255, .08); box-shadow: none; }
+  body.arcade .fancy-dlg .dz-icon { color: #f5f5f7; background: rgba(255, 255, 255, .08); box-shadow: none; }
+  body.arcade .fancy-dlg .dropzone:hover, body.arcade .fancy-dlg .dropzone.over { box-shadow: none; }
+  /* Every Track Splitter dialog in Encore (stage 4: Add songs, Import tab, Trim, Your takes, Make repeats match, Edit song,
+     prompts): a glass panel over the blurred screen like Settings, light headings, small spaced capitals for labels, pill
+     buttons (the main one white) */
+  body.arcade dialog:not(.game-screen) { font-family: var(--arc-font); color: #f5f5f7; background: rgba(12, 13, 20, .9); border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 20px; box-shadow: 0 30px 90px rgba(0, 0, 0, .6); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+  body.arcade dialog:not(.game-screen)::backdrop { background: rgba(5, 4, 3, .72); backdrop-filter: blur(18px); }
+  body.arcade dialog:not(.game-screen) .dlg-head h2 { font: 300 24px var(--arc-font); letter-spacing: 0; }
+  body.arcade dialog:not(.game-screen) .field > label:not(.switch), body.arcade dialog:not(.game-screen) .field > .label {
+    font: 600 10.5px var(--arc-font); letter-spacing: .22em; text-transform: uppercase; color: var(--faint); }
+  body.arcade dialog:not(.game-screen) .btn { border-radius: 999px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .04); color: #f5f5f7;
+    font: 600 11px var(--arc-font); letter-spacing: .18em; text-transform: uppercase; box-shadow: none; }
+  body.arcade dialog:not(.game-screen) .btn:hover:not(:disabled) { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .34); }
+  body.arcade dialog:not(.game-screen) .btn.primary { background: #f5f5f7; color: #0a0b10; border-color: transparent; }
+  body.arcade dialog:not(.game-screen) .btn.primary:hover:not(:disabled) { background: #fff; }
+  body.arcade dialog:not(.game-screen) .btn.danger { color: #ffb4b4; border-color: rgba(255, 140, 140, .3); background: rgba(255, 120, 120, .05); }
+  body.arcade dialog:not(.game-screen) .btn:disabled { opacity: .4; }
+  body.arcade dialog:not(.game-screen) .text-input, body.arcade dialog:not(.game-screen) select { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .14); }
+  body.arcade dialog:not(.game-screen) .icon-btn { color: rgba(245, 245, 247, .7); }
+  body.arcade .menu { font-family: var(--arc-font); background: rgba(14, 15, 22, .97); border-color: rgba(255, 255, 255, .12); backdrop-filter: blur(20px); }
+  body.arcade .toast { font-family: var(--arc-font); background: rgba(14, 15, 22, .95); border-color: rgba(255, 255, 255, .12); backdrop-filter: blur(20px); }
+  /* The violet that was written as colours rather than the accent, in Encore's amber / white */
+  body.arcade .tab-line .playhead { stroke: #f2d2b6; filter: drop-shadow(0 0 4px rgba(217, 160, 116, .9)); }
+  body.arcade .tab-line .note.playing rect { filter: drop-shadow(0 0 6px rgba(217, 160, 116, .8)); }
+  body.arcade .tab-line .lg { fill: #e8c3a2; } body.arcade .tab-line .lg-line { stroke: #e8c3a2; }
+  body.arcade ::selection { background: rgba(217, 160, 116, .35); }
+  body.arcade .segmented button.active { background: #f5f5f7; color: #0a0b10; box-shadow: none; }
+  body.arcade .inst-row.current { border-color: rgba(217, 160, 116, .6); background: rgba(217, 160, 116, .12); }
+  body.arcade .inst-kind.playing { background: rgba(217, 160, 116, .55); }
+  body.arcade .ui-ico, body.arcade .fancy-dlg .ui-ico { color: #f5f5f7; background: rgba(255, 255, 255, .08); }
+  body.arcade .repeat-way.chosen { background: rgba(217, 160, 116, .14); }
+  body.arcade .repeat-way .rw-badge, body.arcade .repeat-group .rg-head .rw-badge { color: #e8c3a2; }
+  body.arcade .import-chosen { border-color: rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .05); }
+  /* Practice (Encore): the strip along the bottom, the board above it */
+  body.game-on.practice .tab-body { bottom: 112px; }
+  .pr-hud { position: fixed; left: 0; right: 0; bottom: 0; z-index: 46; height: 112px; padding: 10px 28px 12px; display: flex; flex-direction: column; gap: 8px;
+    background: linear-gradient(rgba(7, 7, 12, .0), rgba(7, 7, 12, .92) 22%); color: #f5f5f7; font: 400 13px var(--arc-font); }
+  body:not(.game-on) .pr-hud { display: none; }
+  .pr-line { width: 100%; height: 46px; display: block; cursor: pointer; touch-action: none; }
+  .pr-row { display: flex; align-items: center; gap: 18px; min-width: 0; }
+  .pr-icon { width: 34px; height: 34px; border: 0; border-radius: 50%; background: none; color: rgba(245, 245, 247, .7); display: grid; place-items: center; cursor: pointer; flex: none; }
+  .pr-icon:hover { color: #fff; background: rgba(255, 255, 255, .07); }
+  .pr-badge { font: 600 9.5px var(--arc-font); letter-spacing: .24em; text-transform: uppercase; color: #0a0b10; background: #9be7c4; padding: 4px 9px; border-radius: 999px; flex: none; }
+  .pr-transport { display: flex; align-items: center; gap: 4px; flex: none; }
+  .pr-play { width: 40px; height: 40px; border: 0; border-radius: 50%; background: #f5f5f7; color: #0a0b10; display: grid; place-items: center; cursor: pointer;
+    box-shadow: 0 6px 24px rgba(245, 230, 211, .25); }
+  .pr-info { display: flex; align-items: center; gap: 14px; min-width: 0; font: 300 14px var(--arc-font); color: rgba(245, 245, 247, .75); white-space: nowrap; overflow: hidden; }
+  .pr-dots { display: flex; gap: 5px; }
+  .pr-dots i { width: 18px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .15); }
+  .pr-dots i.g { background: #9be7c4; } .pr-dots i.m { background: #f6d878; } .pr-dots i.b { background: #f8a1a1; }
+  .pr-trouble { color: rgba(245, 245, 247, .45); font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .pr-link { border: 0; background: none; padding: 0; color: rgba(245, 245, 247, .6); font: 600 10.5px var(--arc-font); letter-spacing: .2em; text-transform: uppercase; cursor: pointer; flex: none; }
+  .pr-link:hover { color: #fff; }
+  .pr-tools { margin-left: auto; display: flex; align-items: center; gap: 22px; flex: none; }
+  .pr-speed { display: flex; gap: 14px; }
+  .pr-speed button, .pr-sw { height: 30px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; color: rgba(245, 245, 247, .45); cursor: pointer;
+    font: 600 10.5px var(--arc-font); letter-spacing: .2em; text-transform: uppercase; white-space: nowrap; }
+  .pr-speed button:hover, .pr-sw:hover { color: #fff; }
+  .pr-speed button.active { color: #fff; border-bottom-color: #fff; }
+  .pr-speed button.loading { color: #9be7c4; animation: pr-pulse 1s ease-in-out infinite; }
+  @keyframes pr-pulse { 50% { opacity: .4; } }
+  .pr-sw { display: flex; align-items: center; gap: 8px; border: 0; }
+  .pr-sw i { width: 28px; height: 16px; border-radius: 999px; background: rgba(255, 255, 255, .14); position: relative; transition: background .2s; }
+  .pr-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .2s; }
+  .pr-sw.on { color: #fff; } .pr-sw.on i { background: #9be7c4; } .pr-sw.on i::after { left: 14px; }
+  @media (max-width: 1280px) { .pr-trouble, .pr-sw#pr-up { display: none; } .pr-tools { gap: 16px; } }
+  .arc-mode { margin-right: auto; }
   /* Pause, results and settings as full screens in the title's style (user: "make the rest of the game ui look
      more modern"): the song's cover blurred behind, big type, a text menu with the title's feel */
   dialog.game-screen.full { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0;
@@ -1226,14 +1477,6 @@
   .fader { position: fixed; inset: 0; z-index: 80; background: #050302; opacity: 0; pointer-events: none; transition: opacity .28s ease; }
   .fader.on { opacity: 1; pointer-events: auto; }
   @media (max-width: 800px) { .arc-load { grid-template-columns: 1fr; gap: 20px; } .arc-load-art { width: 220px; } }
-  /* The 3D board (static/game3d.js): its WebGL canvas with the HUD canvas over it */
-  .game3d { position: absolute; inset: 0; }
-  .game3d-gl, .game3d-hud { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  /* The 3D board's frame fades softly to dark at the edges (user: "make the general ingame UI better") */
-  .game3d { background: #070504; overflow: hidden; }
-  .game3d::after { content: ""; position: absolute; inset: 0; pointer-events: none;   /* soft edges: the frame fades to dark */
-    background: radial-gradient(120% 90% at 45% 55%, transparent 55%, rgba(5, 3, 2, .75) 100%); }
-  .game3d-gl { z-index: 1; } .game3d::after { z-index: 1; } .game3d-hud { z-index: 2; }   /* board, edge fade, HUD */
   /* The game's own screens (pause, results, settings, calibration) and its Pause button, in the rock
      style: dark metal plates with a bright top edge, heavy condensed type, amber for the main button */
   dialog.game-screen { font-family: var(--arc-font); border-radius: 6px; border: 2px solid #5c5348; color: #fff;
@@ -1492,6 +1735,9 @@
      (user, a screenshot: a white box round Play on the title) */
   .arc-screen .arc-item:focus-visible, .arc-screen .arc-car-card:focus-visible, .arc-screen .arc-row:focus-visible, .arc-screen .arc-diff:focus-visible,
   .arc-screen .arc-link:focus-visible { outline: none; }
+  /* No keyboard focus lines anywhere in Encore (user: "I get the white lines when I use keyboard": Chrome outlines the button
+     or row last clicked once a key is pressed); the picked song, the underlined tab and the cursor show where you are */
+  .arc-screen :focus-visible, body.tab-encore .app :focus-visible, .pr-hud :focus-visible { outline: none !important; box-shadow: none !important; }
   /* The splash when Encore opens (user: "can we also update the loading splash when you first open encore"): the brand
      and a light sweeping along a thin line, over the page while it loads, and on "Starting Track Splitter…" */
   .encore-splash { display: none; position: fixed; inset: 0; z-index: 90; flex-direction: column; align-items: center; justify-content: center; gap: 30px;
@@ -1619,7 +1865,7 @@
     <div class="songs" id="songs"></div>
     <section class="tab-view hidden" id="tab-view" aria-label="Bass tab">
       <div class="tab-head">
-        <div class="tab-titles"><h2 id="tab-title">Bass tab</h2><p id="tab-sub"></p></div>
+        <div class="tab-titles"><button type="button" class="tab-back" id="tab-back-lib" title="Back" aria-label="Back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><h2 id="tab-title">Bass tab</h2><p id="tab-sub"></p></div>
         <div class="tab-head-right">
           <div class="segmented" id="tab-instrument" role="group" aria-label="Instrument" title="Which part's tab: the bass, or the guitar (guitar tabs are imported)">
             <button type="button" data-instrument="bass" class="active">Bass</button>
@@ -1906,6 +2152,9 @@
         <nav class="arc-menu" id="arc-menu">
           <i class="arc-menu-bar" id="arc-menu-bar" aria-hidden="true"></i>
           <button type="button" class="arc-item big" id="arc-play">Play</button>
+          <button type="button" class="arc-item" id="arc-practice">Practice</button>
+          <button type="button" class="arc-item" id="arc-library-btn">Library</button>
+          <button type="button" class="arc-item" id="arc-add">Add songs</button>
           <button type="button" class="arc-item" id="arc-settings">Settings</button>
           <button type="button" class="arc-item small" id="arc-calib">Calibrate timing</button>
           <button type="button" class="arc-item small" id="arc-strcal">Calibrate strings</button>
@@ -1925,7 +2174,7 @@
       <span class="arc-hint"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Enter</kbd> pick</span>
       <span class="arc-foot-links">
         <button type="button" class="arc-link hidden" id="arc-icon" title="Installs Encore as an app with its own icon and window (Chrome)">Install Encore app</button>
-        <button type="button" class="arc-link" id="arc-app">Back to Track Splitter</button>
+        <button type="button" class="arc-link" id="arc-app" title="Stops Encore (and its processing); open it again from its icon">Quit</button>
       </span>
     </div>
   </section>
@@ -1945,6 +2194,7 @@
           <button type="button" data-view="covers" title="Covers">Covers</button>
           <button type="button" data-view="list" title="List">List</button>
         </div>
+        <button type="button" class="btn arc-switch" id="arc-to-library" title="Your songs, versions and tabs (L)">Library</button>
         <button type="button" class="btn arc-back" id="arc-select-settings" aria-label="Settings" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       </div>
     </div>
@@ -1961,6 +2211,7 @@
             <button type="button" data-instrument="guitar">Guitar</button>
           </div>
           <button type="button" class="btn hidden" id="arc-make">Make the bass tab</button>
+          <button type="button" class="btn hidden" id="arc-tab" title="The tab views, Beat 1, recording your own (T)">View tab</button>
         </div>
         <p class="arc-song-note" id="arc-song-note"></p>
       </div>
@@ -1977,10 +2228,60 @@
           <span class="arc-tune-label" id="arc-tune-label">Tuning</span>
           <div class="arc-tune-strings" id="arc-tune-strings"></div>
         </div>
-        <div class="arc-actions"><button type="button" class="btn primary" id="arc-go">Play</button></div>
+        <div class="arc-actions">
+          <div class="arc-sort arc-mode" id="arc-mode" role="group" aria-label="Play or practise"><button type="button" data-mode="play">Play</button><button type="button" data-mode="practice" title="No score: move around the song, loop a part, slow it down">Practice</button></div>
+          <button type="button" class="btn primary" id="arc-go">Play</button>
+        </div>
       </div>
     </div>
     <div class="arc-foot arc-hint" id="arc-hint"></div>
+  </section>
+  <!-- The Library (Track Splitter moved into Encore; mockup design/game-mockups/library.html): the songs, the picked one's
+       versions and tab, and a player bar -->
+  <section class="arc-screen hidden" id="arc-library" aria-label="Library">
+    <div class="arc-select-bg" id="lib-bg" aria-hidden="true"></div>
+    <div class="arc-top">
+      <button type="button" class="btn arc-back" id="lib-back" aria-label="Back" title="Back (Esc)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <h2 class="arc-display">Library</h2>
+      <span class="lib-count" id="lib-count"></span>
+      <button type="button" class="pr-link" id="lib-folder" title="Show the library's folder in Finder">Open folder</button>
+      <div class="arc-top-tools">
+        <input type="search" class="arc-search" id="lib-search" placeholder="Search songs, artists, instruments" aria-label="Search the library">
+        <div class="arc-sort" id="lib-sort" role="group" aria-label="Sort">
+          <button type="button" data-sort="recent">Recent</button>
+          <button type="button" data-sort="title">A–Z</button>
+          <button type="button" data-sort="artist">Artist</button>
+        </div>
+        <button type="button" class="btn arc-switch" id="lib-to-select" title="Song select, with this song picked (P)">Play</button>
+        <button type="button" class="btn primary" id="lib-add">+ Add songs</button>
+      </div>
+    </div>
+    <div class="lib-job hidden" id="lib-job">
+      <span class="lib-caps">Working</span><span class="lib-job-what" id="lib-job-what"></span>
+      <span class="lib-job-bar"><i id="lib-job-bar"></i></span><span class="lib-job-step" id="lib-job-step"></span>
+      <button type="button" class="pr-link stop-job" title="Stop">Stop</button>
+    </div>
+    <div class="lib-body">
+      <div class="lib-list" id="lib-list" tabindex="0" role="listbox" aria-label="Songs: up and down to browse"></div>
+      <div class="lib-panel" id="lib-panel"></div>
+    </div>
+    <div class="lib-player" id="lib-player">
+      <div class="lp-now"><div class="lp-cover" id="lp-cover"></div><div class="lp-text"><div class="lp-title" id="lp-title">Nothing playing</div><div class="lp-sub" id="lp-sub">Pick a version to listen</div></div></div>
+      <div class="lp-mid">
+        <div class="lp-transport">
+          <button type="button" class="pr-icon" id="lp-back" title="Back 10 s" aria-label="Back 10 seconds"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+          <button type="button" class="pr-play" id="lp-play" aria-label="Play"></button>
+          <button type="button" class="pr-icon" id="lp-fwd" title="Forward 10 s" aria-label="Forward 10 seconds"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+        </div>
+        <div class="lp-scrub"><span id="lp-cur">0:00</span><input type="range" class="lp-seek" id="lp-seek" min="0" max="1000" value="0" aria-label="Position"><span id="lp-dur">0:00</span></div>
+      </div>
+      <div class="lp-right">
+        <div class="arc-sort lp-hear" id="lp-hear" role="group" aria-label="What to hear">
+          <button type="button" data-mode="without">Without</button><button type="button" data-mode="both">Original</button><button type="button" data-mode="only">Only</button><button type="button" data-mode="mine" class="hidden" title="The song without the bass, plus your recorded bass">My bass</button>
+        </div>
+        <label class="lp-vol" title="Volume"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg><input type="range" id="lp-vol" min="0" max="100" aria-label="Volume"></label>
+      </div>
+    </div>
   </section>
   <section class="arc-screen hidden" id="arc-starting" aria-label="Starting">
     <div class="arc-load arc-starting">
@@ -2011,6 +2312,29 @@
 <div class="fader" id="fader"></div>
 
 <!-- Add songs / new version -->
+<!-- Encore's practice strip (game.pr): the song's bars to move around in and loop, speed, Wait for me, Click -->
+<div class="pr-hud hidden" id="pr-hud">
+  <canvas class="pr-line" id="pr-line" aria-label="The song: click to move there, drag across bars to loop them"></canvas>
+  <div class="pr-row">
+    <button type="button" class="pr-icon" id="pr-menu" title="Menu (Esc)" aria-label="Menu"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="16" width="16" height="2" rx="1"/></svg></button>
+    <span class="pr-badge">Practice</span>
+    <div class="pr-transport">
+      <button type="button" class="pr-icon" id="pr-back" title="Back a bar (←, ↑ four)" aria-label="Back a bar"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14L7.5 12z"/><rect x="5" y="5" width="2.4" height="14" rx="1"/></svg></button>
+      <button type="button" class="pr-play" id="pr-play" aria-label="Play or stop"></button>
+      <button type="button" class="pr-icon" id="pr-fwd" title="Forward a bar (→, ↓ four)" aria-label="Forward a bar"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14l10.5-7z"/><rect x="16.6" y="5" width="2.4" height="14" rx="1"/></svg></button>
+    </div>
+    <div class="pr-info"><span id="pr-status"></span><span class="pr-dots" id="pr-dots"></span><span class="pr-trouble" id="pr-trouble"></span></div>
+    <button type="button" class="pr-link hidden" id="pr-noloop" title="Stop looping (Delete)">Clear loop</button>
+    <div class="pr-tools">
+      <div class="pr-speed" id="pr-speed" role="group" aria-label="Speed" title="Slower plays the song slower at the same pitch (made the first time, a few seconds)">
+        <button type="button" data-speed="50">50%</button><button type="button" data-speed="75">75%</button><button type="button" data-speed="90">90%</button><button type="button" data-speed="100">100%</button>
+      </div>
+      <button type="button" class="pr-sw" id="pr-up" title="After a loop with 90% of its notes clean, 5% faster, up to 100%"><i></i>Speed up when clean</button>
+      <button type="button" class="pr-sw" id="pr-wait" title="The song stops on each note until you play it"><i></i>Wait for me</button>
+      <button type="button" class="pr-sw" id="pr-click" title="A click on each beat, and a bar counted in whenever it starts"><i></i>Click</button>
+    </div>
+  </div>
+</div>
 <dialog id="upload-dlg" class="fancy-dlg" aria-labelledby="upload-title">
   <form method="dialog" id="upload-form">
     <div class="dlg-head">
@@ -2239,21 +2563,9 @@
     <div class="dlg-body settings-body">
       <div class="set-group">Game</div>
       <div class="set-row"><span>Play on</span>
-        <div class="segmented" id="game-view" role="group" aria-label="Play on" title="Board: the Rock Band-style board. Tab: the tab's lines, notes turning green or red as you play them">
+        <div class="segmented" id="game-view" role="group" aria-label="Play on" title="Board: the tab glides under a still cursor, numbers on keycaps. Tab: the tab's lines, notes turning green or red as you play them">
           <button type="button" data-view="board">Board</button>
           <button type="button" data-view="tab">Tab</button>
-        </div></div>
-      <div class="set-row" id="game-board-row"><span>Board</span>
-        <div class="segmented" id="game-board" role="group" aria-label="Board" title="3D: notes come from the distance. Flat: every note the same size, straight lanes, easiest to read. Arcade: the tab glides under a still cursor, numbers on keycaps, the background moving with the song">
-          <button type="button" data-board="3d">3D</button>
-          <button type="button" data-board="flat">Flat</button>
-          <button type="button" data-board="arcade">Arcade</button>
-        </div></div>
-      <div class="set-row" id="game-fretboard-row"><span>Fretboard</span>
-        <div class="segmented" id="game-fretboard" role="group" aria-label="Fretboard" title="The 3D board's wood: maple with fret wires and dot inlays, or a dark board with light bar lines">
-          <button type="button" data-fretboard="glass">Glass</button>
-          <button type="button" data-fretboard="maple">Maple</button>
-          <button type="button" data-fretboard="dark">Dark</button>
         </div></div>
       <div class="set-row"><span>Difficulty</span>
         <div class="segmented" id="game-difficulty" role="group" aria-label="Difficulty" title="Easier levels leave out quick notes: Easy about one a beat, Medium 8th notes, Hard 16ths, Expert everything">
@@ -2270,18 +2582,9 @@
           <button type="button" data-timing="normal">Normal</button>
           <button type="button" data-timing="tight">Tight</button>
         </div></div>
-      <div class="set-row"><span>Hand guide</span>
-        <div class="segmented" id="game-hand" role="group" aria-label="Hand guide" title="A small neck at the bottom left: where your hand should be, the next notes as dots, and where it moves to before a shift">
-          <button type="button" data-hand="on">On</button><button type="button" data-hand="off">Off</button>
-        </div></div>
       <div class="set-row"><span>Virtual drop D</span>
         <div class="segmented" id="game-vdrop" role="group" aria-label="Virtual drop D" title="For drop D songs with your bass in standard: play the tab's frets on your E string; Hear myself lowers those notes a whole step and the game scores them as the drop D notes">
           <button type="button" data-vdrop="on">On</button><button type="button" data-vdrop="off">Off</button>
-        </div></div>
-      <div class="set-row"><span>Big moments</span>
-        <div class="segmented" id="game-big" role="group" aria-label="Big moments" title="Big lighting moments when a chorus or drop comes in, on stabs and on your multiplier: blasts of light, a white flash, sparks. Off by default (they made it harder to play)">
-          <button type="button" data-big="on">On</button>
-          <button type="button" data-big="off">Off</button>
         </div></div>
       <div class="set-group">Sound</div>
       <div class="set-row"><span>Mistake sound</span>
@@ -2457,7 +2760,6 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js"}}</script>
-<script type="module" src="/game3d.js"></script>
 <script>
 (() => {
   const $ = (sel) => document.querySelector(sel);
@@ -2566,6 +2868,7 @@
     $('#artist-options').replaceChildren(...state.library.artists.map((a) => el('option', { value: a })));
     renderSidebar();
     renderSongs();
+    if (state.libReady) renderLibrary();
   }
 
   function navItem(view, label, count, leading) {
@@ -2722,12 +3025,12 @@
   // shift: semitones the song is raised by (1 = a half-step-down song on a standard bass).
   // mine: the user's recorded takes as one track on the song's timeline, or null.
   const player = { buffers: null, original: null, mine: null, originalScale: 1, sources: [], playing: false, startedAt: 0,
-                   offset: 0, wantPlay: false, token: 0, headroom: 1, shift: 0 };
+                   offset: 0, wantPlay: false, token: 0, headroom: 1, shift: 0, rate: 1 };   // rate: Encore practice's slowed audio (song s per audio s)
   const seek = $('#seek');
   let seeking = false;
 
   const isPaused = () => !player.playing;
-  const duration = () => (player.buffers ? Math.min(player.buffers[0].duration, player.buffers[1].duration) : 0);
+  const duration = () => (player.buffers ? Math.min(player.buffers[0].duration, player.buffers[1].duration) * player.rate : 0);
   // The audio clock moves in steps (~23 ms with the 'playback' latency setting: in 153 of
   // 240 frames it hadn't moved), so the Highway and game scrolled in jumps at 120 Hz (user:
   // "a little choppier"). Between steps it's carried on by the screen's clock: never
@@ -2752,7 +3055,7 @@
     else if (dt > 0) audioClock.shown += dt + Math.max(-0.1 * dt, Math.min(0.1 * dt, t - (audioClock.shown + dt)));
     return audioClock.shown;
   }
-  const currentTime = () => (player.playing ? Math.min(player.offset + audioNow() - player.startedAt, duration()) : player.offset);
+  const currentTime = () => (player.playing ? Math.min(player.offset + (audioNow() - player.startedAt) * player.rate, duration()) : player.offset);
 
   async function loadVersion(song, version, autoplay = false, at = 0) {
     if (game.on) endGame(false);                          // another song: the game is over
@@ -2768,6 +3071,7 @@
     player.offset = at;
     player.wantPlay = autoplay;
     player.shift = isRaised(song.id) ? 1 : 0;
+    player.rate = 1;
     applyMode();
     renderPlayer();
     renderSongs();
@@ -2985,10 +3289,11 @@
       for (let i = i0; i < i1; i += step) { const v = x[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
       cols.push([lo, hi]); peak = Math.max(peak, -lo, hi);
     }
-    const scale = (H / 2 - 4) / Math.max(peak, 0.02);
+    const scale = (H / 2 - 4) / Math.max(peak, 0.02), rootCss = getComputedStyle(document.documentElement);
+    const accentHover = rootCss.getPropertyValue('--accent-hover').trim() || '#a78bfa', accentSoft = arcadeOn ? 'rgba(217, 160, 116, .28)' : 'rgba(167, 139, 250, .28)';
     for (let c = 0; c < W; c++) {
       const t = t0 + ((c + 0.5) / W) * (t1 - t0), inside = t >= trim.start && t <= trim.end;
-      g.fillStyle = inside ? '#a78bfa' : 'rgba(167, 139, 250, .28)';
+      g.fillStyle = inside ? accentHover : accentSoft;    // the theme's accent (violet; Encore's amber)
       const [lo, hi] = cols[c];
       g.fillRect(c, H / 2 - hi * scale, 1, Math.max(1, (hi - lo) * scale));
     }
@@ -3088,10 +3393,10 @@
       const s = ctx.createBufferSource();
       s.buffer = buffer;
       s.connect(g);
-      s.start(when, Math.min(player.offset, buffer.duration));
+      s.start(when, Math.min(player.offset / player.rate, buffer.duration));
       return s;
     });
-    if (range.end < duration() - 0.05) player.sources.forEach((s) => s.stop(when + Math.max(0, range.end - player.offset)));   // ... and after the last
+    if (range.end < duration() - 0.05) player.sources.forEach((s) => s.stop(when + Math.max(0, range.end - player.offset) / player.rate));   // ... and after the last
     player.sources[0].onended = () => { stopSources(); player.offset = 0; updateTime(); renderPlayer(); renderSongs(); };
     player.startedAt = when;
     player.playing = true;
@@ -3143,6 +3448,7 @@
     $('#pause-icon').classList.toggle('hidden', !playing);
     $('#play-btn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
     if (!cur) { seek.value = 0; setFill(seek); $('#time-cur').textContent = $('#time-dur').textContent = '0:00'; }
+    if (state.libReady) renderLibrary();                 // Encore's Library: what's playing, its player bar
   }
 
   function updateTime() {
@@ -3630,6 +3936,7 @@
   });
 
   function renderJob() {
+    if (state.libReady) renderLibJob();
     const job = state.job;
     const active = !!job && job.status !== 'done';
     $('#dlg-progress').classList.toggle('hidden', !active);
@@ -4335,11 +4642,12 @@
   $('#sync-later').addEventListener('click', () => setSync(syncMs - 20));
 
   // The song time the tab shows: what you hear now (see outputDelay and Line timing).
-  const tabTime = () => Math.max(0, currentTime() - (player.playing ? outputDelay() - syncMs / 1000 : 0));
+  const tabTime = () => Math.max(0, currentTime() - (player.playing ? (outputDelay() - syncMs / 1000) * player.rate : 0));
 
   function tabFrame(force = false) {
     if (!tabView.open || (tabView.dragging && !force)) return;   // a note being dragged: hold still
     if (!tabView.data) { if (force) renderTabEmpty(); return; }
+    if (game.pr) practiceTick();
     const t = tabTime();
     const onTab = tabView.section === 'game' && gameView === 'tab';   // the game played on the tab's lines
     if (game.on && !onTab) { drawGame(t, force); return; }
@@ -4407,8 +4715,8 @@
     const g = cv.getContext('2d'), ms = performance.now();
     g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, 0, W, 4);              // progress
-    g.fillStyle = '#8b5cf6'; g.fillRect(0, 0, W * Math.min(1, currentTime() / (duration() || 1)), 4);
-    rbScore(g, W - 24, tabView.data.notes.length);
+    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#8b5cf6'; g.fillRect(0, 0, W * Math.min(1, currentTime() / (duration() || 1)), 4);
+    if (!game.pr) rbScore(g, W - 24, tabView.data.notes.length);
     // New hits: sparks from the note.
     for (const b of game.bursts) {
       if (b.at <= tabFx.seen) continue;
@@ -4506,7 +4814,6 @@
   let gameView = (() => { try { return localStorage.getItem(GAME_VIEW_KEY) === 'tab' ? 'tab' : 'board'; } catch { return 'board'; } })();   // pref() isn't defined yet here
   const showGameView = () => {
     document.querySelectorAll('#game-view button').forEach((b) => b.classList.toggle('active', b.dataset.view === gameView));
-    $('#game-board-row').classList.toggle('hidden', gameView !== 'board');   // 3D / Flat is about the board only
   };
   document.querySelectorAll('#game-view button').forEach((b) => b.addEventListener('click', () => {
     gameView = b.dataset.view; setPref(GAME_VIEW_KEY, gameView); showGameView();
@@ -4578,7 +4885,7 @@
       if (j >= 0 && notes[j][0] < end) end = notes[j][0];
       const xs = x(ns);
       if (end - ns >= 0.45 && x(end) > left) {
-        g.fillStyle = 'rgba(139,92,246,0.28)';
+        g.fillStyle = arcadeOn ? 'rgba(192,132,87,0.3)' : 'rgba(139,92,246,0.28)';
         g.beginPath(); g.roundRect(Math.max(left, xs), y(s) - 3, Math.max(0, x(end) - Math.max(left, xs)), 6, 3); g.fill();
       }
       if (xs < left - 20) continue;
@@ -4596,7 +4903,7 @@
       g.fillText(label, xs, y(s) + 1);
       const lm = legatoMarks(d, k);   // slides and hammer-ons / pull-offs, as in Lines
       if (lm) {
-        g.save(); g.strokeStyle = g.fillStyle = '#c4b5fd'; g.lineWidth = 2; g.lineCap = 'round';
+        g.save(); g.strokeStyle = g.fillStyle = arcadeOn ? '#e8c3a2' : '#c4b5fd'; g.lineWidth = 2; g.lineCap = 'round';
         if (lm.prev >= 0) {
           const px = x(notes[lm.prev][0]), pw = String(notes[lm.prev][3]).length * size * 0.62 + 8, dy = size * 0.28 * (lm.up ? 1 : -1);
           if (lm.kind === 's') { g.beginPath(); g.moveTo(px + pw / 2 + 1, y(s) + dy); g.lineTo(xs - w / 2 - 1, y(s) - dy); g.stroke(); }
@@ -5024,65 +5331,6 @@
     d.handPos = pos;                                     // [time the note needing it comes, first fret of the hand's 4]
     return (d.handMoves = out);
   }
-  // The hand guide (user: "mock up the hand-position guide (a small neck by the pads showing where my hand should be
-  // and sliding before a shift)", then "I don't like it, sort of distracting", "make these all settings"): Settings ›
-  // Hand guide (only that one a setting: "no, the hand position"), off by default. A small neck at the bottom left, low string at the bottom like the board, frets
-  // narrowing up the neck; an amber box over the four frets the hand covers; the next 1.5 s of notes as dots (the next
-  // one ringed); before a shift a dashed box at the new place with an arrow, the box sliding over in the last 0.25 s.
-  function drawHandGuide(g, W, H, t) {
-    const d = tabView.data;
-    if (!d || pref(HAND_GUIDE_KEY) !== 'on') return;
-    handMoves(d);
-    const pos = d.handPos || [];
-    if (!pos.length) return;
-    const n = (showRaised() ? d.tunings.find((x) => x.key === 'standard') : d.tunings.find((x) => x.key === d.tuning))?.strings.length || 4;
-    d.handTop ||= Math.max(15, ...d.notes.map((x) => (typeof x[3] === 'number' ? x[3] : 0))) + 1;   // the neck shown: to 1 past the song's top fret (at least 16)
-    const frets = Math.min(24, d.handTop);
-    const w = Math.min(680, W * 0.48), h = 26 + (n - 1) * 18, x0 = 36, y0 = H - h - 48;
-    const at = (f) => x0 + w * ((1 - 2 ** (-f / 12)) / (1 - 2 ** (-frets / 12)));   // real fret spacing, narrowing
-    const mid = (f) => (f <= 0 ? x0 - 10 : (at(f - 1) + at(f)) / 2), sy = (s) => y0 + h - 13 - s * 18;
-    g.save();
-    g.fillStyle = 'rgba(14,11,9,0.72)'; g.beginPath(); g.roundRect(x0 - 18, y0 - 4, w + 30, h + 8, 8); g.fill();
-    g.fillStyle = 'rgba(255,245,230,0.12)';
-    for (const f of [3, 5, 7, 9, 15, 17, 19, 21]) if (f <= frets) { g.beginPath(); g.arc(mid(f), y0 + h / 2, 3.5, 0, Math.PI * 2); g.fill(); }
-    if (12 <= frets) for (const dy of [-8, 8]) { g.beginPath(); g.arc(mid(12), y0 + h / 2 + dy, 3.5, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = 'rgba(230,222,210,0.85)'; g.fillRect(x0 - 2, y0, 4, h);              // the nut
-    g.fillStyle = 'rgba(200,192,180,0.35)';
-    for (let f = 1; f <= frets; f++) g.fillRect(at(f) - 0.75, y0, 1.5, h);
-    for (let s = 0; s < n; s++) { g.fillStyle = LANE_COLORS[s % LANE_COLORS.length]; g.globalAlpha = 0.55; g.fillRect(x0, sy(s) - (s ? 0.75 : 1), w, s ? 1.5 : 2); }
-    g.globalAlpha = 1;
-    g.font = `700 13px ${ROCK_FONT}`; g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = 'rgba(255,245,230,0.55)';
-    for (const f of [3, 5, 7, 9, 12, 15, 17, 19, 21, 24]) if (f <= frets) g.fillText(String(f), mid(f), y0 + h + 6);
-    let k = 0; while (k + 1 < pos.length && pos[k + 1][0] - 0.2 <= t) k++;
-    const cur = pos[k][1], next = pos[k + 1], box = (b) => [at(b - 1) - 2, at(Math.min(frets, b + 3)) + 2];
-    let [bx0, bx1] = box(cur);
-    if (next && next[0] - t < 1.5) {                     // a shift coming: the new place, dashed, with an arrow
-      const [nx0, nx1] = box(next[1]), slide = Math.max(0, Math.min(1, 1 - (next[0] - 0.2 - t) / 0.25));
-      g.setLineDash([5, 4]); g.strokeStyle = 'rgba(251,191,36,0.85)'; g.lineWidth = 2;
-      g.beginPath(); g.roundRect(nx0, y0 - 2, nx1 - nx0, h + 4, 6); g.stroke(); g.setLineDash([]);
-      const ax = (bx0 + bx1) / 2, axTo = (nx0 + nx1) / 2;
-      if (Math.abs(axTo - ax) > 20) {
-        g.strokeStyle = 'rgba(251,191,36,0.85)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ax, y0 - 10); g.lineTo(axTo, y0 - 10); g.stroke();
-        const dir = Math.sign(axTo - ax); g.beginPath(); g.moveTo(axTo, y0 - 10); g.lineTo(axTo - dir * 7, y0 - 15); g.lineTo(axTo - dir * 7, y0 - 5); g.closePath(); g.fillStyle = 'rgba(251,191,36,0.9)'; g.fill();
-      }
-      bx0 += (nx0 - bx0) * slide; bx1 += (nx1 - bx1) * slide;
-    }
-    g.fillStyle = 'rgba(245,158,11,0.18)'; g.strokeStyle = 'rgba(251,191,36,0.9)'; g.lineWidth = 2;
-    g.beginPath(); g.roundRect(bx0, y0 - 2, bx1 - bx0, h + 4, 6); g.fill(); g.stroke();
-    let first = true;
-    for (const note of d.notes) {
-      const [ns, , s, f] = note;
-      if (ns < t - 0.05) continue;
-      if (ns > t + 1.5) break;
-      if (typeof f !== 'number' || s >= n) continue;
-      const a = Math.max(0.25, 1 - (ns - t) / 1.5), x = mid(f), y = sy(s);
-      g.globalAlpha = a; g.fillStyle = LANE_COLORS[s % LANE_COLORS.length];
-      g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.fill();
-      if (first) { g.globalAlpha = 1; g.strokeStyle = '#ffffff'; g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, 11, 0, Math.PI * 2); g.stroke(); first = false; }
-    }
-    g.restore();
-  }
-  const HAND_GUIDE_KEY = 'encore-hand-guide';           // Settings › Hand guide, kept per computer; off unless turned on
   // Fire on the x4 multiplier ring (user: "maybe flames would look better", then "that's
   // sick" for this one): soft glowing sprites born on the ring, mostly its top, rising with a
   // little swirl, cooling white -> pale blue -> blue -> deep blue. Drawn over the badge.
@@ -5147,58 +5395,8 @@
 
   // The game board (the Tab section's Highway stays plain): notes come out of the distance
   // on the right toward the strike line on the left. Logic as before; look per the mockups.
-  // --- The 3D board (static/game3d.js) and its HUD -------------------------------------
-  // Board 3D (the default) plays on the rendered board; Flat keeps the 2D board below; guitar
-  // chords (drawChordBars / drawChordCards) are 2D only, so a guitar game stays 2D for now.
-  // The HUD is drawn here on a canvas over the scene, in the rock style: an angled metal plate
-  // with the score and stars, a metal multiplier disc beside it (on fire at x4), the calls by
-  // each pad, streak banners and the count-in.
-  const FRETBOARD_KEY = 'encore-fretboard';            // new name: everyone starts on the glass board (was track-splitter-fretboard)
-  let fretboard = (() => { try { const f = localStorage.getItem(FRETBOARD_KEY); return f === 'dark' || f === 'maple' ? f : 'glass'; } catch { return 'glass'; } })();   // glass by default
   const ROCK_FONT = '"Avenir Next Condensed", Impact, sans-serif';
   const ROCK_MULT = { 1: '#a8a29e', 2: '#facc15', 3: '#f97316', 4: '#38bdf8' };
-  const use3D = () => (gameBoard === '3d' || gameBoard === 'arcade') && !!window.Game3D && !game.members;   // Arcade with guitar chords: drawGame falls through to Flat
-  function drawGame3D(t, force) {
-    const body = $('#tab-body');
-    let wrap = tabView.wrap3d;
-    if (force || !wrap || !body.contains(wrap)) {
-      if (!wrap) {
-        wrap = tabView.wrap3d = el('div', { className: 'game3d' });
-        const hud = el('canvas', { className: 'game3d-hud' });
-        hud.addEventListener('click', () => pauseGame());
-        wrap.append(hud);
-      }
-      body.classList.add('highway'); body.classList.remove('whole', 'scrolltab');
-      body.replaceChildren(wrap);
-      tabView.canvas = null;                             // the 2D boards make their own canvas again
-      window.Game3D.mount(wrap);
-    }
-    const d = tabView.data, notes = d.notes, ms = performance.now();
-    const names = playNames(d, showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : d.tunings.find((x) => x.key === d.tuning).strings);
-    const groove = game.recent.length ? game.recent.reduce((a, v) => a + v, 0) / game.recent.length : 0.75;
-    const onFire = multiplier() === 4;
-    const target = onFire ? 1 : Math.max(0.05, Math.min(0.75, groove * 0.75)), dt = Math.min(0.1, (ms - (game.moodAt || ms)) / 1000);
-    game.mood = game.mood === undefined ? 0.55 : game.mood + (target - game.mood) * Math.min(1, dt * 1.5);
-    game.moodAt = ms;
-    if (d.distinctLaneGap === undefined) {             // the 10th-percentile gap between different notes on a string
-      const { next } = laneLinks(d);
-      const gaps = next.map((j, k) => (j < 0 || notes[j][3] === notes[k][3] ? null : notes[j][0] - notes[k][0])).filter((g) => g !== null && g > 0.03).sort((a, b) => a - b);
-      d.distinctLaneGap = gaps.length ? gaps[Math.floor(gaps.length * 0.1)] : 0.5;
-      d.bars3d = d.lines.flatMap(([start, , b]) => [start, ...b]).sort((a, b) => a - b);
-    }
-    window.Game3D.frame({
-      t, notes, n: names.length, colors: LANE_COLORS, names, Z: Math.max(0.8, Math.min(8, 3.4 / hwSpeed)), quickGap: d.distinctLaneGap, hudNumbers: true,   // 3.4 s ahead at 1x (was 2.6: user, "not enough warning")
-      prev: laneLinks(d).prev, result: game.result, laneHitMs: game.laneHitMs, laneTapMs: game.laneTapMs || {}, laneMissMs: game.laneMissMs, sustain: game.sustain, hold: game.hold || {},
-      bursts: game.bursts, onFire, mood: game.mood, fretboard, bars: d.bars3d, bpm: d.bpm, playing: player.playing, cues: player.playing ? cuesAt(songLights(state.current?.song?.id) || lightCues(player.buffers?.[0]), t) : null, moment: Math.max(game.multAt || 0, game.milestone?.at || 0), bigMoments, mult: multiplier(), moves: handMoves(d), moveTargets: d.handTargets, inputLane: input.note !== null ? input.lane : null,
-    });
-    game.bursts = game.bursts.filter((b) => ms - b.at < 700);
-    // The HUD canvas.
-    const cv = wrap.querySelector('.game3d-hud'), W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
-    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-    const g = cv.getContext('2d');
-    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-    drawRockHud(g, W, H, ms, notes.length, names.length);
-  }
   // Light cues from the song itself (user: "could we use the songs audio track to queue flashing lights?"): the
   // version the game plays (no bass) read once, a few seconds of audio per slice so the board doesn't stutter, into
   // 10 ms steps: kick hits (the low end, under ~150 Hz, jumping 6 dB+ over the last 50 ms and well above the song's
@@ -5318,97 +5516,6 @@
              big: b < 0 ? 9 : t - c.big[b], bigNo: b, accent: a < 0 ? 9 : t - c.accent[a],
              sing: held ? { at: t - held[0], len: held[1] - held[0], loud: held[3], pitch: held[2] } : null, phrase: ph < 0 ? 9 : t - c.phrases[ph] };
   }
-  function drawRockHud(g, W, H, ms, notesLen, n) {
-    const shout = (text, x, y, size, fill, align = 'center') => {
-      g.font = `900 ${size}px ${ROCK_FONT}`; g.textAlign = align; g.textBaseline = 'middle';
-      g.lineWidth = Math.max(3, size * 0.14); g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,6,4,0.9)'; g.strokeText(text, x, y);
-      g.fillStyle = fill; g.fillText(text, x, y);
-    };
-    // Score plate (angled, metal-edged) with the record, and the multiplier disc to its right.
-    const R = 36, discX = W - 30 - R, discY = 30 + R + 56,   // room above for the x4 fire
-      plateR = discX - R - 16, plateH = 78, plateY = discY - plateH / 2 - 4;
-    // Floating text, no panel (user: "no pills, transparent background with floating text", like Settings; was a
-    // frosted panel, before that an angled metal plate): a soft shadow under the outlined digits keeps them readable.
-    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 14;
-    shout(game.score.toLocaleString(), plateR - 26, plateY + 30, 42, '#ffffff', 'right');
-    g.shadowBlur = 0;
-    const scoreW = Math.max(g.measureText(game.score.toLocaleString()).width, 110);   // the call sits just left of it
-    hudRecordAt(g, plateR - 26, plateY + 60, starsFor(game.score, game.units || notesLen));
-    // The multiplier: a brushed metal disc, a ring filling toward the next level in its colour.
-    const m = multiplier(), col = ROCK_MULT[m], fill = m === 4 ? 1 : (game.streak % 10) / 10, pop = 1 + 0.12 * Math.max(0, 1 - (ms - game.multAt) / 300);
-    g.save(); g.translate(discX, discY); g.scale(pop, pop);
-    // Just the ring, floating (was a ring on a frosted disc, before that brushed metal).
-    g.lineWidth = 6; g.lineCap = 'round'; g.strokeStyle = 'rgba(255,245,230,0.16)'; g.beginPath(); g.arc(0, 0, R - 9, 0, Math.PI * 2); g.stroke();
-    if (m === 4) { g.shadowColor = col; g.shadowBlur = 18; }
-    g.strokeStyle = col; g.beginPath(); g.arc(0, 0, R - 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.001, fill)); g.stroke(); g.shadowBlur = 0;
-    g.lineCap = 'butt';
-    g.restore();
-    if (m === 4) drawRingFire(g, discX, discY, R - 6, ms);   // on fire at x4 (the fire the user liked)
-    shout(`${m}x`, discX, discY + 2, 30 * pop, m === 1 ? '#e7e5e4' : col);
-    if (game.streak >= 2) shout(`${game.streak} STREAK`, discX, discY + R + 16, 13, 'rgba(255,240,220,0.75)');
-    // The call (PERFECT / GOOD, MISS / WRONG + what you played): one at a time, the newest, beside the
-    // score plate, out of the notes' way (user: "the accuracy alert gets in the way", "put the accuracy
-    // next to the score").
-    const calls = [
-      ...game.bursts.filter((b) => !b.messy && b.label !== false).map((b) => ({ at: b.at, life: 0.6, text: b.perfect ? 'PERFECT' : 'GOOD', fill: b.perfect ? '#fcd34d' : '#f5f5f4' })),
-      ...game.mistakes.map((mk) => ({ at: mk.at, life: 0.9, text: String(mk.text).toUpperCase(), fill: mk.amber ? '#fbbf24' : '#f87171', sub: mk.sub, subFill: mk.amber ? '#fde68a' : '#fca5a5' })),
-    ].sort((a, b) => b.at - a.at);
-    const call = calls[0];
-    if (call) {
-      const age = (ms - call.at) / 1000;
-      if (age < call.life) {
-        const pop = 1 + 0.2 * Math.max(0, 1 - age / 0.12), x = plateR - 26 - scoreW - 26, y = plateY + (call.sub ? 28 : 38) + 10 * Math.max(0, 1 - age / 0.15);   // pops in, sliding up
-        g.globalAlpha = Math.max(0, 1 - Math.max(0, age - call.life * 0.5) / (call.life * 0.5));
-        shout(call.text, x, y, 26 * pop, call.fill, 'right');
-        if (call.sub) shout(call.sub, x, y + 22, 13, call.subFill, 'right');
-        g.globalAlpha = 1;
-      }
-    }
-    // The string names, crisp: just the letter in the string's colour, a soft shadow to keep it readable (no circle:
-    // "I don't like the circles").
-    const names = tabView.data && playNames(tabView.data, (showRaised() ? tabView.data.tunings.find((x) => x.key === 'standard') : tabView.data.tunings.find((x) => x.key === tabView.data.tuning))?.strings || []);
-    (names || []).forEach((name, s) => {
-      const p = window.Game3D.nameScreen(s);
-      if (!p) return;
-      g.font = `900 20px ${ROCK_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.shadowColor = 'rgba(0,0,0,0.85)'; g.shadowBlur = 6; g.fillStyle = LANE_COLORS[s % LANE_COLORS.length];
-      g.fillText(name, p.x, p.y + 1); g.shadowBlur = 0;
-    });
-    drawHandGuide(g, W, H, tabTime());
-    // The fret numbers, upright and crisp over the board (user: "I'm still struggling with reading along while playing":
-    // the fret numbers were hard to read in time). They were printed flat on each note, squashed by the board's lean and
-    // tiny in the distance; here each is at least 17 px, the near ones up to 34.
-    const labels = window.Game3D.labels?.();
-    for (const L of labels?.notes || []) {
-      g.globalAlpha = L.alpha;
-      g.font = `900 ${L.size}px ${ROCK_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.lineWidth = Math.max(3, L.size * 0.2); g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,6,4,0.92)'; g.strokeText(L.text, L.x, L.y);
-      g.fillStyle = L.missed ? '#a1a1aa' : L.open ? LANE_COLORS[L.s % LANE_COLORS.length] : '#ffffff'; g.fillText(L.text, L.x, L.y);
-    }
-    // Hand moves: where the hand goes, by the dashed line before it ("Fast runs / shifts catch me out").
-    for (const M of labels?.moves || []) {
-      g.globalAlpha = M.alpha;
-      shout(`${M.up ? '↑' : '↓'} ${M.fret}`, M.x, M.y - 20, 32, '#fbbf24');
-    }
-    g.globalAlpha = 1;
-    // What you're playing now: its fret by the pad.
-    if (input.note !== null && input.lane !== null && (input.laneFret ?? -1) >= 0) {
-      const p = window.Game3D.padScreen(input.lane);
-      if (p) shout(String(input.laneFret), p.x - 46, p.y, 20, input.match ? '#bbf7d0' : input.otherString ? '#fde68a' : '#ffffff');
-    }
-    const lostAge = game.streakLost ? ms - game.streakLost.at : Infinity;
-    if (lostAge < 1300) { g.globalAlpha = Math.min(1, (1300 - lostAge) / 400); shout(`STREAK LOST · ${game.streakLost.n}`, W * 0.36, H * 0.17, 30, '#f87171'); g.globalAlpha = 1; }
-    const since = game.milestone ? ms - game.milestone.at : Infinity;
-    if (since < 1500) { g.globalAlpha = Math.min(1, (1500 - since) / 400); shout(`${game.milestone.n} NOTE STREAK!`, W * 0.36, H * 0.17, 40 * (1 + 0.15 * Math.max(0, 1 - since / 250)), '#fcd34d'); g.globalAlpha = 1; }
-    const goAge = ms - (game.goAt ?? -1e9);
-    if (game.countdown || goAge < 700) {
-      const grow = Math.min(1, game.countdown ? (ms - (game.countAt ?? ms)) / 800 : goAge / 700);
-      g.globalAlpha = game.countdown ? 1 : 1 - grow;
-      shout(game.countdown ? String(game.countdown) : 'GO!', W / 2, H * 0.46, H * 0.22 * (1.15 - 0.15 * grow), game.countdown ? '#ffffff' : '#fcd34d');
-      g.globalAlpha = 1;
-    }
-  }
-
   // Arcade board (Board: Arcade; from design/game-mockups/arcadeBoard.html, user: "I'm good with this for now, implement").
   // The pads stay put and the tab glides under a fixed cursor at one steady speed (flat: the leaning 3D board made notes
   // grow and speed up as they came in), slower than the 3D board (0.7x its speed at the same setting); fast runs get a
@@ -5447,7 +5554,7 @@
     const rr = r + Math.max(2.5, r * 0.13), lw = Math.max(1.8, r * 0.1), vc = ARCADE_VIVID[Math.min(4, tier)], ang = -Math.PI / 2 + Math.PI * 2 * frac;
     if (frac > 0) {   // the progress ring: its empty track, then the part done
       g.beginPath(); g.arc(0, 0, rr, 0, 7); g.strokeStyle = 'rgba(255,255,255,.1)'; g.lineWidth = lw; g.stroke();
-      g.save(); g.beginPath(); g.arc(0, 0, rr, -Math.PI / 2, ang); g.strokeStyle = vc; g.lineWidth = lw; g.lineCap = 'round'; g.shadowColor = vc; g.shadowBlur = small ? 3 : r * 0.3; g.globalAlpha = 0.65 + 0.35 * frac; g.stroke(); g.restore();
+      g.save(); g.beginPath(); g.arc(0, 0, rr, -Math.PI / 2, ang); g.strokeStyle = vc; g.lineWidth = lw; g.lineCap = 'round'; g.shadowColor = vc; g.shadowBlur = small ? 3 : r * 0.3; g.globalAlpha *= 0.65 + 0.35 * frac; g.stroke(); g.restore();
     }
     g.beginPath(); g.arc(0, 0, r * 0.36, 0, 7); g.fillStyle = 'rgba(0,0,0,.22)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 0.7; g.stroke();   // the label
     g.fillStyle = '#050506'; g.beginPath(); g.arc(0, 0, Math.max(1, r * 0.07), 0, 7); g.fill();   // the spindle hole
@@ -5505,6 +5612,52 @@
     d.arcadeLayout = { key, notes, warp, info, fit };
     return d.arcadeLayout;
   }
+  // Encore phrases and landings, per song (design/game-mockups/moments.html; user picked them: "I like 3/4/5"). A 2-bar gold
+  // phrase about every 8 bars: in each 8 bars from the 3rd, the 2 bars (on bar lines) with the most notes, at least 4. Playing
+  // every note of one (no miss, nothing messy) fills half the meter; full, Encore starts on the next bar by itself and doubles
+  // the points for 4 bars (no phrases during it). Played well that's every 16-20 bars, ~2-4 times a song. Landings: a note
+  // after 0.8 s with nothing ringing (the board swells when you hit it).
+  const ENCORE_GOLD = [251, 191, 36];
+  function encorePlan(d) {
+    if (d.encorePlan?.notes === d.notes) return d.encorePlan;
+    const notes = d.notes, bars = d.bars3d ||= d.lines.flatMap(([start, , b]) => [start, ...b]).sort((a, b) => a - b);
+    const phrases = [], phraseOf = new Int16Array(notes.length).fill(-1), land = new Set();
+    for (let b0 = 2; b0 + 2 < bars.length; b0 += 8) {
+      let best = null;
+      for (let b = b0; b < Math.min(b0 + 6, bars.length - 2); b++) {
+        const a = bars[b], z = bars[b + 2], ks = [];
+        notes.forEach((nt, k) => { if (nt[0] >= a - 0.03 && nt[0] < z - 0.03) ks.push(k); });
+        if (ks.length >= 4 && (!best || ks.length > best.ks.length)) best = { a, b: z, ks };
+      }
+      if (best) { for (const k of best.ks) phraseOf[k] = phrases.length; phrases.push(best); }
+    }
+    let end = -9; notes.forEach((nt, k) => { if (k && nt[0] - end > 0.8) land.add(k); end = Math.max(end, nt[1]); });
+    d.encorePlan = { notes, bars, phrases, phraseOf, land, lastEnd: end };
+    return d.encorePlan;
+  }
+  // The points a hit is worth now (x2 in Encore), and what Encore added (for its "+N" when it ends).
+  function addScore(pts, now) {
+    const e = game.enc, x2 = !!e?.on && now >= e.on.t0 && now < e.on.t1;
+    game.score += x2 ? pts * 2 : pts;
+    if (x2) e.bonus += pts;
+  }
+  // After each judging: phrases done or broken, the meter, Encore starting on the bar after it's full and ending 4 bars on.
+  function encoreTick(now) {
+    const e = game.enc; if (!e) return;
+    const P = e.plan;
+    if (e.on && now >= e.on.t1) { e.endAt = performance.now(); e.endBonus = e.bonus; e.on = null; e.meter = 0; }
+    P.phrases.forEach((p, i) => {
+      if (e.st[i]) return;
+      if (e.on && p.a < e.on.t1 && p.b > e.on.t0) { e.st[i] = 'skip'; return; }   // none during Encore
+      if (p.ks.some((k) => game.result[k] === 'miss' || game.grade[k] === 'Messy')) e.st[i] = 'broken';
+      else if (p.ks.every((k) => game.result[k] === 'hit')) { e.st[i] = 'done'; e.meter = Math.min(1, e.meter + 0.5); e.doneAt[i] = performance.now(); }
+    });
+    if (!e.on && e.meter >= 1) {
+      const i = P.bars.findIndex((b) => b > now + 0.05);
+      if (i >= 0) { const bl = (P.bars[i] - (P.bars[i - 1] ?? P.bars[i] - 2)) || 2; e.on = { t0: P.bars[i], t1: P.bars[i + 4] ?? P.bars[i] + 4 * bl }; e.bonus = 0; }
+    }
+  }
+  const encoreMeter = (t) => { const e = game.enc; if (!e) return 0; if (e.on) return t < e.on.t0 ? 1 : Math.max(0, 1 - (t - e.on.t0) / (e.on.t1 - e.on.t0)); return e.meter; };
   function drawArcade(t, force) {
     const body = $('#tab-body');
     let cv = tabView.canvas;
@@ -5519,6 +5672,10 @@
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const d = tabView.data, notes = d.notes, ms = performance.now(), dt = Math.min(0.05, (ms - (arcadeBoard.last || ms)) / 1000); arcadeBoard.last = ms;
+    const intro = game.on ? game.intro : null, introEl = intro ? (ms - intro.at) / 1000 : 9;
+    if (intro && introEl < intro.lead) t = intro.start - (intro.lead - introEl);   // the count-in: the tab glides in toward where the song starts
+    else if (intro && introEl > intro.lead + 1) game.intro = null;                  // the intro's done
+    if (game.on && game.songEnded) t = arcadeBoard.lastT ?? t; else arcadeBoard.lastT = t;   // the song's over (its time went back to 0): hold the last frame
     const names = playNames(d, showRaised() ? d.tunings.find((x) => x.key === 'standard').strings : d.tunings.find((x) => x.key === d.tuning).strings), n = names.length;
     const P = arcadePrep(d, W, H, n), info = P.info, warp = P.warp;
     const col = (s) => ARCADE_COLORS[s % ARCADE_COLORS.length], crgb = (s) => argb(col(s));
@@ -5528,15 +5685,28 @@
     let bi = 0; for (let i = 0; i < bars.length && bars[i] <= t; i++) bi = i;
     const barLen = bars.length > 1 ? (bars[Math.min(bi + 1, bars.length - 1)] - bars[Math.max(0, Math.min(bi, bars.length - 2))]) || 2 : 2, beatLen = barLen / 4;
     const intoBar = Math.max(0, t - (bars[bi] ?? 0)), ph = (intoBar / beatLen) % 1, beatN = Math.floor(intoBar / beatLen) % 4;
-    const cues = player.playing ? cuesAt(songLights(state.current?.song?.id) || lightCues(player.buffers?.[0]), t) : null;
+    const cues = player.playing ? cuesAt(songLights(state.current?.song?.id) || (player.rate === 1 ? lightCues(player.buffers?.[0]) : null), t) : null;
     const beat = cues ? Math.max(Math.exp(-cues.kick * 7), 0.5 * Math.exp(-cues.snare * 7)) : Math.exp(-ph * 6) * (beatN === 0 ? 1 : 0.5);
     let busy = 0; if (cues) busy = cues.level; else { for (const nt of notes) if (nt[0] <= t && nt[0] > t - 1) busy++; busy = Math.min(1, busy / 8); }
     const mult = multiplier(), heat = Math.min(1, game.streak / 30);
-    if (mult > arcadeBoard.lastMult) arcadeBoard.sweepAt = ms; arcadeBoard.lastMult = mult;
-    const [mc, md] = ARCADE_MOOD[mult];
+    const enc = game.on ? game.enc : null, encOn = !!enc?.on && t >= enc.on.t0 && t < enc.on.t1;
+    if (mult > arcadeBoard.lastMult || (encOn && !arcadeBoard.wasEnc)) arcadeBoard.sweepAt = ms; arcadeBoard.lastMult = mult; arcadeBoard.wasEnc = encOn;
+    const [mc, md] = encOn ? [[253, 230, 138], [217, 119, 6]] : ARCADE_MOOD[mult];
     arcadeBoard.mood ||= { c: mc, d: md }; arcadeBoard.mood.c = amix(arcadeBoard.mood.c, mc, Math.min(1, dt * 2.4)); arcadeBoard.mood.d = amix(arcadeBoard.mood.d, md, Math.min(1, dt * 2.4));
     const mood = arcadeBoard.mood;
-    arcadeBoard.x4 += ((mult === 4 ? 1 : 0) - arcadeBoard.x4) * Math.min(1, dt * 6); const x4k = arcadeBoard.x4;
+    arcadeBoard.x4 += ((mult === 4 && !encOn ? 1 : 0) - arcadeBoard.x4) * Math.min(1, dt * 6); const x4k = arcadeBoard.x4;   // Encore's gold takes over from x4's blue
+    arcadeBoard.encK = (arcadeBoard.encK || 0) + ((encOn ? 1 : 0) - (arcadeBoard.encK || 0)) * Math.min(1, dt * 5); const encK = arcadeBoard.encK;
+    // The board reacting to the music (user picked Big moments and Landings in moments.html; the kicks and snares lighting the
+    // glass came out: "the board flashing to the song is distracting"): a big moment (a chorus or drop coming in, lights.py)
+    // lights its rim while the song stays loud; hitting a note after a gap opens a ring of light from the cursor and lights every string.
+    const bigOn = !!cues && cues.big < 12 && cues.level > 0.45, bigAge = cues ? cues.big : 9;
+    arcadeBoard.big = (arcadeBoard.big || 0) + ((bigOn ? 1 : 0) - (arcadeBoard.big || 0)) * Math.min(1, dt * (bigOn ? 6 : 1.5)); const bigK = arcadeBoard.big;
+    const plan = game.on && !game.pr ? (enc?.plan || encorePlan(d)) : null;
+    let landF = 0;
+    if (plan) for (let k = Math.max(0, game.next - 6); k < game.next + 2 && k < notes.length; k++) {
+      if (!plan.land.has(k) || game.result[k] !== 'hit') continue;
+      const age = t - (game.hitAt[k] ?? notes[k][0]); if (age >= 0 && age < 0.7) landF = Math.max(landF, 1 - age / 0.7);
+    }
     // the track uses up to half the window (user: "a lot of wasted space on the screen"; it was 30%, at most 250 px), a little
     // below the middle; the notes keep their size and the strings spread apart instead
     const trackH = Math.min(H * 0.5, 400), trackT = H * 0.56 - trackH / 2, trackB = trackT + trackH, sizeSp = Math.min(H * 0.3, 250) / n, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, pad = 18;
@@ -5558,7 +5728,7 @@
       for (let i = 0; i < 4; i++) {
         const c3 = amix(cols[(i + phrase) % 4], cols[(i + phrase + 1) % 4], 1 - Math.min(1, pk)), T = arcadeBoard.meshT;
         const x = mw * (0.5 + 0.38 * Math.sin(T * (0.21 + i * 0.07) + i * 1.9)), y = mh * (0.5 + 0.36 * Math.cos(T * (0.17 + i * 0.05) + i * 2.7)), r = mw * (0.42 + 0.08 * Math.sin(T * 0.3 + i));
-        const a = Math.min(1, 0.16 + 0.16 * busy + 0.05 * beat + 0.14 * swell + 0.06 * heat) * (i === 3 ? 0.6 : 1);
+        const a = Math.min(1, 0.16 + 0.16 * busy + 0.05 * beat + 0.14 * swell + 0.06 * heat + 0.12 * bigK) * (i === 3 ? 0.6 : 1);
         const q = m.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, acss(c3, a)); q.addColorStop(1, acss(c3, 0)); m.fillStyle = q; m.fillRect(0, 0, mw, mh);
       }
       m.globalCompositeOperation = 'source-over'; m.fillStyle = 'rgba(5,6,10,0.594)'; m.fillRect(0, 0, mw, mh);   // = drawn at 70% over the dark, then a 42% dark layer
@@ -5582,6 +5752,14 @@
       sg.strokeStyle = 'rgba(255,255,255,.07)'; sg.lineWidth = 1; sg.stroke();
       sg.save(); sg.clip(); q = sg.createLinearGradient(L, 0, curX, 0); q.addColorStop(0, 'rgba(0,0,0,.35)'); q.addColorStop(1, 'rgba(0,0,0,0)'); sg.fillStyle = q; sg.fillRect(L - 56, trackT - pad, curX - L + 56, phh); sg.restore();   // the played side darker
     }
+    // The count-in opens the board from the cursor outward on its first beat, rising into place.
+    const op = intro ? Math.max(0, Math.min(1, (introEl - intro.card) / (1.4 * intro.B))) : 1, ope = 1 - (1 - op) ** 3;
+    const opL = curX - (curX - (L - 62)) * ope, opR = curX + (R + pad + 6 - curX) * ope;
+    g.save(); if (op < 1) { g.beginPath(); g.rect(opL, 0, opR - opL, H); g.clip(); g.translate(0, 14 * (1 - ope)); }
+    if (bigK > 0.01) {                                   // a big moment: a haze of light above and below the board
+      const hq = g.createLinearGradient(0, trackT - H * 0.22, 0, trackB + H * 0.22); hq.addColorStop(0, acss(mood.c, 0)); hq.addColorStop(0.3, acss(mood.c, 0.07 * bigK)); hq.addColorStop(0.5, acss(mood.d, 0.03 * bigK)); hq.addColorStop(0.7, acss(mood.c, 0.07 * bigK)); hq.addColorStop(1, acss(mood.c, 0));
+      g.fillStyle = hq; g.fillRect(0, trackT - H * 0.22, W, trackB - trackT + H * 0.44);
+    }
     g.drawImage(arcadeBoard.static, 0, 0, W, H);
 
     // ---- the track: blue at x4 ----
@@ -5593,10 +5771,21 @@
       q.addColorStop(0, `rgba(21,87,192,${0.18 * x4k})`); q.addColorStop(cp, `rgba(30,110,230,${(0.5 + 0.06 * beat) * x4k})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(21,87,192,${0.22 * x4k})`); q.addColorStop(1, `rgba(21,87,192,${0.1 * x4k})`);
       g.fillStyle = q; g.fill();
     }
+    if (bigK > 0.01) { g.fillStyle = acss(mood.d, 0.07 * bigK); g.fill(); }
+    if (encK > 0.01) {                                   // Encore: the board turns gold, strongest at the cursor (as x4 turns it blue)
+      const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
+      q.addColorStop(0, `rgba(160,95,8,${0.16 * encK})`); q.addColorStop(cp, `rgba(225,150,25,${(0.4 + 0.06 * beat) * encK})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(160,95,8,${0.2 * encK})`); q.addColorStop(1, `rgba(160,95,8,${0.08 * encK})`);
+      g.fillStyle = q; g.fill();
+    }
+    if (bigK > 0.01) { g.save(); g.strokeStyle = acss(mood.c, 0.4 * bigK); g.lineWidth = 1.4; g.shadowColor = acss(mood.c, 1); g.shadowBlur = 26 * bigK; g.stroke(); g.restore(); }   // its rim lit
     g.clip();
     const sp = trackH / n, sy = (s) => trackT + (n - 1 - s) * sp + sp / 2, fa = AVIS * 0.25, fb = AVIS, wt = warp(t), X = (tt) => L + (warp(tt) - wt + fa) / (fa + fb) * (R - L);
     const sa = (ms - arcadeBoard.sweepAt) / 800;   // the multiplier went up: one soft band of light along the track
     if (sa >= 0 && sa < 1) { const sx = curX + (R - curX) * sa, w = W * 0.12; q = g.createLinearGradient(sx - w, 0, sx + w, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.16 * (1 - sa))); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(sx - w, trackT - pad, w * 2, phh); }
+    if (bigAge < 0.9) {                                  // a big moment coming in: a soft flash and a bright band out from the cursor
+      const a = bigAge / 0.9, sx = curX + (R - curX) * (1 - (1 - a) ** 3), w = W * 0.16; g.fillStyle = acss(mood.c, 0.1 * (1 - a)); g.fillRect(L - 56, trackT - pad, pw, phh);
+      q = g.createLinearGradient(sx - w, 0, sx + w, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, `rgba(255,255,255,${0.2 * (1 - a)})`); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(sx - w, trackT - pad, w * 2, phh);
+    }
     // bar lines and beat ticks
     for (let i = 0; i < bars.length; i++) {
       const b0 = bars[i], len = (bars[i + 1] ?? b0 + barLen) - b0; if (X(b0) > R + 20) break; if (X(b0 + len) < L - 20) continue;
@@ -5606,8 +5795,8 @@
     }
     // strings: brighter for a moment when played, vibrating out from the cursor
     for (let s = 0; s < n; s++) {
-      const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.exp(-age / 0.25);
-      const sc3 = amix(crgb(s), [125, 211, 252], 0.45 * x4k), lw = Math.max(1, 2.4 - s * (1.4 / n)) + a;
+      const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.min(1, Math.exp(-age / 0.25) + 0.8 * landF);
+      const sc3 = amix(amix(crgb(s), [125, 211, 252], 0.45 * x4k), [253, 224, 140], 0.4 * encK), lw = Math.max(1, 2.4 - s * (1.4 / n)) + a;
       g.beginPath();
       if (age < 0.5) { const amp = sizeSp * 0.1 * Math.exp(-age * 7); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.2)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
       else { g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); }
@@ -5680,7 +5869,9 @@
     for (const k of vis.slice().reverse()) {
       const it = lay.get(k); if (!it || it.form === 'none') continue;
       const nt = notes[k], s = nt[2], x = it.grp ? it.gx : it.x, y = sy(s), res = game.result[k], missed = res === 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : 9;
-      const c = missed ? [110, 110, 120] : crgb(s), cs = missed ? '#6b6b78' : col(s), isNext = nt[0] === nextT && !res;
+      // Gold: a live Encore phrase's notes, and every note in Encore (user picked Gold notes): warm keycaps, a gold rim and glow, a glint now and then
+      const phx = plan && enc ? plan.phraseOf[k] : -1, gd = !missed && !!enc && ((!!enc.on && nt[0] >= enc.on.t0 && nt[0] < enc.on.t1) || (phx >= 0 && enc.st[phx] !== 'broken' && enc.st[phx] !== 'skip'));
+      const c = missed ? [110, 110, 120] : gd ? ENCORE_GOLD : crgb(s), cs = missed ? '#6b6b78' : gd ? '#fbbf24' : col(s), isNext = nt[0] === nextT && !res;
       const edgeA = Math.max(0, Math.min(1, (R - x) / ((R - L) * 0.18))) * Math.max(0, Math.min(1, (x - L + 30) / 60));
       const passed = nt[0] < t - 0.02, near = !passed && !res ? Math.max(0, 1 - (nt[0] - t) / 0.7) : 0, fl = hitAge >= 0 && hitAge < 0.2 ? 1 - hitAge / 0.2 : 0;
       if (ringed.has(k) && nt[0] - t < 0.7 && nt[0] >= t) {   // a ring closing in
@@ -5707,9 +5898,9 @@
         const gr = it.grp, ch = sz * 1.12, y0 = sy(s), st = gr.map((x) => { const r2 = game.result[x.k], ha = r2 === 'hit' ? t - (game.hitAt[x.k] ?? notes[x.k][0]) : 9;
           return { x, res: r2, fl: ha >= 0 && ha < 0.2 ? 1 - ha / 0.2 : 0, next: notes[x.k][0] === nextT && !r2, passed: notes[x.k][0] < t - 0.02 }; });
         const gA = edgeA * (st.every((q) => q.passed || q.res) ? 0.45 : 1), anyNext = st.some((q) => q.next), anyFl = Math.max(...st.map((q) => q.fl));
-        g.globalAlpha = gA; if (anyNext || anyFl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, anyFl); }
-        g.beginPath(); g.roundRect(it.gcx - it.gw / 2, y0 - ch / 2, it.gw, ch, ch * 0.3); g.fillStyle = 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
-        g.strokeStyle = acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * (anyNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
+        g.globalAlpha = gA; if (anyNext || anyFl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, anyFl); } else if (gd) { g.shadowColor = cs; g.shadowBlur = 8; }
+        g.beginPath(); g.roundRect(it.gcx - it.gw / 2, y0 - ch / 2, it.gw, ch, ch * 0.3); g.fillStyle = gd ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
+        g.strokeStyle = gd ? acss(c, 0.75 + 0.25 * (anyNext ? 1 : 0)) : acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * (anyNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
         st.forEach((q, j) => {
           const gx = q.x.gx, tw = q.x.tw;
           if (j) { g.globalAlpha = gA; g.strokeStyle = acss(c, 0.35); g.lineWidth = 1; g.beginPath(); g.moveTo(gx - tw / 2 - sz * 0.25, y0 - ch * 0.28); g.lineTo(gx - tw / 2 - sz * 0.25, y0 + ch * 0.28); g.stroke(); }
@@ -5720,9 +5911,13 @@
         g.globalAlpha = 1; continue;
       }
       const cw = it.cw, ch = sz * 1.12;
-      if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, fl); }
-      g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
-      g.strokeStyle = acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
+      if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, fl); } else if (gd) { g.shadowColor = cs; g.shadowBlur = 8; }
+      g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : gd ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
+      g.strokeStyle = gd ? acss(c, 0.75 + 0.25 * Math.max(near, isNext ? 1 : 0)) : acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
+      if (gd && !fl && !passed) {                        // a glint crossing the gold keycap now and then
+        g.save(); g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.clip(); const gx = x - cw + ((ms / 1000 * 0.9 + k * 0.13) % 1.6) * cw * 1.6, gq = g.createLinearGradient(gx - 6, y - ch / 2, gx + 6, y + ch / 2);
+        gq.addColorStop(0, 'rgba(255,240,200,0)'); gq.addColorStop(0.5, 'rgba(255,240,200,.28)'); gq.addColorStop(1, 'rgba(255,240,200,0)'); g.fillStyle = gq; g.fillRect(x - cw / 2, y - ch / 2, cw, ch); g.restore();
+      }
       g.fillStyle = fl > 0.4 ? '#0a0b10' : missed ? '#8b8b96' : '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.globalAlpha = 1;
     }
     // the cursor: a slim line with a soft column of light
@@ -5737,11 +5932,21 @@
     g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 2; g.stroke();
     if (mf > 0) { g.beginPath(); g.moveTo(curX, cBot); g.lineTo(curX, fy); g.strokeStyle = acss(mood.c, 0.3 + 0.1 * beat); g.lineWidth = 7; g.stroke(); g.strokeStyle = acss(mood.c, 1); g.lineWidth = 3; g.stroke(); }
     g.lineCap = 'butt';
-    {
-      const pop = 1 + 0.25 * Math.max(0, 1 - (ms - arcadeBoard.sweepAt) / 300), bw = 40 * pop, bh = 24 * pop, by = cTop - 18;
-      g.beginPath(); g.roundRect(curX - bw / 2, by - bh / 2, bw, bh, bh / 2); g.fillStyle = 'rgba(9,10,15,.92)'; g.fill();
-      g.strokeStyle = acss(mood.c, mult === 1 ? 0.45 : 0.95); g.lineWidth = 1.4; g.stroke();
-      g.font = `700 ${Math.round(14 * pop)}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(mood.c, mult === 1 ? 0.75 : 1); g.fillText(`${mult}×`, curX, by + 1);
+    if (!game.pr) {                                      // the multiplier on the cursor (none in practice)
+      // The count-in is counted here, where you're looking (the big 3-2-1 over the board got in the way): the number on each
+      // beat, a ring going out and the cursor's line flashing. Encore doubles the multiplier shown (4× reads 8×).
+      const cnt = game.on && game.countdown > 0 && game.countdown < 9 ? game.countdown : 0, ck = cnt ? Math.exp(-(ms - (game.countAt ?? ms)) / 1000 * 7) : 0;
+      if (ck > 0) { g.beginPath(); g.moveTo(curX, cTop); g.lineTo(curX, cBot); g.strokeStyle = acss(mood.c, 0.6 * ck); g.lineWidth = 3; g.stroke(); }
+      const pop = cnt ? 1 + 0.22 * ck : 1 + 0.25 * Math.max(0, 1 - (ms - arcadeBoard.sweepAt) / 300), bw = 40 * pop, bh = 24 * pop, by = cTop - 18, gr = 12 * (1 - ck);
+      if (cnt) { g.beginPath(); g.roundRect(curX - bw / 2 - gr, by - bh / 2 - gr, bw + 2 * gr, bh + 2 * gr, bh / 2 + gr); g.strokeStyle = acss(mood.c, 0.6 * ck); g.lineWidth = 1.2; g.stroke(); }
+      g.beginPath(); g.roundRect(curX - bw / 2, by - bh / 2, bw, bh, bh / 2); g.fillStyle = encOn ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill();
+      g.strokeStyle = acss(mood.c, cnt ? 0.5 + 0.5 * ck : mult === 1 && !encOn ? 0.45 : 0.95); g.lineWidth = 1.4; g.stroke();
+      g.font = `700 ${Math.round(14 * pop)}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = cnt ? '#f5f5f7' : acss(mood.c, mult === 1 && !encOn ? 0.75 : 1);
+      g.fillText(cnt ? String(cnt) : `${encOn ? mult * 2 : mult}×`, curX, by + 1);
+    }
+    if (landF > 0) {                                     // a landing: a ring of light opening from the cursor, its column swelling
+      const la = 1 - landF, my = (trackT + trackB) / 2; arcadeSoft(g, curX, my, trackH * (0.45 + 0.4 * la), mood.c, 0.3 * landF);
+      g.beginPath(); g.ellipse(curX, my, trackH * (0.2 + 0.7 * la), trackH * (0.38 + 0.5 * la), 0, 0, 7); g.strokeStyle = acss(mood.c, 0.55 * landF); g.lineWidth = 1 + 2 * landF; g.stroke();
     }
     if (x4k > 0.01) {   // x4: caps on the cursor, and the board's edge glowing, its colour shimmering slowly along it (user: "we could make an outline, just cooler")
       arcadeSoft(g, curX, trackT - pad - 6, 16, mood.c, 0.6 * x4k); arcadeSoft(g, curX, trackB + pad + 6, 16, mood.c, 0.6 * x4k);
@@ -5749,7 +5954,23 @@
       for (let i = 0; i <= 6; i++) { const u = i / 6, v = (u + sh) % 1, c3 = v < 0.33 ? amix([125, 211, 252], [59, 130, 246], v / 0.33) : v < 0.66 ? amix([59, 130, 246], [139, 92, 246], (v - 0.33) / 0.33) : amix([139, 92, 246], [125, 211, 252], (v - 0.66) / 0.34); oq.addColorStop(u, acss(c3, (0.75 + 0.2 * beat) * x4k)); }
       g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, pw, phh, 18); g.globalAlpha = 0.3 + 0.15 * beat; g.strokeStyle = oq; g.lineWidth = 7; g.stroke(); g.globalAlpha = 1; g.lineWidth = 1.6; g.stroke(); g.beginPath(); g.roundRect(L - 52, trackT - pad + 4, pw - 8, phh - 8, 15); g.strokeStyle = `rgba(125,211,252,${0.18 * x4k})`; g.lineWidth = 1; g.stroke(); g.restore();
     }
+    if (encK > 0.01) {                                   // Encore: the board's edge in shimmering golds, breathing on the beat
+      arcadeSoft(g, curX, trackT - pad - 6, 16, mood.c, 0.6 * encK); arcadeSoft(g, curX, trackB + pad + 6, 16, mood.c, 0.6 * encK);
+      const sh = (ms / 1000 * 0.15) % 1, oq = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0), GS = [[253, 224, 140], [245, 158, 11], [255, 247, 220]];
+      for (let i = 0; i <= 6; i++) { const u = i / 6, v = (u + sh) % 1, j = Math.floor(v * 3) % 3, f = v * 3 - Math.floor(v * 3); oq.addColorStop(u, acss(amix(GS[j], GS[(j + 1) % 3], f), (0.75 + 0.2 * beat) * encK)); }
+      g.save(); g.beginPath(); g.roundRect(L - 56, trackT - pad, pw, phh, 18); g.globalAlpha = 0.3 + 0.15 * beat; g.strokeStyle = oq; g.lineWidth = 7; g.stroke(); g.globalAlpha = 1; g.lineWidth = 1.6; g.stroke(); g.beginPath(); g.roundRect(L - 52, trackT - pad + 4, pw - 8, phh - 8, 15); g.strokeStyle = `rgba(253,224,140,${0.2 * encK})`; g.lineWidth = 1; g.stroke(); g.restore();
+    }
     for (let s = 0; s < n; s++) { g.font = `600 15px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = acss(crgb(s), 0.8); g.fillText(names[s], L - 34, sy(s)); }
+    g.restore();                                         // the opening's clip
+    if (op > 0 && op < 1) for (const ex of [opL, opR]) {   // light at the opening's edges
+      const eq = g.createLinearGradient(0, trackT - pad, 0, trackB + pad); eq.addColorStop(0, acss(mood.c, 0)); eq.addColorStop(0.5, acss(mood.c, 0.9 * (1 - op))); eq.addColorStop(1, acss(mood.c, 0));
+      g.fillStyle = eq; g.fillRect(ex - 1, trackT - pad + 14 * (1 - ope), 2, phh); arcadeSoft(g, ex, (trackT + trackB) / 2, trackH * 0.5, mood.c, 0.25 * (1 - op));
+    }
+    if (op <= 0) { g.fillStyle = acss(mood.c, 0.7); g.fillRect(curX - 1, trackT - pad + 14, 2, phh); }   // before it opens: just the cursor's line
+    // the song's done: the board dims behind its moment (below)
+    const ending = game.on && !game.pr && plan && !(intro && introEl < intro.lead + 1) && game.next >= notes.length && (t > plan.lastEnd + 0.5 || game.songEnded) ? (arcadeBoard.ending ||= { at: ms, fc: game.judged > 0 && game.hits === game.judged && !game.grade.includes('Messy'), score: game.score, val: starsFor(game.score, game.units || notes.length) }) : null;
+    const endEl = ending ? (ms - ending.at) / 1000 : -1;
+    if (ending) { g.fillStyle = `rgba(5,6,10,${0.6 * Math.min(1, endEl / 0.9)})`; g.fillRect(0, 0, W, H); }
 
     // ---- the plaque: a record as its emblem and the score, centred over the track; the latest call on the right ----
     // (from the mockup, user: "Yes, put them in"): records instead of stars (the 5 star levels as Bronze / Silver / Gold /
@@ -5758,19 +5979,35 @@
     const hl = L - 56, hr = L - 56 + pw, sc = game.score.toLocaleString(), val = starsFor(game.score, game.units || notes.length);
     const tier = recordTier(val), [tname, mt] = ARCADE_TIERS[tier];
     if (tier !== arcadeBoard.tier) { if (tier > (arcadeBoard.tier ?? 0)) arcadeBoard.tierAt = ms; arcadeBoard.tier = tier; }
-    {
+    // the card's hand-over: the last two count-in beats (the cover flips into the record; the score comes in over 30-65%)
+    const xk = intro ? Math.max(0, Math.min(1, (introEl - (intro.lead - 2 * intro.B)) / (2 * intro.B))) : 1, eo = (x) => 1 - (1 - Math.max(0, Math.min(1, x))) ** 3;
+    const hudA = (intro && introEl < intro.lead + 0.5 ? eo((xk - 0.3) / 0.35) : 1) * (ending ? 1 - Math.min(1, Math.max(0, (endEl - 0.3) / 0.5)) : 1);
+    const meterV = enc ? encoreMeter(t) : 0, ready = !!enc && !enc.on && meterV >= 0.999;
+    if (!game.pr) {                                      // practice: no score (laid out while hidden too: the card flips to where its record goes)
+      g.save(); g.globalAlpha = hudA;
       // A fixed width, so the group stays put as the score grows (user: "the score at the top is shifting left to right"; it
       // was centred on its current width): room for the widest score this song can reach and the longest tier name.
-      const R0 = 26, ym = trackT - pad - 48, widest = Math.round(perfectScore(game.units || notes.length) * 1.5).toLocaleString().replace(/\d/g, '8');
+      const R0 = 26, ym = trackT - pad - (enc ? 60 : 48), widest = Math.round(perfectScore(game.units || notes.length) * 1.5).toLocaleString().replace(/\d/g, '8');
       g.font = `200 48px ${GAME_FONT}`; const sw = Math.max(g.measureText(sc).width, g.measureText(widest).width);
       g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const label = tier ? `${tname} RECORD` : tname, lw = Math.max(...ARCADE_TIERS.map(([nm], i) => g.measureText(i ? `${nm} RECORD` : nm).width)) + 22; g.letterSpacing = '0px';
       const w = 2 * R0 + 20 + Math.max(sw, lw), left = (hl + hr) / 2 - w / 2, tx = left + 2 * R0 + 20;
-      drawRecord(g, left + R0, ym, R0, val, ms / 1000, (arcadeBoard.tierAt ?? -1e9) / 1000);
-      // the score, and the tier under it
+      if (!(intro && xk < 0.92)) drawRecord(g, left + R0, ym, R0, val, ms / 1000, (arcadeBoard.tierAt ?? -1e9) / 1000);   // waits for the flipped cover to land
+      // the score, and the tier under it (ENCORE READY, pulsing, while the meter's full)
       const sq = g.createLinearGradient(0, ym - 34, 0, ym + 4); sq.addColorStop(0, '#ffffff'); sq.addColorStop(1, '#c3c9d2');
       g.font = `200 48px ${GAME_FONT}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = sq; g.fillText(sc, tx, ym + 4);
-      const ly = ym + 20; g.fillStyle = tier ? mt[1] : 'rgba(245,245,247,.35)'; g.fillRect(tx, ly - 0.5, 14, 1);
-      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; g.textBaseline = 'middle'; g.fillText(label, tx + 22, ly); g.letterSpacing = '0px';
+      const ly = ym + 20; g.fillStyle = ready ? acss(ENCORE_GOLD, 0.65 + 0.35 * Math.sin(ms / 1000 * 7)) : tier ? mt[1] : 'rgba(245,245,247,.35)'; g.fillRect(tx, ly - 0.5, 14, 1);
+      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; g.textBaseline = 'middle'; g.fillText(ready ? 'ENCORE READY' : label, tx + 22, ly); g.letterSpacing = '0px';
+      // The Encore meter as the plaque's last row (user: "I like the bar under the score"): two slim segments, one per phrase,
+      // under the score's column; glowing when full and while Encore drains it.
+      const mw = Math.max(sw, lw), my = ym + 36;
+      arcadeBoard.plaque = { rx: left + R0, ry: ym, r: R0, mx: tx, mw, my };
+      if (enc) for (let i = 0; i < 2; i++) {
+        const segW = (mw - 5) / 2, x0 = tx + i * (segW + 5), f = Math.max(0, Math.min(1, meterV * 2 - i));
+        g.beginPath(); g.roundRect(x0, my - 1.5, segW, 3, 1.5); g.fillStyle = 'rgba(255,255,255,.1)'; g.fill();
+        if (f > 0) { const mq = g.createLinearGradient(x0, 0, x0 + segW, 0); mq.addColorStop(0, '#c2700c'); mq.addColorStop(1, '#fcd572'); g.save(); g.beginPath(); g.roundRect(x0, my - 1.5, Math.max(3, segW * f), 3, 1.5);
+          g.fillStyle = mq; g.shadowColor = '#f59e0b'; g.shadowBlur = encOn || ready ? (ready ? 8 + 6 * Math.sin(ms / 1000 * 7) : 12) : 4; g.fill(); g.restore(); }
+      }
+      g.restore();
     }
     const ry = trackT - pad - 44, sx = hr - 2;
     const calls = [...game.bursts.filter((b) => !b.messy && b.label !== false).map((b) => ({ at: b.at, life: 0.6, text: b.perfect ? 'Perfect' : 'Good', fill: b.perfect ? '#fcd34d' : '#f5f5f4' })),
@@ -5797,17 +6034,98 @@
       }
     }
     game.bursts = game.bursts.filter((b) => ms - b.at < 700);
-    const goAge = ms - (game.goAt ?? -1e9);   // the count-in
-    if (game.countdown || goAge < 700) {
-      const grow = Math.min(1, game.countdown ? (ms - (game.countAt ?? ms)) / 800 : goAge / 700);
-      g.globalAlpha = game.countdown ? 1 : 1 - grow; g.font = `200 ${Math.round(H * 0.2 * (1.12 - 0.12 * grow))}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillStyle = game.countdown ? '#f5f5f7' : acss(mood.c, 1); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 24; g.fillText(game.countdown ? String(game.countdown) : 'Go', W / 2, H * 0.5); g.shadowBlur = 0; g.globalAlpha = 1;
+    // (no big 3-2-1 over the board: the cursor's badge counts, also after a pause)
+    const bcx = L - 56 + pw / 2, Pq = arcadeBoard.plaque, eo2 = (x) => 1 - (1 - Math.max(0, Math.min(1, x))) ** 3;
+    if (enc && Pq) {
+      // a phrase done: a gold flare at the cursor and a few motes flying into the meter
+      enc.plan.phrases.forEach((p, i) => {
+        const da = (ms - (enc.doneAt[i] ?? -1e9)) / 1000; if (da < 0 || da >= 0.8) return;
+        const sx = curX, sy0 = (trackT + trackB) / 2, tx = Pq.mx + Pq.mw * Math.min(1, enc.meter), ty = Pq.my;
+        arcadeSoft(g, sx, sy0, trackH * 0.45, ENCORE_GOLD, 0.35 * (1 - da / 0.8));
+        for (let j = 0; j < 9; j++) {
+          const u = Math.max(0, Math.min(1, (da - j * 0.03) / 0.5)); if (u <= 0 || u >= 1) continue;
+          const e = eo2(u), cxm = (sx + tx) / 2 + (j - 4) * 14, cym = ty - 60 - j * 6, x = (1 - e) ** 2 * sx + 2 * (1 - e) * e * cxm + e * e * tx, y = (1 - e) ** 2 * sy0 + 2 * (1 - e) * e * cym + e * e * ty;
+          g.globalAlpha = hudA * (0.3 + 0.7 * (1 - u)); g.fillStyle = j % 2 ? '#fde68a' : '#f59e0b'; g.beginPath(); g.arc(x, y, 2.6 * (1 - u) + 1, 0, 7); g.fill();
+        }
+        g.globalAlpha = 1;
+      });
+      // Encore starting: ENCORE in gold over the score, lines drawing out; when it ends, the points it added
+      const banner = (text, sub, age, len) => {
+        const a = Math.min(1, age / 0.2) * Math.min(1, (len - age) / 0.5), scl = 0.9 + 0.1 * eo2(age / 0.35); g.save(); g.globalAlpha = a; g.translate(bcx, trackT - pad - 138); g.scale(scl, scl);
+        g.font = `300 38px ${GAME_FONT}`; g.letterSpacing = '14px'; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; const tw = g.measureText(text).width - 14;
+        const gq = g.createLinearGradient(0, -32, 0, 4); gq.addColorStop(0, '#fff7dc'); gq.addColorStop(1, '#f5b13a'); g.fillStyle = gq; g.shadowColor = 'rgba(245,158,11,.6)'; g.shadowBlur = 22; g.fillText(text, 7, 0); g.shadowBlur = 0; g.letterSpacing = '0px';
+        const ext = eo2(age / 0.6) * 130; g.strokeStyle = 'rgba(253,224,140,.7)'; g.lineWidth = 1; g.beginPath(); g.moveTo(-tw / 2 - 18, -13); g.lineTo(-tw / 2 - 18 - ext, -13); g.moveTo(tw / 2 + 18, -13); g.lineTo(tw / 2 + 18 + ext, -13); g.stroke();
+        if (sub) { g.font = `600 10px ${GAME_FONT}`; g.letterSpacing = '3px'; g.fillStyle = 'rgba(245,245,247,.75)'; g.fillText(sub, 1.5, 22); g.letterSpacing = '0px'; }
+        g.restore();
+      };
+      if (enc.on && t >= enc.on.t0 && t - enc.on.t0 < 2.2) banner('ENCORE', '', t - enc.on.t0, 2.2);   // (no "double points" line: user)
+      const ea = (ms - enc.endAt) / 1000; if (ea >= 0 && ea < 2 && enc.endBonus > 0) banner(`+${enc.endBonus.toLocaleString()}`, 'ENCORE BONUS', ea, 2);
+    }
+    // The intro's card where the score goes (user: "show the song info where the score is and transition into the score when the
+    // song is about to start"): cover, title, artist, difficulty and your best; on the last two beats the cover shrinks to the
+    // record's place and turns over, the record on its back (user picked Flip), while the words lift away.
+    if (intro && introEl < intro.lead + 0.1 && Pq) {
+      const ci = eo2(introEl / 0.7), k = xk, cs = 120, cy = trackT - pad - 100 + 8 * (1 - ci), art = (intro.artist || '').toUpperCase();
+      g.save(); g.font = `300 40px ${GAME_FONT}`; const tw = g.measureText(intro.title).width; g.font = `600 11px ${GAME_FONT}`; g.letterSpacing = '3px'; const aw = g.measureText(art).width; g.letterSpacing = '0px';
+      const w = cs + 30 + Math.max(tw, aw, 200), x0 = bcx - w / 2, txc = x0 + cs + 30, lerp = (a, b, u) => a + (b - a) * u;
+      const cover = (x, y, sz, cr) => {
+        g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 30 * sz / cs; g.shadowOffsetY = 10 * sz / cs; g.beginPath(); g.roundRect(x, y, sz, sz, cr); g.fillStyle = '#111'; g.fill(); g.restore();
+        g.save(); g.beginPath(); g.roundRect(x, y, sz, sz, cr); g.clip();
+        if (intro.img) { const iw = intro.img.naturalWidth, ih = intro.img.naturalHeight, sc2 = Math.max(sz / iw, sz / ih); g.drawImage(intro.img, x + (sz - iw * sc2) / 2, y + (sz - ih * sc2) / 2, iw * sc2, ih * sc2); }
+        else {                                           // a drawn cover in coverEl's hues
+          const cq = g.createLinearGradient(x, y, x + sz, y + sz); cq.addColorStop(0, `hsl(${intro.h1} 55% 34%)`); cq.addColorStop(1, `hsl(${intro.h2} 60% 12%)`); g.fillStyle = cq; g.fillRect(x, y, sz, sz);
+          for (let i = 0; i < 7; i++) { g.beginPath(); g.arc(x + sz * 0.72, y + sz * 0.3, sz * (0.1 + i * 0.12), 0, 7); g.strokeStyle = `hsla(${intro.h1},80%,78%,${0.2 - i * 0.025})`; g.lineWidth = sz * 0.025; g.stroke(); }
+        }
+        g.restore(); g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1; g.beginPath(); g.roundRect(x + 0.5, y + 0.5, sz - 1, sz - 1, cr); g.stroke();
+      };
+      const m = eo2(k / 0.55), fl = Math.max(0, Math.min(1, (k - 0.55) / 0.35)), sx = Math.cos(fl * Math.PI), cs2 = lerp(cs, 2 * Pq.r, m), ccx = lerp(x0 + cs / 2, Pq.rx, m), ccy = lerp(cy, Pq.ry, m);
+      g.globalAlpha = ci * (1 - Math.max(0, Math.min(1, (k - 0.92) / 0.08)));
+      if (sx > 0) { g.save(); g.translate(ccx, ccy); g.scale(sx, 1); cover(-cs2 / 2, -cs2 / 2, cs2, cs2 * 0.06); g.restore(); }
+      else { g.save(); g.translate(ccx, ccy); g.scale(-sx, 1); drawRecord(g, 0, 0, Pq.r, 0, ms / 1000); g.restore(); }
+      g.globalAlpha = ci * Math.max(0, 1 - k * 2); g.translate(0, -10 * k);
+      if (g.globalAlpha > 0) {
+        const tq = g.createLinearGradient(0, cy - 46, 0, cy - 6); tq.addColorStop(0, '#ffffff'); tq.addColorStop(1, '#c3c9d2');
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.font = `300 40px ${GAME_FONT}`; g.fillStyle = tq; g.fillText(intro.title, txc, cy - 6);
+        g.font = `600 11px ${GAME_FONT}`; g.letterSpacing = '3px'; g.fillStyle = 'rgba(245,245,247,.6)'; g.fillText(art, txc, cy + 18);
+        g.font = `700 10px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const dw = g.measureText(intro.diff).width + 20, dy = cy + 44;
+        g.beginPath(); g.roundRect(txc, dy - 10, dw, 20, 10); g.strokeStyle = intro.diffColor; g.lineWidth = 1; g.stroke(); g.textBaseline = 'middle'; g.fillStyle = intro.diffColor; g.fillText(intro.diff, txc + 11, dy + 0.5);
+        if (intro.best) { g.font = `600 10px ${GAME_FONT}`; g.fillStyle = intro.bestTier ? ARCADE_TIERS[intro.bestTier][1][1] : 'rgba(245,245,247,.55)'; g.fillText(`BEST ${intro.best.toLocaleString()}${intro.bestTier ? ` · ${ARCADE_TIERS[intro.bestTier][0]}` : ''}`, txc + dw + 14, dy + 0.5); }
+        g.letterSpacing = '0px';
+      }
+      g.restore();
+    }
+    // The song's done (user picked the ending moment): SONG COMPLETE, or FULL COMBO with a band of gold light and twinkles,
+    // over the dimmed board, the score counting up with its record; then See results (a click or Space; by itself after 6 s).
+    if (ending) {
+      const ba = endEl - 0.2, fc = ending.fc, cy = (trackT + trackB) / 2 - 30, a = Math.max(0, Math.min(1, ba / 0.3));
+      if (ba > 0) {
+        if (fc && ba < 1.1) { const u = eo2(ba / 1.1), sx = L - 56 + (pw + 80) * u, w = W * 0.14, fq = g.createLinearGradient(sx - w, 0, sx + w, 0); fq.addColorStop(0, 'rgba(253,224,140,0)'); fq.addColorStop(0.5, `rgba(255,247,220,${0.35 * (1 - u)})`); fq.addColorStop(1, 'rgba(253,224,140,0)'); g.fillStyle = fq; g.fillRect(sx - w, trackT - pad, w * 2, phh); }
+        g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        const label = fc ? 'FULL COMBO' : 'SONG COMPLETE'; g.font = `300 32px ${GAME_FONT}`; g.letterSpacing = '12px'; const tw = g.measureText(label).width - 12;
+        if (fc) { const gq = g.createLinearGradient(0, cy - 28, 0, cy + 2); gq.addColorStop(0, '#fff7dc'); gq.addColorStop(1, '#f5b13a'); g.fillStyle = gq; g.shadowColor = 'rgba(245,158,11,.55)'; } else { g.fillStyle = '#f5f5f7'; g.shadowColor = 'rgba(0,0,0,.6)'; }
+        g.shadowBlur = 22; g.fillText(label, W / 2 + 6, cy); g.shadowBlur = 0; g.letterSpacing = '0px';
+        const ext = eo2(ba / 0.7) * 150; g.strokeStyle = fc ? 'rgba(253,224,140,.7)' : 'rgba(245,245,247,.45)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(W / 2 - tw / 2 - 20, cy - 11); g.lineTo(W / 2 - tw / 2 - 20 - ext, cy - 11); g.moveTo(W / 2 + tw / 2 + 20, cy - 11); g.lineTo(W / 2 + tw / 2 + 20 + ext, cy - 11); g.stroke();
+        if (ba > 0.4) {
+          const shown = Math.round(ending.score * eo2((ba - 0.4) / 1.3)), vv = ending.val * eo2((ba - 0.4) / 1.3), tr = recordTier(vv);
+          g.globalAlpha = a * Math.min(1, (ba - 0.4) / 0.3); const nq = g.createLinearGradient(0, cy + 24, 0, cy + 76); nq.addColorStop(0, '#fff'); nq.addColorStop(1, '#c3c9d2');
+          g.font = `200 60px ${GAME_FONT}`; g.fillStyle = nq; g.fillText(shown.toLocaleString(), W / 2, cy + 80);
+          if (tr) { g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.6px'; g.fillStyle = ARCADE_TIERS[tr][1][1]; g.fillText(`${ARCADE_TIERS[tr][0]} RECORD`, W / 2 + 1.3, cy + 106); g.letterSpacing = '0px'; }
+        }
+        if (fc && ba > 0.3) for (let i = 0; i < 16; i++) {   // twinkles round FULL COMBO
+          const ang = i * 2.4, rr = tw * 0.5 + 30 + (i * 37) % 90, x = W / 2 + Math.cos(ang) * rr * 1.3, y = cy - 14 + Math.sin(ang) * rr * 0.45, z = 2 + (i % 3) * 1.5;
+          g.globalAlpha = a * Math.max(0, Math.sin(ms / 1000 * 3 + i * 1.7)) * 0.9; g.fillStyle = '#fff7dc';
+          g.beginPath(); g.moveTo(x, y - z * 2); g.lineTo(x + z * 0.4, y - z * 0.4); g.lineTo(x + z * 2, y); g.lineTo(x + z * 0.4, y + z * 0.4); g.lineTo(x, y + z * 2); g.lineTo(x - z * 0.4, y + z * 0.4); g.lineTo(x - z * 2, y); g.lineTo(x - z * 0.4, y - z * 0.4); g.closePath(); g.fill();
+        }
+        if (ba > 2) { g.globalAlpha = Math.min(1, (ba - 2) / 0.4); g.font = `600 13px ${GAME_FONT}`; const bw = g.measureText('See results').width + 44; g.beginPath(); g.roundRect(W / 2 - bw / 2, cy + 132, bw, 36, 18); g.fillStyle = '#f5f5f7'; g.fill(); g.fillStyle = '#0a0b10'; g.textBaseline = 'middle'; g.fillText('See results', W / 2, cy + 150.5); }
+        g.restore();
+      }
+      if (endEl > 6 && !ending.left) { ending.left = true; setTimeout(() => endGame(), 0); }
     }
   }
 
   function drawGame(t, force) {
-    if (gameBoard === 'arcade' && !game.members) { drawArcade(t, force); return; }
-    if (use3D()) { drawGame3D(t, force); return; }
+    if (!game.members) { drawArcade(t, force); return; }   // the only board (user: "get rid of the old game highways and just use arcade")
     const body = $('#tab-body');
     let cv = tabView.canvas;
     if (force || !cv || !body.contains(cv)) {
@@ -5848,7 +6166,7 @@
     const nearX = Math.max(140, W * 0.12), farX = W * 0.985, midY = H * 0.56;
     const rowH = Math.min(150, (H * 0.64) / n);
     const gemH = Math.min(60, rowH * 0.62), gemMin = Math.max(30, gemH * 0.72);
-    const flat = gameBoard === 'flat';
+    const flat = false;                                  // guitar chords: Arcade can't show them yet, so this 2D board does
     const Z = Math.max(0.8, Math.min(8, 2.6 / hwSpeed)) / (flat ? 2 : 1), dd = Z * 3, zPast = -0.3;
     const depth = flat ? () => 1 : (z) => dd / (z + dd);
     const sx = flat ? (z) => nearX + ((farX - nearX) * z) / Z : (z) => nearX + (farX - nearX) * ((z * (Z + dd)) / (Z * (z + dd)));
@@ -6094,8 +6412,7 @@
     // HUD (user: "I don't want the song length or the song at all, just the score"): the
     // score with its stars under it (rbScore), and the multiplier ring beside it.
     const R = 34, ringX = W - 34 - R, ringY = Math.min(96, Math.max(70, edgeY(-1, 0) - 90));   // room above for the x4 fire
-    rbScore(g, ringX - R - 20, notes.length, ringY);
-    drawMultiplier(g, ringX, ringY, R, ms);
+    if (!game.pr) { rbScore(g, ringX - R - 20, notes.length, ringY); drawMultiplier(g, ringX, ringY, R, ms); }   // practice: no score
 
     // Streak milestones and the countdown (3, 2, 1, Go).
     g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -7531,8 +7848,12 @@
     if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked || clicked, newPitch, rePluck);
     if (game.on && !game.countdown) {
       if (player.playing) { game.started = true; gameListen(db, steady ?? null, raw, plucked || clicked, newPitch, rePluck); }
+      else if (game.pr) practiceHeld(raw, plucked || clicked, newPitch);   // practice: stopped, waiting for a note, or moving
       else if (game.started && !game.paused) {
-        if (player.offset === 0) endGame();               // the song ended (its end resets the position)
+        if (player.offset === 0) {                        // the song ended (its end resets the position)
+          // every note played on the Arcade board: its "song complete" moment plays first (and ends the game itself)
+          if (game.enc && game.next >= (tabView.data?.notes.length || 0)) game.songEnded = true; else endGame();
+        }
         else pauseGame();                                 // paused (Space): the pause menu
       }
     }
@@ -8294,7 +8615,7 @@
   const game = { on: false, started: false, countdown: 0, score: 0, streak: 0, best: 0, hits: 0, judged: 0,
                  result: [], hitAt: [], grade: [], laneHit: {}, bursts: [], sparks: [], sustain: {}, laneHitMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
                  laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, plucks: [], heard: [], next: 0, prevDb: -100, lastMidi: null, song: null, source: null };
-  const multiplier = () => Math.min(4, 1 + Math.floor(game.streak / 10));
+  const multiplier = () => (game.pr ? 1 : Math.min(4, 1 + Math.floor(game.streak / 10)));   // practice: no multiplier
 
   // Mistakes (the user wanted feedback when one is made): the string's fret button
   // flashes red, "MISS" / "WRONG" rises from it (with what was played vs the tab), a
@@ -8402,7 +8723,9 @@
     // pluck came from the steady pitch (5 readings) ~120 ms late or fell out of the
     // window (combos broke while on time; the user: "lag between hitting a note and it
     // showing"). Simulated perfect player on Electra: see CLAUDE.md.
-    const fix = inputCalibration;                        // this setup's measured delay (Calibrate)
+    // This setup's measured delay (Calibrate) and the readings' own delays are real seconds: at a practice speed below
+    // 100% that's fewer seconds of the song (sc).
+    const sc = player.rate, fix = inputCalibration * sc;
     const before = Math.min(game.prevDb, game.prevDb2 ?? game.prevDb);
     const attack = fresh || (db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB;
     // Every sign of a pluck is kept (a pluck often shows on two readings): a note that
@@ -8416,7 +8739,7 @@
       if (now - p.at < 0.06) p.db = Math.max(p.db, fd);
       else { p.final = true; game.levels = [...(game.levels || []).slice(-39), p.db]; }
     }
-    if (attack) { game.plucks.push({ t: now - (fresh ? 0.02 : 0.03) - fix, used: null, db: fd, at: now }); game.lastAttack = now; }
+    if (attack) { game.plucks.push({ t: now - (fresh ? 0.02 : 0.03) * sc - fix, used: null, db: fd, at: now }); game.lastAttack = now; }
     if (attack) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: input.clicked ? 'click (high frequencies)' : fresh ? 'newest 20 ms jumped' : 'level jumped' });
     // The pad of a note due now reacts the moment the pluck is heard (user: "it would be nice if the response on the
     // game notes being hit was faster and more responsive"): a hit is only scored once the note's pitch is read too,
@@ -8425,7 +8748,7 @@
       // The note nearest the pluck in time, and any struck with it (a chord, within 30 ms). Not just the first one due:
       // the note before is often still waiting for its pitch, and lit too (user: "the string above also light too
       // though. Like a E7 triggers the A").
-      const notes = tabView.data.notes, [early, late] = TIMINGS[gameTiming], pt = now - 0.02 - fix, at = performance.now();
+      const notes = tabView.data.notes, [early, late] = TIMINGS[gameTiming], pt = now - 0.02 * sc - fix, at = performance.now();
       let best = null;
       for (let k = game.next; k < notes.length && notes[k][0] <= pt + early; k++) {
         if (game.result[k] || notes[k][0] < pt - late) continue;
@@ -8437,19 +8760,19 @@
         }
       }
     }
-    if (newPitch) game.plucks.push({ t: now - 0.06 - fix, used: null, soft: true, final: true, db, at: now });   // how loud the string is
+    if (newPitch) game.plucks.push({ t: now - 0.06 * sc - fix, used: null, soft: true, final: true, db, at: now });   // how loud the string is
     if (newPitch) checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'new pitch' });
     if (rePluck && !attack && !newPitch) {               // timed where the readings blurred
-      game.plucks.push({ t: now - 0.02 * rePluck - 0.01 - fix, used: null, soft: true, final: true, db, at: now });
+      game.plucks.push({ t: now - (0.02 * rePluck + 0.01) * sc - fix, used: null, soft: true, final: true, db, at: now });
       checkEvent({ e: 'pluck', p: game.plucks[game.plucks.length - 1], why: 'same note back after a blink' });
     }
     game.prevDb2 = game.prevDb; game.prevDb = db;
     if (game.members) { strumByChange(now, fix); readChord(now); }
-    if (raw !== null) game.heard.push([now - 0.05 - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
-    tuneCheck(now - 0.05 - fix);
+    if (raw !== null) game.heard.push([now - 0.05 * sc - fix, raw - player.shift, now]);   // the tab is for the song as is; [2] when it was read
+    tuneCheck(now - 0.05 * sc - fix);
     // A wrong note needs a real attack just before it: lifting a finger lets the open
     // string (or another fretted note) ring, which isn't a mistake (the user saw those).
-    if (midi !== null && midi !== game.lastMidi && now - (game.lastAttack ?? -9) < 0.3) checkWrong(now - 0.1 - fix, midi);
+    if (midi !== null && midi !== game.lastMidi && now - (game.lastAttack ?? -9) < 0.3) checkWrong(now - 0.1 * sc - fix, midi);
     game.lastMidi = midi;
     judge(now, raw === null ? null : raw - player.shift);
     game.plucks = game.plucks.filter((p) => p.t > now - 2);
@@ -8563,7 +8886,7 @@
           game.best = Math.max(game.best, game.streak);
           if (multiplier() > before) game.multAt = at;
           if (game.streak % 50 === 0) game.milestone = { n: game.streak, at };
-          game.score += 100 * multiplier();
+          addScore(100 * multiplier(), now);
         }
         continue;
       }
@@ -8638,7 +8961,7 @@
         game.bursts.push({ s: notes[k][2], at, perfect: game.grade[k] === 'Perfect', messy, k });
         if (multiplier() > before) game.multAt = at;
         if (game.streak % 50 === 0) game.milestone = { n: game.streak, at };
-        game.score += 100 * multiplier();
+        addScore(100 * multiplier(), now);
         if (messy) {
           if (game.streak > 10) game.streakLost = { n: game.streak - 1, at };
           game.streak = 0;
@@ -8695,9 +9018,10 @@
         if (finishing && h.last !== null) h.done = true;
         if (h.last === null) continue;
       }
-      game.score += 2 * multiplier();
+      addScore(2 * multiplier(), now);
       game.sustain[s] = performance.now();               // the hold animation on that string
     }
+    encoreTick(now);
   }
   const HOLD_GAP = 0.25, HOLD_GRACE = 0.2;
 
@@ -8754,21 +9078,46 @@
                           bursts: [], sparks: [], sustain: {}, hold: {}, laneHitMs: {}, laneTapMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
                           laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, tuneLog: {},
                           prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false,
-                          lead: guitar ? lead : null, members: guitar ? members : null, poly: [], polyAt: -9, flux: [], units: guitar ? units : null });
+                          lead: guitar ? lead : null, members: guitar ? members : null, poly: [], polyAt: -9, flux: [], units: guitar ? units : null,
+                          pr: arcadeOn && arcade.mode === 'practice' ? newPractice() : null });
     fetch('/api/ping?game=1', { method: 'POST' }).catch(() => {});   // background work (the vocals pass) waits from now
     if (virtualDropOn()) toast(`Virtual drop D: play the low string's frets on your E string${input.monShift && $('#input-monitor').checked ? ' (Hear myself lowers them to D)' : ''}.`);
     input.fluxPrev = null;
     // For testing the x2-x4 looks: localStorage 'track-splitter-game-streak' starts the streak there.
     game.streak = Math.max(0, Number(pref('track-splitter-game-streak')) || 0);
+    // Encore phrases, the intro and the ending: the Arcade board's (not the tab view, guitar chords' board or practice)
+    const arcadeMoments = gameView !== 'tab' && !guitar && !game.pr;
+    game.intro = null; game.songEnded = false;
+    game.enc = arcadeMoments ? (() => { const plan = encorePlan(tabView.data); return { plan, st: plan.phrases.map((p) => (p.ks[0] < firstNote ? 'skip' : null)), meter: 0, on: null, bonus: 0, doneAt: {}, endAt: -1e9, endBonus: 0 }; })() : null;
+    Object.assign(arcadeBoard, { big: 0, encK: 0, ending: null });
     document.body.classList.add('game-on');
+    document.body.classList.toggle('practice', !!game.pr);
     $('#tab-game').textContent = 'Pause';
     if (gameView === 'tab') { layoutLines(tabView.data); tabView.line = -1; tabFrame(true); }   // lines as wide as the game's window
     else {                                               // the board's first frame (textures, shaders: ~0.35 s) before the
       tabFrame(true);                                    // count-in, not on its "3" (user: "getting some choppyness again")
       await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
     }
+    if (game.pr) { renderPractice(); return startPractice(); }   // its own count-in (a bar of clicks), no score
     const count = game.countToken = (game.countToken || 0) + 1;   // pausing cancels this count-in
-    for (let c = 3; c > 0; c--) {                        // 3, 2, 1 on the highway
+    if (arcadeMoments) {
+      // The song's card where the score goes, then the board opens and the first notes glide in while the cursor's badge
+      // counts 4 beats at the song's tempo (user: "it just started from the first note and was hard to time"; the big
+      // 3-2-1 is gone); on the last two beats the cover flips into the record and the score comes in.
+      const bars = tabView.data.bars3d ||= tabView.data.lines.flatMap(([start, , b]) => [start, ...b]).sort((a, b) => a - b);
+      const lens = bars.slice(1).map((b, i) => b - bars[i]).filter((x) => x > 0.8 && x < 8).sort((a, b) => a - b);
+      const B = Math.max(0.4, Math.min(0.75, (lens.length ? lens[lens.length >> 1] : 2.4) / 4)), CARD = 1.8, at = performance.now();
+      const until = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms - performance.now())));
+      game.intro = { at, B, card: CARD, lead: CARD + 4 * B, start: startAt, ...introCard() };
+      game.countdown = 9; game.countAt = at;              // the card: not counting yet, but nothing's judged
+      await until(at + CARD * 1000);
+      for (let c = 4; c > 0; c--) {
+        if (!game.on || game.countToken !== count) return;
+        game.countdown = c; game.countAt = performance.now();
+        await until(at + (CARD + (5 - c) * B) * 1000);
+      }
+      if (!game.on || game.countToken !== count) return;
+    } else for (let c = 3; c > 0; c--) {                 // 3, 2, 1 on the tab
       game.countdown = c;
       game.countAt = performance.now();
       await new Promise((r) => setTimeout(r, 900));
@@ -8780,22 +9129,36 @@
     play();
   }
 
+  // What the intro's card shows: cover (the song's picture, else a drawn one in coverEl's hues), title, artist, difficulty, your best.
+  function introCard() {
+    const song = state.current.song, key = bestKey(game.song, game.source), best = readMap(BEST_KEY)[key] || 0, stars = readMap(STARS_KEY)[key] || 0, h = hashOf(song.id);
+    const card = { title: song.title, artist: song.artist, diff: DIFFS[gameDiff][0].toUpperCase(), diffColor: DIFF_COLORS[gameDiff] || '#f87171',
+                   best, bestTier: Math.min(5, stars), h1: h % 360, h2: (h >>> 9) % 360, img: null };
+    const img = new Image(); img.onload = () => { if (img.naturalWidth) card.img = img; };
+    img.src = `/api/cover?song=${encodeURIComponent(song.id)}&v=${song.cover || 0}`;
+    return card;
+  }
+
   // results: false when the game ends because you left it (closed the tab, turned the
   // input off, picked another song): it just ends, without the results box.
   function endGame(results = true) {
     if (!game.on) return;
+    arcadeBoard.ending = null; game.intro = null;
     const finished = game.next >= (tabView.data?.notes.length || 0) || !player.playing && player.offset === 0;
     const played = tabView.data;                         // the notes of this difficulty
     if (game.fullData) { tabView.data = game.fullData; game.fullData = null; }
     game.on = false;
     game.paused = false;
+    const practiced = !!game.pr;
+    if (practiced) endPractice();
     if ($('#pause-dlg').open) $('#pause-dlg').close();
-    document.body.classList.remove('game-on', 'max');
+    document.body.classList.remove('game-on', 'max', 'practice');
     $('#tab-game').textContent = 'Start';
     if (tabView.data) { layoutLines(tabView.data); tabView.line = -1; tabFrame(true); }   // the whole tab's lines again
     if (game.modeBefore && game.modeBefore !== state.mode) { state.mode = game.modeBefore; applyMode(); }
     if (game.instrumentBefore) { setInstrument(game.instrumentBefore); game.instrumentBefore = null; }
     if (player.playing) pause();
+    if (practiced) return;                               // practice keeps no score: straight back to song select
     if (check.on) finishCheck(game.started ? played : null, finished);
     if (!game.started || !results) return;              // stopped during the countdown, or left
     const total = game.units || played?.notes.length || 0;   // a guitar chord counts once
@@ -8914,12 +9277,16 @@
   function pauseGame() {
     // Also during a count-in (user: "I don't want to wait for the countdown to pause again"): it stops it.
     if (!game.on || game.paused) return;
-    game.countToken = (game.countToken || 0) + 1; game.countdown = 0;
+    if (arcadeBoard.ending) { endGame(); return; }      // the song's done: on to the results
+    game.countToken = (game.countToken || 0) + 1; game.countdown = 0; game.intro = null;
+    if (game.pr) practiceStop();
     game.paused = true;
     if (player.playing) pause();
     // The score as a plaque: the record so far, the score, its tier, where you are in the song.
     const pauseVal = starsFor(game.score, game.units || tabView.data?.notes.length || 0);
-    $('#pause-score').replaceChildren(recordEl(pauseVal, 56), el('div', {},
+    if (game.pr) $('#pause-score').replaceChildren(el('div', {}, el('div', { className: 'arc-plaque-num', textContent: 'Practice' }),
+      el('div', { className: 'pause-time', textContent: `Bar ${practiceBarAt(currentTime()) + 1} · ${fmtTime(currentTime())} of ${fmtTime(duration())}` })));
+    else $('#pause-score').replaceChildren(recordEl(pauseVal, 56), el('div', {},
       el('div', { className: 'arc-plaque-num', textContent: game.score.toLocaleString() }),
       el('div', { className: 'arc-plaque-tier', textContent: recordName(pauseVal), style: `color:${recordColor(pauseVal)}` }),
       el('div', { className: 'pause-time', textContent: `${fmtTime(currentTime())} of ${fmtTime(duration())}` })));
@@ -8929,6 +9296,7 @@
     if (!game.on || !game.paused) return;
     if ($('#pause-dlg').open) $('#pause-dlg').close();
     game.paused = false;                                // so its count-in can be paused again
+    if (game.pr) { practiceGo(); return; }               // practice counts in with its clicks
     const count = game.countToken = (game.countToken || 0) + 1;
     for (let c = 3; c > 0; c--) {
       game.countdown = c;
@@ -8943,6 +9311,353 @@
     play();
   }
   $('#pause-resume').addEventListener('click', resumeGame);
+  // ---------- Practice (Encore) ----------
+  // The game with no score, fail or multiplier (user: "it would be nice if we could have a practice mode in the actual game
+  // and move around the song in there too", then "I want the same look as the real game"): the same board and look, a strip
+  // along the bottom (#pr-hud) with the song's bars to move around in and loop, speed (slowed audio from the server,
+  // `/api/audio?speed=`, player.rate), Wait for me (the song stops on each note until you play it) and Click (a beat click,
+  // a bar counted in at each start). game.pr is the state; null in a normal game.
+  const PRACTICE_KEY = 'encore-practice';               // { wait, click, up, speed } kept between songs
+  function newPractice() {
+    const p = readMap(PRACTICE_KEY);
+    return { loop: null, speed: 100, want: [50, 75, 90].includes(p.speed) ? p.speed : 100, wait: !!p.wait, click: p.click ?? true, up: p.up ?? true,
+             waiting: null, waitPluck: null, busy: false, stopped: true, token: 0, loopN: 1, loops: [], missed: {}, clickedTo: -1,
+             normal: null, loading: null, drag: null };
+  }
+  function savePractice() {
+    const pr = game.pr;
+    try { localStorage.setItem(PRACTICE_KEY, JSON.stringify({ wait: pr.wait, click: pr.click, up: pr.up, speed: pr.speed })); } catch { /* not kept */ }
+  }
+  // Bar starts (the tab's bars; every 2 s without them), and which bar a time is in.
+  function practiceBars() {
+    const d = tabView.data;
+    if (!d.barTimes && d.lines?.length) d.barTimes = [...new Set((d.serverLines || d.lines).flatMap(([a, b, inner]) => [a, ...inner, b]))].sort((p, q) => p - q);
+    if (d.barTimes?.length > 1) return d.barTimes;
+    return d.prBars ||= Array.from({ length: Math.ceil(duration() / 2) + 1 }, (_, i) => i * 2);
+  }
+  function practiceBarAt(t) {
+    const bars = practiceBars();
+    let i = 0;
+    while (i + 1 < bars.length && bars[i + 1] <= t + 1e-3) i++;
+    return i;
+  }
+  async function startPractice() {
+    const pr = game.pr;
+    game.started = true;                                 // there's no "didn't start" in practice
+    practiceReset(Math.max(player.offset, playRange().start));   // from the first sound (or the test start)
+    if (pr.want !== 100) await practiceSpeed(pr.want, false);
+    renderPractice();
+    practiceGo();
+  }
+  function endPractice() {
+    const pr = game.pr;
+    pr.token++;
+    if (pr.normal) Object.assign(player, pr.normal);    // back to the song at full speed
+    player.rate = 1;
+    game.countdown = 0;
+    game.pr = null;
+    renderPractice();
+  }
+  // Clears the notes from t on, so they can be played again.
+  function practiceReset(t) {
+    const notes = tabView.data.notes;
+    let k0 = notes.findIndex((n) => n[0] >= t - 0.02);
+    if (k0 < 0) k0 = notes.length;
+    for (let k = k0; k < notes.length; k++) { game.result[k] = null; game.hitAt[k] = undefined; game.grade[k] = undefined; }
+    Object.assign(game, { next: k0, hold: {}, sustain: {}, plucks: [], heard: [], bursts: [], mistakes: [], streak: 0, streakLost: null, prevDb: -100, lastMidi: null });
+    player.offset = Math.max(0, Math.min(t, duration() - 0.05));
+    game.pr.clickedTo = player.offset - 0.01;
+  }
+  // Stops where it is (Space, Esc, moving, a new speed).
+  function practiceStop() {
+    const pr = game.pr;
+    pr.token++;
+    game.countdown = 0;
+    pr.waiting = null;
+    if (player.playing) stopSources();
+    pr.stopped = true; pr.busy = false;
+    updateTime();
+    renderPractice();
+  }
+  // Plays from where it is, after a bar of clicks when Click is on.
+  async function practiceGo(countIn = game.pr.click) {
+    const pr = game.pr, token = ++pr.token;
+    pr.busy = true; pr.stopped = false; pr.waiting = null;
+    renderPractice();
+    if (countIn) {
+      const bars = practiceBars(), i = practiceBarAt(player.offset), len = (bars[i + 1] ?? bars[i] + 2) - bars[i];
+      const n = tabView.data.bpm ? Math.max(2, Math.min(7, Math.round(len * tabView.data.bpm / 60))) : 4, beat = len / n / player.rate;
+      await ctx.resume();
+      const t0 = ctx.currentTime + 0.05;
+      for (let c = 0; c < n; c++) metronomeClick(t0 + c * beat, c === 0);
+      for (let c = 0; c < n; c++) {
+        game.countdown = n - c; game.countAt = performance.now();
+        await sleep(c ? beat * 1000 : beat * 1000 + 50);
+        if (!game.on || !game.pr || pr.token !== token) return;
+      }
+      game.countdown = 0;
+      game.goAt = performance.now();
+    }
+    pr.clickedTo = player.offset - 0.01;
+    await play();
+    if (pr.token === token) pr.busy = false;
+    renderPractice();
+  }
+  function practiceToggle() {
+    const pr = game.pr;
+    if (pr.loading) return;
+    if (pr.stopped) practiceGo(); else practiceStop();
+  }
+  // Moves to t; keeps playing if it was (counted in again).
+  function practiceSeek(t) {
+    const pr = game.pr;
+    if (pr.loading) return;
+    const going = !pr.stopped;
+    practiceStop();
+    practiceReset(Math.max(0, t));
+    updateTime(); tabFrame(true); renderPractice();
+    if (going) practiceGo();
+  }
+  function practiceSetLoop(a, b) {                       // bar indexes, b exclusive
+    const pr = game.pr, bars = practiceBars();
+    if (a === null) { pr.loop = null; renderPractice(); return; }
+    a = Math.max(0, Math.min(a, bars.length - 2)); b = Math.max(a + 1, Math.min(b, bars.length - 1));
+    pr.loop = [a, b]; pr.loopN = 1; pr.loops = [];
+    const t = currentTime();
+    if (t < bars[a] || t >= bars[b]) practiceSeek(bars[a]); else renderPractice();
+  }
+  // Each frame: the loop's end, Wait for me, the click.
+  function practiceTick() {
+    const pr = game.pr;
+    if (!pr || !game.on || pr.busy || !player.playing) return;
+    const notes = tabView.data.notes, bars = practiceBars(), t = tabTime();
+    if (pr.loop && t >= bars[pr.loop[1]] - 0.01) { practiceLoopDone(); return; }
+    if (pr.wait) {
+      let k = game.next;
+      while (k < notes.length && (game.result[k] || (game.members && game.lead[k] !== k))) k++;
+      if (k < notes.length && t >= notes[k][0] && (!pr.loop || notes[k][0] < bars[pr.loop[1]])) {
+        stopSources();
+        player.offset = notes[k][0];
+        pr.waiting = k; pr.waitPluck = null;
+        updateTime(); renderPractice();
+        return;
+      }
+    }
+    if (pr.click) {                                      // beats in the next 0.3 s, on the audio's clock
+      const now = currentTime(), d = tabView.data;
+      for (let i = practiceBarAt(pr.clickedTo); i + 1 < bars.length && bars[i] < now + 0.3; i++) {
+        const len = bars[i + 1] - bars[i], n = d.bpm ? Math.max(2, Math.min(7, Math.round(len * d.bpm / 60))) : 4;
+        for (let q = 0; q < n; q++) {
+          const bt = bars[i] + len * q / n;
+          if (bt <= pr.clickedTo || bt > now + 0.3) continue;
+          const at = player.startedAt + (bt - player.offset) / player.rate;
+          if (at > ctx.currentTime) metronomeClick(at, q === 0);
+          pr.clickedTo = bt;
+        }
+      }
+    }
+  }
+  // A loop played through: how clean it was, where the misses were, faster if it was clean, round again.
+  function practiceLoopDone() {
+    const pr = game.pr, notes = tabView.data.notes, bars = practiceBars(), [a, b] = pr.loop;
+    let total = 0, hit = 0;
+    notes.forEach((n, k) => {
+      if (n[0] < bars[a] || n[0] >= bars[b] || (game.members && game.lead[k] !== k)) return;
+      total++;
+      if (game.result[k] === 'hit') hit++;
+      else { const bar = practiceBarAt(n[0]); pr.missed[bar] = (pr.missed[bar] || 0) + 1; }
+    });
+    const clean = total ? hit / total : 1;
+    pr.loops.push(clean); pr.loopN++;
+    const faster = pr.up && clean >= 0.9 && pr.speed < 100 ? Math.min(100, pr.speed + 5) : null;
+    if (faster) { practiceSpeed(faster, true, bars[a]); return; }
+    practiceSeek(bars[a]);
+  }
+  // Stopped: Wait for me's note (played = on its way again), or nothing. Never the pause menu.
+  function practiceHeld(raw, attack, newPitch) {
+    const pr = game.pr;
+    if (pr.waiting === null && !pr.busy && !pr.stopped && !game.countdown) { practiceStop(); return; }   // the song ran out
+    if (pr.waiting === null || pr.busy || game.countdown) return;
+    const k = pr.waiting, d = tabView.data, notes = d.notes, open = playOpens(d), ks = game.members?.[k] || [k];
+    if (attack || newPitch) pr.waitPluck = performance.now();
+    const pitches = ks.map((j) => (notes[j][3] === 'x' ? null : open[notes[j][2]] + notes[j][3]));
+    const plucked = pr.waitPluck !== null && performance.now() - pr.waitPluck < 600;
+    const ok = plucked && (pitches.includes(null) || (raw !== null && pitches.some((p) => samePitch(raw - player.shift, p))));
+    if (!ok) return;
+    const at = performance.now();
+    for (const j of ks) {
+      game.result[j] = 'hit'; game.hitAt[j] = notes[k][0]; game.grade[j] = 'Good';
+      game.laneHit[notes[j][2]] = notes[k][0]; game.laneHitMs[notes[j][2]] = at;
+      game.bursts.push({ s: notes[j][2], at, perfect: false, messy: false, k: j, label: j === ks[0] });
+    }
+    game.hits++; game.judged++;
+    pr.waiting = null;
+    practiceGo(false);
+  }
+  // A new speed: the song slowed at the same pitch, made on the server the first time (a few seconds) and kept there.
+  async function practiceSpeed(speed, resume = !game.pr.stopped, at = null) {
+    const pr = game.pr;
+    if (!pr || pr.loading || (speed === pr.speed && at === null)) return;
+    const from = at ?? (player.playing ? currentTime() : player.offset);
+    practiceStop();
+    if (!pr.normal) pr.normal = { buffers: player.buffers, original: player.original, mine: player.mine };
+    let set = pr.normal;
+    if (speed !== 100) {
+      pr.loading = speed; renderPractice();
+      const v = state.current.version, parts = ['without', 'only', ...(state.mode === 'both' && pr.normal.original ? ['original'] : [])];
+      try {
+        const got = await Promise.all(parts.map(async (part) => {
+          const res = await fetch(`/api/audio?version=${encodeURIComponent(v.id)}&part=${part}&speed=${speed}${player.shift ? `&shift=${player.shift}` : ''}`);
+          if (!res.ok) throw new Error(`Couldn't slow the song down (${res.statusText}).`);
+          return ctx.decodeAudioData(await res.arrayBuffer());
+        }));
+        set = { buffers: [got[0], got[1]], original: got[2] || null, mine: null };
+      } catch (err) {
+        toast(err.message, 'error'); pr.loading = null; renderPractice(); return;
+      }
+      if (game.pr !== pr) return;                        // left meanwhile
+      pr.loading = null;
+    }
+    player.buffers = set.buffers; player.original = set.original; player.mine = set.mine;
+    player.rate = speed / 100;
+    pr.speed = speed; savePractice();
+    practiceReset(from);
+    updateTime(); tabFrame(true); renderPractice();
+    if (resume) practiceGo();
+  }
+
+  // The strip: timeline (bars, how busy each stretch is, the loop, the playhead) and the controls.
+  function renderPractice() {
+    const pr = game.pr, hud = $('#pr-hud');
+    hud.classList.toggle('hidden', !pr);
+    if (!pr) return;
+    const bars = practiceBars();
+    $('#pr-play').innerHTML = pr.stopped
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+    $('#pr-play').title = pr.stopped ? 'Play (Space)' : 'Stop (Space)';
+    document.querySelectorAll('#pr-speed button').forEach((b) => {
+      b.classList.toggle('active', +b.dataset.speed === pr.speed);
+      b.classList.toggle('loading', +b.dataset.speed === pr.loading);
+    });
+    $('#pr-wait').classList.toggle('on', pr.wait); $('#pr-click').classList.toggle('on', pr.click); $('#pr-up').classList.toggle('on', pr.up);
+    const last = pr.loops[pr.loops.length - 1];
+    $('#pr-status').textContent = pr.loading ? `Slowing the song to ${pr.loading}%…`
+      : pr.waiting !== null ? 'Waiting for you: play the note on the line'
+      : pr.loop ? `Loop ${pr.loopN} · bars ${pr.loop[0] + 1}–${pr.loop[1]}${last !== undefined ? ` · last time ${Math.round(last * 100)}% clean` : ''}`
+      : `Bar ${practiceBarAt(currentTime()) + 1} of ${bars.length - 1}`;
+    $('#pr-dots').replaceChildren(...pr.loops.slice(-8).map((v) => el('i', { className: v >= 0.9 ? 'g' : v >= 0.7 ? 'm' : 'b', title: `${Math.round(v * 100)}% clean` })));
+    $('#pr-noloop').classList.toggle('hidden', !pr.loop);
+    const trouble = Object.entries(pr.missed).sort((p, q) => q[1] - p[1]).slice(0, 3);
+    $('#pr-trouble').textContent = trouble.length ? `Most missed: ${trouble.map(([b]) => `bar ${+b + 1}`).join(', ')}` : '';
+    drawPracticeLine();
+  }
+  function drawPracticeLine() {
+    const pr = game.pr, cv = $('#pr-line');
+    if (!pr || !tabView.data) return;
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (W < 60) return;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext('2d'), dur = duration() || 1, x = (t) => (t / dur) * W, bars = practiceBars(), notes = tabView.data.notes;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const loopA = pr.loop ? bars[pr.loop[0]] : null, loopB = pr.loop ? bars[pr.loop[1]] : null;
+    if (pr.loop) {
+      g.fillStyle = 'rgba(155, 231, 196, .1)'; g.beginPath(); g.roundRect(x(loopA), 2, x(loopB) - x(loopA), H - 18, 6); g.fill();
+      g.strokeStyle = 'rgba(155, 231, 196, .6)'; g.lineWidth = 1; g.stroke();
+    }
+    // how busy each stretch is: a bar of notes every 3 px
+    const bins = new Array(Math.max(1, Math.floor(W / 3))).fill(0);
+    for (const n of notes) bins[Math.min(bins.length - 1, Math.floor((n[0] / dur) * bins.length))]++;
+    const mx = Math.max(1, ...bins), mid = (H - 16) / 2 + 2;
+    bins.forEach((v, i) => {
+      if (!v) return;
+      const t = ((i + 0.5) / bins.length) * dur, h = Math.max(2, (v / mx) * (H - 24)), inLoop = pr.loop && t >= loopA && t < loopB;
+      g.fillStyle = inLoop ? 'rgba(155, 231, 196, .8)' : 'rgba(245, 245, 247, .25)';
+      g.fillRect(i * 3, mid - h / 2, 2, h);
+    });
+    // bar numbers, as many as fit
+    g.font = `400 10.5px ${GAME_FONT}`; g.textBaseline = 'alphabetic'; g.fillStyle = 'rgba(245, 245, 247, .38)'; g.textAlign = 'center';
+    const every = [1, 2, 4, 8, 16, 32].find((k) => (W / (bars.length - 1)) * k >= 34) || 64;
+    for (let i = 0; i < bars.length - 1; i += every) g.fillText(String(i + 1), Math.max(6, Math.min(W - 6, x(bars[i]))), H - 2);
+    if (pr.loop) {                                       // the loop's ends, to drag
+      g.fillStyle = '#9be7c4';
+      for (const t of [loopA, loopB]) { g.beginPath(); g.roundRect(x(t) - 1.5, mid - 11, 3, 22, 1.5); g.fill(); }
+    }
+    const ph = x(Math.min(dur, tabTime()));
+    g.fillStyle = '#fff'; g.shadowColor = 'rgba(245, 230, 211, .9)'; g.shadowBlur = 8;
+    g.fillRect(ph - 1, 0, 2, H - 14); g.shadowBlur = 0;
+  }
+  // The timeline: click to move there, drag across bars to loop them, drag a loop's end to change it.
+  {
+    const cv = $('#pr-line');
+    const tAt = (e) => { const r = cv.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (duration() || 0); };
+    cv.addEventListener('pointerdown', (e) => {
+      const pr = game.pr;
+      if (!pr || pr.loading) return;
+      cv.setPointerCapture(e.pointerId);
+      const bars = practiceBars(), t = tAt(e), px = (duration() || 1) / cv.clientWidth;
+      if (pr.loop && Math.abs(t - bars[pr.loop[0]]) < 8 * px) pr.drag = { end: 0 };
+      else if (pr.loop && Math.abs(t - bars[pr.loop[1]]) < 8 * px) pr.drag = { end: 1 };
+      else pr.drag = { from: t, bar: practiceBarAt(t), moved: false };
+    });
+    cv.addEventListener('pointermove', (e) => {
+      const pr = game.pr;
+      if (!pr?.drag) { if (pr?.loop) { const bars = practiceBars(), t = tAt(e), px = (duration() || 1) / cv.clientWidth; cv.style.cursor = Math.min(Math.abs(t - bars[pr.loop[0]]), Math.abs(t - bars[pr.loop[1]])) < 8 * px ? 'ew-resize' : 'pointer'; } return; }
+      const bars = practiceBars(), t = tAt(e), bar = practiceBarAt(t);
+      if (pr.drag.end !== undefined) {                   // to the nearest bar line
+        let i = 0; bars.forEach((b, k) => { if (Math.abs(b - t) < Math.abs(bars[i] - t)) i = k; });
+        if (pr.drag.end === 0) pr.loop[0] = Math.min(i, pr.loop[1] - 1); else pr.loop[1] = Math.max(i, pr.loop[0] + 1);
+        renderPractice();
+      } else if (bar !== pr.drag.bar || Math.abs(t - pr.drag.from) > 6 * (duration() || 1) / cv.clientWidth) {
+        pr.drag.moved = true;
+        pr.loop = [Math.min(bar, pr.drag.bar), Math.max(bar, pr.drag.bar) + 1];
+        renderPractice();
+      }
+    });
+    cv.addEventListener('pointerup', (e) => {
+      const pr = game.pr, drag = pr?.drag;
+      if (!drag) return;
+      pr.drag = null;
+      if (drag.end !== undefined || drag.moved) practiceSetLoop(pr.loop[0], pr.loop[1]);
+      else practiceSeek(tAt(e));
+    });
+  }
+  $('#pr-play').addEventListener('click', () => game.pr && practiceToggle());
+  $('#pr-back').addEventListener('click', () => game.pr && practiceStep(-1));
+  $('#pr-fwd').addEventListener('click', () => game.pr && practiceStep(1));
+  $('#pr-noloop').addEventListener('click', () => game.pr && practiceSetLoop(null));
+  $('#pr-menu').addEventListener('click', () => game.pr && pauseGame());
+  document.querySelectorAll('#pr-speed button').forEach((b) => b.addEventListener('click', () => game.pr && practiceSpeed(+b.dataset.speed)));
+  for (const [id, key] of [['#pr-wait', 'wait'], ['#pr-click', 'click'], ['#pr-up', 'up']]) {
+    $(id).addEventListener('click', () => { const pr = game.pr; if (!pr) return; pr[key] = !pr[key]; savePractice(); if (key === 'click') pr.clickedTo = currentTime(); renderPractice(); });
+  }
+  // A bar back or forward (back: to this bar's start first, if a little way in).
+  function practiceStep(dir, by = 1) {
+    const bars = practiceBars(), t = player.playing ? currentTime() : player.offset, i = practiceBarAt(t);
+    const to = dir < 0 && t - bars[i] > 0.4 && by === 1 ? i : i + dir * by;
+    practiceSeek(bars[Math.max(0, Math.min(bars.length - 2, to))]);
+  }
+  // Keys: Space play/stop, ←/→ a bar, ↑/↓ four bars, [ ] the loop's start / end at this bar, Esc the menu (as in a game).
+  window.addEventListener('keydown', (e) => {
+    if (!game.on || !game.pr || game.paused || document.querySelector('dialog[open]') || e.metaKey || e.ctrlKey) return;
+    const bars = practiceBars(), i = practiceBarAt(player.playing ? currentTime() : player.offset), pr = game.pr;
+    if (e.code === 'Space') practiceToggle();
+    else if (e.key === 'ArrowLeft') practiceStep(-1);
+    else if (e.key === 'ArrowRight') practiceStep(1);
+    else if (e.key === 'ArrowUp') practiceStep(-1, 4);
+    else if (e.key === 'ArrowDown') practiceStep(1, 4);
+    else if (e.key === '[') practiceSetLoop(i, pr.loop && pr.loop[1] > i ? pr.loop[1] : i + 4);
+    else if (e.key === ']') practiceSetLoop(pr.loop && pr.loop[0] <= i ? pr.loop[0] : Math.max(0, i - 3), i + 1);
+    else if (e.key === 'Backspace' || e.key === 'Delete') practiceSetLoop(null);
+    else return;
+    e.preventDefault(); e.stopImmediatePropagation();
+  }, true);
+  setInterval(() => { if (game.pr && !document.hidden) { drawPracticeLine(); renderPracticeStatus(); } }, 100);
+  function renderPracticeStatus() {
+    const pr = game.pr;
+    if (!pr || pr.loading || pr.waiting !== null || pr.loop) return;
+    $('#pr-status').textContent = `Bar ${practiceBarAt(tabTime()) + 1} of ${practiceBars().length - 1}`;
+  }
   function setTiming(timing) {
     gameTiming = timing;
     try { localStorage.setItem(TIMING_KEY, timing); } catch { /* not kept */ }
@@ -8980,34 +9695,9 @@
     return { ...d, notes, quickLaneGap: undefined, typicalLaneGap: undefined, lanes: undefined, barTimes: undefined };   // caches are per note list
   }
 
-  // Board: 3D (perspective) or Flat (every note the same size), kept per computer.
-  const GAME_BOARD_KEY = 'track-splitter-game-board';
-  let gameBoard = ['flat', 'arcade'].includes(pref(GAME_BOARD_KEY)) ? pref(GAME_BOARD_KEY) : '3d';   // + Arcade (drawArcade)
-  const showBoard = () => document.querySelectorAll('#game-board button').forEach((b) => b.classList.toggle('active', b.dataset.board === gameBoard));
-  document.querySelectorAll('#game-board button').forEach((b) => b.addEventListener('click', () => { gameBoard = b.dataset.board; setPref(GAME_BOARD_KEY, gameBoard); showBoard(); showFretboard(); tabFrame(true); }));
-  showBoard();
-  // Big moments (blasts, the white flash, pyro, stab accents) on or off, kept per computer; off by default (user: "remove
-  // the big moments and come back to it later. makes it harder to play right now", then "make it a setting in the menu").
-  const showHand = () => document.querySelectorAll('#game-hand button').forEach((b) => b.classList.toggle('active', (b.dataset.hand === 'on') === (pref(HAND_GUIDE_KEY) === 'on')));
-  document.querySelectorAll('#game-hand button').forEach((b) => b.addEventListener('click', () => { setPref(HAND_GUIDE_KEY, b.dataset.hand); showHand(); }));
-  showHand();
   const showVdrop = () => document.querySelectorAll('#game-vdrop button').forEach((b) => b.classList.toggle('active', (b.dataset.vdrop === 'on') === (pref(VDROP_KEY) === 'on')));
   document.querySelectorAll('#game-vdrop button').forEach((b) => b.addEventListener('click', () => { setPref(VDROP_KEY, b.dataset.vdrop); showVdrop(); updateMonShift(null); }));
   showVdrop();
-  const BIG_KEY = 'encore-big-moments';
-  let bigMoments = pref(BIG_KEY) === 'on';
-  const showBig = () => document.querySelectorAll('#game-big button').forEach((b) => b.classList.toggle('active', (b.dataset.big === 'on') === bigMoments));
-  document.querySelectorAll('#game-big button').forEach((b) => b.addEventListener('click', () => { bigMoments = b.dataset.big === 'on'; setPref(BIG_KEY, bigMoments ? 'on' : 'off'); showBig(); }));
-  showBig();
-  // Fretboard (the 3D board's wood, user: "an option to choose the fretboard style"), kept per computer.
-  const showFretboard = () => {
-    document.querySelectorAll('#game-fretboard button').forEach((b) => b.classList.toggle('active', b.dataset.fretboard === fretboard));
-    $('#game-fretboard-row').classList.toggle('hidden', gameBoard !== '3d');
-  };
-  document.querySelectorAll('#game-fretboard button').forEach((b) => b.addEventListener('click', () => { fretboard = b.dataset.fretboard; setPref(FRETBOARD_KEY, fretboard); showFretboard(); }));
-  document.querySelectorAll('#game-board button').forEach((b) => b.addEventListener('click', showFretboard));
-  showFretboard();
-
   // Game settings (the pause menu's Settings, or "Game settings" in the Game section):
   // look, note speed, timing, mistake sound, hear myself + its volume, song volume. They
   // drive the same settings as the Highway's speed slider, the bass input bubble and
@@ -9795,7 +10485,8 @@
   // instrument, difficulties with your bests, and Play, which runs the Game section's
   // startGame. Keyboard: ←/→ song, ↑/↓ difficulty, Tab instrument, Enter play, Esc back.
   const arcadeOn = location.pathname.replace(/\/+$/, '') === '/game';
-  const arcade = { screen: 'title', list: [], index: 0, song: null, instrument: 'bass', sort: 'recent', preview: null, previewTimer: 0, busy: false, making: null, wheel: 0, wheelAt: 0 };
+  const arcade = { screen: 'title', list: [], index: 0, song: null, instrument: 'bass', sort: 'recent', preview: null, previewTimer: 0, busy: false, making: null, wheel: 0, wheelAt: 0,
+                  mode: 'play', backTo: { select: 'title', library: 'title' } };   // 'practice': the game without score (Practice on the title, or the switch by Play)
   const ARC_SORT_KEY = 'track-splitter-arcade-sort';
   const DIFF_COLORS = { easy: '#4ade80', medium: '#facc15', hard: '#fb923c', expert: '#f87171' };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -9843,8 +10534,8 @@
   function setScreen(screen) {
     arcade.screen = screen;
     keepPlace();
-    for (const s of ['title', 'select', 'loading', 'starting']) $(`#arc-${s}`).classList.toggle('hidden', s !== screen);
-    $('#arc-stage').classList.toggle('dim', screen === 'select');
+    for (const s of ['title', 'select', 'loading', 'starting', 'library']) $(`#arc-${s}`).classList.toggle('hidden', s !== screen);
+    $('#arc-stage').classList.toggle('dim', screen === 'select' || screen === 'library');
     if (screen === 'title') {
       renderTitle();
       stopPreview();
@@ -9852,6 +10543,7 @@
       $('#arc-play').focus();
     }
     if (screen === 'select') { renderSelect(); setView(arcade.view); }
+    if (screen === 'library') { stopPreview(); renderLibrary(); libShowPicked(); $('#lib-list').focus(); }
   }
 
   // Song select: songs with a version to play over ("No tab yet" ones can make their tab).
@@ -9874,8 +10566,8 @@
     $('#arc-list').classList.toggle('hidden', view !== 'list');
     document.querySelectorAll('#arc-view button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
     $('#arc-hint').innerHTML = view === 'list'
-      ? '<kbd>↑</kbd><kbd>↓</kbd> song · <kbd>←</kbd><kbd>→</kbd> difficulty · <kbd>Enter</kbd> play · <kbd>Esc</kbd> back'
-      : '<kbd>←</kbd><kbd>→</kbd> song · <kbd>↑</kbd><kbd>↓</kbd> difficulty · <kbd>Enter</kbd> play · <kbd>Esc</kbd> back';
+      ? '<kbd>↑</kbd><kbd>↓</kbd> song · <kbd>←</kbd><kbd>→</kbd> difficulty · <kbd>Enter</kbd> play · <kbd>T</kbd> tab · <kbd>L</kbd> library · <kbd>Esc</kbd> back'
+      : '<kbd>←</kbd><kbd>→</kbd> song · <kbd>↑</kbd><kbd>↓</kbd> difficulty · <kbd>Enter</kbd> play · <kbd>T</kbd> tab · <kbd>L</kbd> library · <kbd>Esc</kbd> back';
     if (view === 'list') renderList(); else renderCarousel();
     fitText($('#arc-song-title'), 24);
     viewEl().focus();
@@ -9883,7 +10575,7 @@
   document.querySelectorAll('#arc-view button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   function renderList() {
     const box = $('#arc-list');
-    if (!arcade.list.length) { box.replaceChildren(el('div', { className: 'arc-list-empty', textContent: state.library.songs.length ? 'No songs match.' : 'No songs yet: add some in Track Splitter first.' })); return; }
+    if (!arcade.list.length) { box.replaceChildren(el('div', { className: 'arc-list-empty', textContent: state.library.songs.length ? 'No songs match.' : 'No songs yet: Add songs from the title screen.' })); return; }
     box.replaceChildren(...arcade.list.map((song, i) => {
       const best = arcadeBest(song.id, songInstrument(song), gameDiff), tags = el('span', { className: 'arc-row-tags' });
       if (song.tabs?.bass) tags.append(el('i', { textContent: 'Bass' }));
@@ -9891,7 +10583,7 @@
       if (!song.tabs?.bass && !song.tabs?.guitar) tags.append(el('i', { className: 'none', textContent: 'No tab' }));
       const row = el('button', { type: 'button', className: `arc-row${i === arcade.index ? ' on' : ''}`, tabIndex: -1, role: 'option' },
         coverEl(song), el('span', {}, el('div', { className: 'arc-row-title', textContent: song.title }), el('div', { className: 'arc-row-artist', textContent: song.artist })),
-        tags, el('span', { className: 'arc-row-best', textContent: best.score ? best.score.toLocaleString() : '' }), best.score ? recordEl(best.stars, 30) : el('span'));
+        tags, el('span', { className: 'arc-row-score' }, ...(best.score ? [el('span', { className: 'arc-row-best', textContent: best.score.toLocaleString() }), recordEl(best.stars, 30)] : [])));
       row.addEventListener('click', () => { pickSong(i); $('#arc-list').focus(); });
       row.addEventListener('dblclick', () => arcadePlay());
       return row;
@@ -9929,7 +10621,7 @@
   function renderCarousel() {
     const box = $('#arc-carousel'), list = arcade.list, at = arcade.index;
     if (!list.length) {
-      box.replaceChildren(el('div', { className: 'arc-car-empty', textContent: state.library.songs.length ? 'No songs match.' : 'No songs yet: add some in Track Splitter first.' }));
+      box.replaceChildren(el('div', { className: 'arc-car-empty', textContent: state.library.songs.length ? 'No songs match.' : 'No songs yet: Add songs from the title screen.' }));
       return;
     }
     box.querySelector('.arc-car-empty')?.remove();
@@ -10043,7 +10735,7 @@
     document.querySelectorAll('#arc-inst button').forEach((b) => {
       b.classList.toggle('active', b.dataset.instrument === arcade.instrument);
       b.disabled = b.dataset.instrument === 'guitar' && !song.tabs?.guitar;   // guitar tabs are imported only
-      b.title = b.disabled ? 'No guitar tab yet: import one in Track Splitter (Tab → More → Import tab)' : '';
+      b.title = b.disabled ? 'No guitar tab yet: import one in the Library (Tab → Import tab)' : '';
     });
     $('#arc-diffs').replaceChildren(...Object.entries(DIFFS).map(([d, [name]]) => {
       const best = arcadeBest(song.id, arcade.instrument, d);
@@ -10061,15 +10753,17 @@
     renderArcadeInput();
     const hasTab = !!song.tabs?.[arcade.instrument], making = arcade.making === song.id;
     $('#arc-go').disabled = !hasTab || !!arcade.busy;
-    $('#arc-go').textContent = arcade.busy === 'loading' ? 'Loading…' : 'Play';
+    $('#arc-go').textContent = arcade.busy === 'loading' ? 'Loading…' : arcade.mode === 'practice' ? 'Practice' : 'Play';
+    document.querySelectorAll('#arc-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === arcade.mode));
     $('#arc-make').classList.toggle('hidden', hasTab || guitar);
+    $('#arc-tab').classList.toggle('hidden', !hasTab);
     $('#arc-make').disabled = !!arcade.making || !song.has_original && !song.versions.some((v) => /bass/.test(v.removed));
     const note = $('#arc-song-note');
     note.classList.toggle('warn', !hasTab);
     note.textContent = making ? (state.job?.step || 'Making the bass tab…') + (state.job?.fraction ? ` · ${Math.round(state.job.fraction * 100)}%` : '')
       : hasTab ? ''
-      : guitar ? 'No guitar tab yet: import one in Track Splitter.'
-      : $('#arc-make').disabled ? 'This song has no saved original to work from: attach it in Track Splitter (+ Version).'
+      : guitar ? 'No guitar tab yet: import one in the Library.'
+      : $('#arc-make').disabled ? 'This song has no saved original to work from: attach it in the Library (+ New version).'
       : 'No bass tab yet: it\'s worked out by ear in about a minute.';
   }
   function setArcadeInstrument(which) {
@@ -10078,7 +10772,7 @@
     renderSong();
   }
   document.querySelectorAll('#arc-inst button').forEach((b) => b.addEventListener('click', () => setArcadeInstrument(b.dataset.instrument)));
-  $('#arc-select-back').addEventListener('click', () => setScreen('title'));
+  $('#arc-select-back').addEventListener('click', () => screenBack('select'));
 
   // Input: the bass input drawer's device list and level, mirrored here.
   function renderArcadeInput() {
@@ -10224,7 +10918,7 @@
   // Fades between screens (user: "make the game look more finished": no hard cuts).
   const fadeTo = (on) => new Promise((r) => { $('#fader').classList.toggle('on', on); setTimeout(r, 300); });
   const LOAD_TIPS = ['Hit 10 notes in a row to raise the multiplier. At 4x the board turns blue.', 'Notes feel early or late? Calibrate timing from the title screen.',
-    'Game settings: change the timing window, note speed and fretboard.', 'Space pauses the song.', 'Long notes: hold the note while it rings for extra points.'];
+    'Game settings: change the timing window and note speed.', 'Space pauses the song.', 'Long notes: hold the note while it rings for extra points.'];
   function showLoading(song) {
     $('#arc-load-art').replaceChildren(coverEl(song));
     $('#arc-load-bg').style.backgroundImage = coverUrl(song);
@@ -10252,7 +10946,7 @@
       else if (!tabView.data || tabView.song !== song.id || tabView.instrument !== arcade.instrument) loadTab();
       const ready = () => tabView.data?.notes?.length && tabView.song === song.id && tabView.instrument === arcade.instrument;
       for (let i = 0; i < 300 && !ready(); i++) await sleep(100);
-      if (!ready()) { toast('The tab didn\'t load. Try again, or open it in Track Splitter.', 'error'); return; }
+      if (!ready()) { toast('The tab didn\'t load. Try again, or open it from the Library.', 'error'); return; }
       if (tabView.section !== 'game') setSection('game');
       arcade.busy = false;
       await fadeTo(true);
@@ -10271,6 +10965,294 @@
     }
   }
   $('#arc-go').addEventListener('click', arcadePlay);
+
+  // ---------- Library (Track Splitter in Encore) ----------
+  // User: "I would just like to move track splitter into encore. Using the same styling" (mockup
+  // design/game-mockups/library.html). Every song, sorted Recent / A–Z / Artist (artists as headings, in place of the
+  // sidebar); the picked one's versions (listen, Redo, Trash, New version, Trim), its tab (Make, Import, .gp5) and Play /
+  // Practice; a player bar driving the same player as Track Splitter's. The work itself is Track Splitter's own
+  // (openUpload, redoVersion, deleteVersion, openTrim, openImport, makeTab, songMenu, artistMenu).
+  const LIB_SORT_KEY = 'encore-library-sort';
+  const lib = { song: null, sort: ['title', 'artist'].includes(pref(LIB_SORT_KEY)) ? pref(LIB_SORT_KEY) : 'recent', inst: 'bass', making: null };
+  const ICON_REDO = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>';
+  const ICON_BIN = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
+  const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+  const ICON_DL = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>';
+  const libVersion = (v) => [document.createTextNode(versionLabel(v)), ...(v.hq ? [el('span', { className: 'lib-hq', textContent: 'HQ' })] : [])];
+  function libSongs() {
+    const q = $('#lib-search').value.trim().toLowerCase();
+    let list = state.library.songs;
+    if (q) list = list.filter((s) => [s.title, s.artist, ...s.versions.map((v) => `no ${v.removed}${v.hq ? ' hq high quality' : ''}`)].join(' ').toLowerCase().includes(q));
+    const by = (f) => (a, b) => f(a).localeCompare(f(b), undefined, { sensitivity: 'base' });
+    if (lib.sort === 'title') list = [...list].sort(by((s) => s.title));
+    else if (lib.sort === 'artist') list = [...list].sort((a, b) => by((s) => s.artist)(a, b) || by((s) => s.title)(a, b));
+    else list = [...list].sort((a, b) => Math.max(b.added, ...b.versions.map((v) => v.added)) - Math.max(a.added, ...a.versions.map((v) => v.added)));
+    return list;
+  }
+  function renderLibrary() {
+    if (!arcadeOn || arcade.screen !== 'library') return;
+    const list = libSongs(), box = $('#lib-list');
+    if (!list.some((s) => s.id === lib.song)) lib.song = (list.find((s) => s.id === state.current?.song.id) || list[0])?.id || null;
+    document.querySelectorAll('#lib-sort button').forEach((b) => b.classList.toggle('active', b.dataset.sort === lib.sort));
+    const versions = list.reduce((n, s) => n + s.versions.length, 0);
+    $('#lib-count').textContent = `${list.length} ${list.length === 1 ? 'song' : 'songs'} · ${versions} ${versions === 1 ? 'version' : 'versions'}`;
+    box.classList.toggle('by-artist', lib.sort === 'artist');
+    const rows = [];
+    let artist = null;
+    for (const song of list) {
+      if (lib.sort === 'artist' && song.artist !== artist) {     // the sidebar's artists, as headings
+        artist = song.artist;
+        const name = artist, more = el('button', { type: 'button', className: 'pr-icon', title: 'Rename or delete this artist', ariaLabel: `Options for ${name}` });
+        more.innerHTML = ICON_MORE;
+        more.addEventListener('click', (e) => { e.stopPropagation(); openMenu(more, artistMenu(name)); });
+        rows.push(el('div', { className: 'lib-group' }, el('h3', { textContent: name }), el('span', { className: 'n', textContent: String(list.filter((x) => x.artist === name).length) }), more));
+      }
+      const tags = el('span', { className: 'lib-tags' });
+      if (song.tabs?.bass) tags.append(el('span', { className: 'lib-tag', textContent: 'Bass' }));
+      if (song.tabs?.guitar) tags.append(el('span', { className: 'lib-tag', textContent: 'Guitar' }));
+      if (!song.tabs?.bass && !song.tabs?.guitar) tags.append(el('span', { className: 'lib-tag none', textContent: 'No tab' }));
+      const vers = el('span', { className: 'lib-vers' }, ...(song.versions.length ? song.versions.map((v) => el('span', {}, ...libVersion(v))) : [el('span', { textContent: song.has_original ? 'No versions yet' : 'No versions' })]));
+      const playingHere = state.current?.song.id === song.id;
+      const row = el('div', { className: `lib-row${song.id === lib.song ? ' on' : ''}`, role: 'option' }, coverEl(song),
+        el('div', { style: 'min-width:0' }, el('div', { className: 't' }, song.title, ...(playingHere ? [el('span', { className: 'playing', textContent: player.playing ? '▶' : '❚❚' })] : [])), el('div', { className: 'a', textContent: song.artist })),
+        vers, tags, el('span', { className: 'lib-when', textContent: relTime(Math.max(song.added, ...song.versions.map((v) => v.added))) }));
+      row.dataset.song = song.id;
+      row.addEventListener('click', () => { libPick(song.id); $('#lib-list').focus(); });
+      row.addEventListener('dblclick', () => libListen(song));
+      rows.push(row);
+    }
+    box.replaceChildren(...(rows.length ? rows : [el('div', { className: 'lib-empty', textContent: state.library.songs.length ? 'No songs match.' : 'No songs yet: Add songs to start.' })]));
+    renderLibPanel();
+    libPlayerSync();
+    renderLibJob();
+  }
+  function libPick(id) {
+    lib.song = id;
+    document.querySelectorAll('#lib-list .lib-row').forEach((r) => r.classList.toggle('on', r.dataset.song === id));
+    document.querySelector('#lib-list .lib-row.on')?.scrollIntoView({ block: 'nearest' });
+    renderLibPanel();
+  }
+  // Listen: the picked song (its first version), or play / pause the one loaded.
+  function libListen(song, v = null) {
+    if (!song) return;
+    if (state.current?.song.id === song.id && (!v || state.current.version.id === v.id)) { togglePlay(); return; }
+    const pick = v || song.versions[0];
+    if (pick) loadVersion(song, pick, true);
+    else if (song.has_original) openUpload(song);
+  }
+  function renderLibPanel() {
+    const song = songById(lib.song), box = $('#lib-panel');
+    $('#lib-bg').style.backgroundImage = song ? coverUrl(song) : '';
+    if (!song) { box.replaceChildren(); return; }
+    if (lib.inst === 'guitar' && !song.tabs?.guitar && song.tabs?.bass) lib.inst = 'bass';
+    const more = el('button', { type: 'button', className: 'pr-icon', title: 'Edit, trim, delete…', ariaLabel: `More options for ${song.title}` });
+    more.innerHTML = ICON_MORE;
+    more.addEventListener('click', (e) => { e.stopPropagation(); openMenu(more, songMenu(song)); });
+    const now = el('div', { className: 'lib-now' }, coverEl(song), el('div', { style: 'min-width:0' }, el('h1', { textContent: song.title }), el('div', { className: 'by', textContent: song.artist })), more);
+    // Versions: click to listen (again: play / pause), Redo, Trash
+    const vers = song.versions.map((v) => {
+      const on = state.current?.version.id === v.id, acts = el('span', { className: 'acts' });
+      const act = (icon, title, fn) => { const b = el('button', { type: 'button', className: 'pr-icon', title, ariaLabel: title }); b.innerHTML = icon; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); acts.append(b); };
+      if (song.has_original) act(ICON_REDO, `Redo the “${versionLabel(v)}” version with the same settings`, () => redoVersion(song, v));
+      act(ICON_BIN, `Move the “${versionLabel(v)}”${v.hq ? ' HQ' : ''} version to the Trash`, () => deleteVersion(v));
+      const row = el('div', { className: `lib-ver${on ? ' on' : ''}`, role: 'button', tabIndex: 0, title: on ? (player.playing ? 'Pause' : 'Play') : 'Listen' },
+        el('span', { className: 'dot' }), el('span', { className: 'name', textContent: versionLabel(v) }), ...(v.hq ? [el('span', { className: 'lib-hq', textContent: 'HQ' })] : []),
+        el('span', { className: 'meta', textContent: v.level ? `· ${v.level}% kept` : '' }), acts);
+      row.addEventListener('click', () => libListen(song, v));
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter') libListen(song, v); });
+      return row;
+    });
+    const trim = el('button', { type: 'button', className: 'pr-link', textContent: song.trim ? 'Trim · trimmed' : 'Trim', disabled: !song.versions.length, title: 'Trim the start and end' });
+    trim.addEventListener('click', () => openTrim(song));
+    const newVer = el('button', { type: 'button', className: 'pr-link', textContent: '+ New version', disabled: !song.has_original,
+      title: song.has_original ? 'Take out something else' : 'This song has no saved original to make versions from' });
+    newVer.addEventListener('click', () => openUpload(song));
+    const verSec = el('div', { className: 'lib-sec' }, el('div', { className: 'lib-sec-head' }, el('span', { className: 'lib-caps', textContent: 'Versions' }), trim),
+      ...(vers.length ? vers : [el('div', { className: 'lib-tabinfo', textContent: 'No versions yet' })]), el('div', { style: 'padding:8px 0 0 12px' }, newVer));
+    // Tab: Bass | Guitar, what there is, Make / Import / .gp5
+    const instTabs = el('div', { className: 'arc-sort', role: 'group', ariaLabel: 'Instrument' }, ...['bass', 'guitar'].map((w) => {
+      const b = el('button', { type: 'button', className: lib.inst === w ? 'active' : '', textContent: w === 'bass' ? 'Bass' : 'Guitar' });
+      b.addEventListener('click', () => { lib.inst = w; renderLibPanel(); });
+      return b;
+    }));
+    const has = !!song.tabs?.[lib.inst], guitar = lib.inst === 'guitar', making = lib.making === song.id;
+    const canMake = !guitar && (song.has_original || song.versions.some((v) => /bass/.test(v.removed)));
+    const info = el('div', { className: 'lib-tabinfo' }, has ? `${guitar ? 'Guitar' : 'Bass'} tab ready` : making ? 'Making the bass tab…' : `No ${lib.inst} tab yet`,
+      el('small', { textContent: making ? (state.job?.step || '') + (state.job?.fraction ? ` · ${Math.round(state.job.fraction * 100)}%` : '')
+        : has ? (guitar ? 'Imported' : 'Automatic, or your imported / recorded one if it has one') : guitar ? 'Bring a Guitar Pro, MusicXML or text tab'
+        : canMake ? 'Worked out from the recording in about a minute, or bring your own' : 'This song has no saved original to work from' }));
+    const acts = el('div', { className: 'lib-acts' });
+    const btn = (label, fn, opts = {}) => { const b = el('button', { type: 'button', className: 'btn', ...opts }); b.innerHTML = label; b.addEventListener('click', fn); acts.append(b); return b; };
+    if (has) btn('Open tab', () => libOpenTab(song), { className: 'btn primary', title: 'The tab views, recording your own, Beat 1', disabled: !song.versions.length });
+    if (!has && !guitar) btn('Make the bass tab', () => libMakeTab(song), { disabled: !canMake || !!lib.making || busy() });
+    btn(has ? 'Import another tab' : 'Import tab', () => openImport(song, lib.inst), { title: 'Guitar Pro, MusicXML, or pasted text' });
+    if (has) btn(`${ICON_DL} .gp5`, () => libGp5(song), { title: 'Save the tab as a Guitar Pro 5 file' });
+    const tabSec = el('div', { className: 'lib-sec' }, el('div', { className: 'lib-sec-head' }, el('span', { className: 'lib-caps', textContent: 'Tab' }), instTabs), info, acts);
+    // Play / Practice in Encore
+    const go = el('div', { className: 'lib-go' });
+    for (const [mode, label] of [['play', 'Play in Encore'], ['practice', 'Practice']]) {
+      const b = el('button', { type: 'button', className: `btn${mode === 'play' ? ' primary' : ''}`, textContent: label, disabled: !song.versions.length || !(song.tabs?.bass || song.tabs?.guitar),
+        title: song.versions.length && (song.tabs?.bass || song.tabs?.guitar) ? '' : 'Needs a version and a tab first' });
+      b.addEventListener('click', () => libToGame(song, mode));
+      go.append(b);
+    }
+    box.replaceChildren(now, verSec, tabSec, go);
+  }
+  function libToGame(song, mode) {
+    arcade.backTo.select = 'library';
+    arcade.mode = mode;
+    arcade.song = song;
+    if (song.tabs?.[lib.inst]) arcade.instrument = lib.inst;
+    setScreen('select');
+    const at = arcade.list.findIndex((s) => s.id === song.id);
+    if (at >= 0) pickSong(at);
+  }
+  async function libMakeTab(song) {
+    if (lib.making) return;
+    if (state.current?.song.id !== song.id) await loadVersion(song, gameVersion(song));
+    lib.making = song.id;
+    renderLibPanel();
+    await makeTab();
+    while (state.job) { await sleep(500); renderLibPanel(); }
+    lib.making = null;
+    await refreshLibrary();
+  }
+  // The tab as the tab view would show it (its source and tuning), as a Guitar Pro 5 file.
+  function libGp5(song) {
+    const which = lib.inst, source = which === 'guitar' ? 'imported' : sourcePrefs()[song.id] || 'imported';
+    const [pick] = (tabPrefs()[tuningPrefKey(song.id, source, which)] || '').split('~');
+    const a = el('a', { href: `/api/tab/gp5?song=${encodeURIComponent(song.id)}&source=${source}&instrument=${which}${pick ? `&tuning=${pick}` : ''}`, download: '' });
+    document.body.append(a); a.click(); a.remove();
+    toast('Saving the tab as a Guitar Pro file (in your Downloads).');
+  }
+  // The job strip (making versions or a tab), from Track Splitter's job.
+  function renderLibJob() {
+    const job = state.job, on = arcadeOn && !!job && job.status !== 'done';
+    $('#lib-job').classList.toggle('hidden', !on);
+    if (!on) return;
+    const overall = job.total ? ((job.index + job.fraction) / job.total) * 100 : 0, left = timeLeft(job, overall / 100);
+    $('#lib-job-what').textContent = `${job.song}${job.total > 1 ? ` · song ${job.index + 1} of ${job.total}` : ''}`;
+    $('#lib-job-bar').style.width = `${overall}%`;
+    $('#lib-job-step').textContent = `${job.status === 'queued' ? 'Waiting to start…' : job.step || 'Starting'}${left ? ` · ${left}` : ''} · ${Math.round(overall)}%`;
+  }
+  // The player bar: what's loaded, play / pause, position, Without / Original / Only / My bass, volume.
+  function libPlayerSync() {
+    if (!arcadeOn || arcade.screen !== 'library') return;
+    const cur = state.current, playing = player.playing || player.wantPlay;
+    const key = cur ? `${cur.song.id}|${cur.song.cover || 0}` : '';
+    if ($('#lp-cover').dataset.key !== key) { $('#lp-cover').replaceChildren(...(cur ? [coverEl(cur.song)] : [])); $('#lp-cover').dataset.key = key; }
+    $('#lp-title').textContent = cur ? cur.song.title : 'Nothing playing';
+    $('#lp-sub').textContent = cur ? `${versionLabel(cur.version)}${cur.version.hq ? ' · HQ' : ''} · ${cur.song.artist}` : 'Pick a version to listen';
+    $('#lp-play').innerHTML = playing ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>';
+    $('#lp-play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    for (const id of ['#lp-play', '#lp-back', '#lp-fwd', '#lp-seek']) $(id).disabled = !cur;
+    document.querySelectorAll('#lp-hear button').forEach((b) => {
+      b.disabled = !cur;
+      b.classList.toggle('active', b.dataset.mode === state.mode);
+      if (b.dataset.mode === 'without') b.textContent = cur ? `Without ${cur.version.removed}` : 'Without';
+      if (b.dataset.mode === 'only') b.textContent = cur ? `${cap(cur.version.removed)} only` : 'Only';
+      if (b.dataset.mode === 'mine') b.classList.toggle('hidden', !cur?.song.my_bass);
+    });
+    $('#lp-vol').value = $('#volume').value; $('#lp-vol').style.setProperty('--fill', `${$('#lp-vol').value}%`);
+    libTime();
+  }
+  let libSeeking = false;
+  function libTime() {
+    if (!arcadeOn || arcade.screen !== 'library' || libSeeking) return;
+    const t = state.current ? currentTime() : 0, dur = state.current ? duration() : 0;
+    $('#lp-cur').textContent = fmtTime(t); $('#lp-dur').textContent = fmtTime(dur);
+    $('#lp-seek').value = dur ? (t / dur) * 1000 : 0; $('#lp-seek').style.setProperty('--fill', `${$('#lp-seek').value / 10}%`);
+  }
+  setInterval(() => { if (player.playing) libTime(); }, 250);
+  $('#lp-play').addEventListener('click', togglePlay);
+  $('#lp-back').addEventListener('click', () => seekTo(currentTime() - 10));
+  $('#lp-fwd').addEventListener('click', () => seekTo(currentTime() + 10));
+  $('#lp-seek').addEventListener('input', (e) => {
+    libSeeking = true; e.target.style.setProperty('--fill', `${e.target.value / 10}%`);
+    $('#lp-cur').textContent = fmtTime((e.target.value / 1000) * duration());
+  });
+  $('#lp-seek').addEventListener('change', (e) => { seekTo((e.target.value / 1000) * duration()); libSeeking = false; libTime(); });
+  document.querySelectorAll('#lp-hear button').forEach((b) => b.addEventListener('click', () => { state.mode = b.dataset.mode; applyMode(); libPlayerSync(); }));
+  $('#lp-vol').addEventListener('input', (e) => { $('#volume').value = e.target.value; $('#volume').dispatchEvent(new Event('input')); e.target.style.setProperty('--fill', `${e.target.value}%`); });
+  $('#lib-back').addEventListener('click', () => screenBack('library'));
+  $('#lib-add').addEventListener('click', () => openUpload());
+  $('#lib-folder').addEventListener('click', () => postJSON('/api/open-folder', {}).catch((err) => toast(err.message, 'error')));
+  const libShowPicked = () => document.querySelector('#lib-list .lib-row.on')?.scrollIntoView({ block: 'center' });
+  $('#lib-search').addEventListener('input', () => { renderLibrary(); libShowPicked(); });
+  document.querySelectorAll('#lib-sort button').forEach((b) => b.addEventListener('click', () => { lib.sort = b.dataset.sort; setPref(LIB_SORT_KEY, lib.sort); renderLibrary(); libShowPicked(); }));
+  $('#arc-library-btn').addEventListener('click', () => { arcade.backTo.library = 'title'; setScreen('library'); });
+  $('#arc-add').addEventListener('click', () => { arcade.backTo.library = 'title'; setScreen('library'); openUpload(); });
+  // The tab view inside Encore (stage 3): Track Splitter's own tab view (Lines / Scroll / Highway / Whole, Beat 1, the
+  // Bass input drawer and recording, drafts) over Encore in its look (body.tab-encore); its back button returns here.
+  async function libOpenTab(song, from = 'library') {
+    lib.tabFrom = from;                                  // where Back goes: the Library or song select
+    stopPreview();
+    setTabInstrument(song.id, lib.inst);
+    if (state.current?.song.id !== song.id) await loadVersion(song, gameVersion(song, lib.inst === 'guitar'));
+    document.body.classList.add('tab-encore');
+    document.body.style.setProperty('--tab-cover', coverUrl(song));
+    if (tabView.section !== 'tab') setSection('tab');
+    if (!tabView.open) openTab(true);
+    else loadTab();
+  }
+  function closeEncoreTab() {
+    if (!document.body.classList.contains('tab-encore')) return;
+    if (tabView.open) openTab(false);
+    document.body.classList.remove('tab-encore');
+    setScreen(lib.tabFrom === 'select' ? 'select' : 'library');
+  }
+  $('#tab-back-lib').addEventListener('click', closeEncoreTab);
+  // From song select too (user: "maybe a way to get there from the song select screen?"): View tab, or T.
+  function selectOpenTab() {
+    const song = arcade.song;
+    if (!song?.tabs?.[arcade.instrument] || arcade.busy) return;
+    lib.inst = arcade.instrument;
+    libOpenTab(song, 'select');
+  }
+  $('#arc-tab').addEventListener('click', selectOpenTab);
+  // Song select <-> Library without the title screen (user: "I don't want to have to go back to the main menu to get to
+  // the library screen every time"): each keeps the picked song.
+  function selectToLibrary() {
+    arcade.backTo.library = 'select';
+    if (arcade.song) lib.song = arcade.song.id;
+    setScreen('library');
+  }
+  function libToSelect() {
+    const song = songById(lib.song);
+    if (song?.versions.length && (song.tabs?.bass || song.tabs?.guitar)) libToGame(song, arcade.mode);
+    else setScreen('select');
+  }
+  $('#arc-to-library').addEventListener('click', selectToLibrary);
+  // After a mouse click on a button in Encore, the keys go back to the screen (the song list, or the page in the tab view)
+  // instead of staying on that button: Space played / re-pressed it and the arrows did nothing. Not when it opened a dialog.
+  document.addEventListener('click', (e) => {
+    if (!arcadeOn || game.on || !e.detail) return;      // detail 0: pressed with the keyboard
+    const b = e.target.closest('button, [role="button"], select');
+    if (!b || b.matches('select') || b.closest('dialog, .menu, .input-bar, .tab-more')) return;
+    setTimeout(() => {
+      const at = document.activeElement;               // the button, or the page when the panel was drawn again under it
+      if (document.querySelector('dialog[open]') || (at !== b && at !== document.body)) return;
+      if (document.body.classList.contains('tab-encore')) at.blur();
+      else if (arcade.screen === 'library') $('#lib-list').focus({ preventScroll: true });
+      else if (arcade.screen === 'select') viewEl().focus({ preventScroll: true });
+      else at.blur();
+    }, 0);
+  });
+  // Back / Esc on song select or the Library: to the one you came from (user: "when I click back from the library when I
+  // came from song select, it brought me back to the main menu"), else the title. Going back clears the other's way
+  // back, so two backs from either reach the title instead of bouncing between them.
+  function screenBack(from) {
+    const to = arcade.backTo[from] || 'title';
+    arcade.backTo[from] = 'title';
+    if (to !== 'title') arcade.backTo[to] = 'title';
+    if (to === 'library' && arcade.song) lib.song = arcade.song.id;
+    const picked = songById(lib.song);                  // back to song select: on the song picked in the Library
+    if (to === 'select' && picked?.versions.length) arcade.song = picked;
+    setScreen(to);
+  }
+  $('#lib-to-select').addEventListener('click', libToSelect);
+  state.libReady = true;
 
   // Results: Songs goes back to song select (Close too: it's where the game started).
   $('#game-songs').addEventListener('click', () => $('#game-dlg').close());
@@ -10359,20 +11341,32 @@
     }
     requestAnimationFrame(() => moveMenuBar($('#arc-play')));
   }
-  $('#arc-feature-go').addEventListener('click', () => { arcade.song = arcade.feature; setScreen('select'); arcadePlay(); });
+  $('#arc-feature-go').addEventListener('click', () => { arcade.mode = 'play'; arcade.song = arcade.feature; setScreen('select'); arcadePlay(); });
 
   // Title menu.
-  $('#arc-play').addEventListener('click', () => setScreen('select'));
+  $('#arc-play').addEventListener('click', () => { arcade.mode = 'play'; arcade.backTo.select = 'title'; setScreen('select'); });
+  $('#arc-practice').addEventListener('click', () => { arcade.mode = 'practice'; arcade.backTo.select = 'title'; setScreen('select'); });
+  document.querySelectorAll('#arc-mode button').forEach((b) => b.addEventListener('click', () => { arcade.mode = b.dataset.mode; renderSong(); }));
   $('#arc-settings').addEventListener('click', () => openSettings(false));
   $('#arc-select-settings').addEventListener('click', () => openSettings(false));   // (user: "have a settings button on the song select page")
   $('#arc-calib').addEventListener('click', async () => { await connectInput(); if (input.analyser) openCalibration(null); });
   $('#arc-strcal').addEventListener('click', async () => { await connectInput(); if (input.analyser) openStringCal(); });
-  $('#arc-app').addEventListener('click', () => { if (standalone()) window.open('/', '_blank'); else location.href = '/'; });   // the app window keeps Encore
+  // Quit (Track Splitter's own screen is retired: / opens Encore): stops the server, as the old sidebar's Quit did.
+  $('#arc-app').addEventListener('click', () => ask({
+    title: 'Quit Encore?',
+    text: busy() ? 'A song is still being processed and will be stopped.' : 'You can open it again from its icon.',
+    ok: 'Quit', danger: busy(),
+    submit: async () => {
+      pause();
+      await postJSON('/api/quit', {});
+      document.body.innerHTML = '<div class="empty" style="height:100vh;display:grid;place-items:center;font-family:var(--arc-font)"><div><h2 style="font-weight:300">Encore has stopped</h2><p>You can close this window.</p></div></div>';
+    },
+  }));
   $('#arc-icon').addEventListener('click', installEncore);
   $('#settings-dlg').addEventListener('close', () => { if (arcadeOn && arcade.screen === 'select') renderSong(); });
 
   document.addEventListener('keydown', (e) => {
-    if (!arcadeOn || game.on || document.querySelector('dialog[open]') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!arcadeOn || game.on || document.body.classList.contains('tab-encore') || document.querySelector('dialog[open]') || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key, inSearch = document.activeElement === $('#arc-search');
     if (arcade.screen === 'title') {
       if (k === 'ArrowDown' || k === 'ArrowUp') {
@@ -10382,6 +11376,22 @@
       }
       return;
     }
+    if (arcade.screen === 'library') {
+      const inLibSearch = document.activeElement === $('#lib-search');
+      if (inLibSearch) {
+        if (k === 'Escape') { if ($('#lib-search').value) { $('#lib-search').value = ''; renderLibrary(); } $('#lib-list').focus(); e.preventDefault(); }
+        else if (k === 'Enter' || k === 'ArrowDown') { $('#lib-list').focus(); e.preventDefault(); }
+        return;
+      }
+      if (k === 'Escape') { screenBack('library'); e.preventDefault(); }
+      else if (k === 'p' || k === 'P') { libToSelect(); e.preventDefault(); }
+      else if ((k === 'ArrowUp' || k === 'ArrowDown') && !document.activeElement?.matches('input, select')) {
+        const list = libSongs(), at = list.findIndex((x) => x.id === lib.song), next = list[Math.max(0, Math.min(list.length - 1, at + (k === 'ArrowDown' ? 1 : -1)))];
+        if (next) libPick(next.id);
+        e.preventDefault();
+      } else if (k === 'Enter' && document.activeElement === $('#lib-list')) { libListen(songById(lib.song)); e.preventDefault(); }
+      return;
+    }
     if (arcade.screen !== 'select') return;
     if (inSearch) {
       if (k === 'Escape') { if ($('#arc-search').value) { $('#arc-search').value = ''; renderSelect(); } viewEl().focus(); e.preventDefault(); }
@@ -10389,7 +11399,9 @@
       return;
     }
     const onControl = document.activeElement?.matches('select, .arc-top button, .arc-now button');
-    if (k === 'Escape') { setScreen('title'); e.preventDefault(); }
+    if (k === 'Escape') { screenBack('select'); e.preventDefault(); }
+    else if (k === 't' || k === 'T') { selectOpenTab(); e.preventDefault(); }
+    else if (k === 'l' || k === 'L') { selectToLibrary(); e.preventDefault(); }
     else if (k.startsWith('Arrow') && document.activeElement?.tagName !== 'SELECT') {
       // Covers: left/right is the song, up/down the difficulty. List: up/down the song, left/right the difficulty.
       const songKey = arcade.view === 'list' ? k === 'ArrowUp' || k === 'ArrowDown' : k === 'ArrowLeft' || k === 'ArrowRight';
@@ -10455,7 +11467,8 @@
     if (place?.screen === 'select') {                    // back where you were before a refresh
       arcade.song = songById(place.song) || null;
       setScreen('select');
-    } else setScreen('title');
+    } else if (place?.screen === 'library') setScreen('library');
+    else setScreen('title');
     fetchCovers();
     if (standalone()) postJSON('/api/shortcut', { game: true }).catch(() => {});   // the installed app: keep its Encore Helper in place
   }
