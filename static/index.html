@@ -5638,6 +5638,7 @@
       if (prevOn[nt[2]] !== undefined) { info[i].prev = notes[prevOn[nt[2]]][0]; info[prevOn[nt[2]]].next = nt[0]; }
       prevOn[nt[2]] = i;
     });
+    for (let i = notes.length - 1, nx = -1; i >= 0; i--) { info[i].after = nx; if (i === 0 || notes[i][0] - notes[i - 1][0] >= 0.03) nx = i; }   // the next note in time (a chord's notes share one), for the electric trail
     const gaps = []; notes.forEach((nt, i) => { if (!info[i].rep && info[i].prev > -Infinity) gaps.push((warp(nt[0]) - warp(info[i].prev)) * ux); });
     gaps.sort((a, b) => a - b);
     const p20 = gaps.length ? gaps[Math.floor(gaps.length * 0.2)] : 1e9, fit = Math.max(0.8, Math.min(1, (p20 - 8) / (fs0 * 1.15)));
@@ -5778,11 +5779,18 @@
       const gr = document.createElement('canvas'); gr.width = gr.height = 128; const gx = gr.getContext('2d'), im = gx.createImageData(128, 128);
       for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } gx.putImageData(im, 0, 0);
       sg.globalAlpha = 0.035; sg.fillStyle = sg.createPattern(gr, 'repeat'); sg.fillRect(0, 0, W, H); sg.globalAlpha = 1;
-      sg.beginPath(); sg.roundRect(L - 56, trackT - pad, pw, phh, 18);
-      sg.shadowColor = 'rgba(0,0,0,.6)'; sg.shadowBlur = 40; sg.fillStyle = 'rgba(10,11,17,.82)'; sg.fill(); sg.shadowBlur = 0;
-      q = sg.createLinearGradient(0, trackT - pad, 0, trackB + pad); q.addColorStop(0, 'rgba(255,255,255,.05)'); q.addColorStop(1, 'rgba(255,255,255,.012)'); sg.fillStyle = q; sg.fill();
-      sg.strokeStyle = 'rgba(255,255,255,.07)'; sg.lineWidth = 1; sg.stroke();
-      sg.save(); sg.clip(); q = sg.createLinearGradient(L, 0, curX, 0); q.addColorStop(0, 'rgba(0,0,0,.35)'); q.addColorStop(1, 'rgba(0,0,0,0)'); sg.fillStyle = q; sg.fillRect(L - 56, trackT - pad, curX - L + 56, phh); sg.restore();   // the played side darker
+      // The panel, on its own layer (arcadeBoard.panel), faded out at both ends: Borderless (user picked All in arcade.html's
+      // Polish row: "we can add all the changes"; was a glass box with a shadow and a border), so the tab floats on the
+      // background, with Glass (a sheen across the top, a shadow at the bottom, a fine bright top edge) and the played side darker.
+      const pc = arcadeBoard.panel ||= document.createElement('canvas'); pc.width = c.width; pc.height = c.height;
+      const pg = pc.getContext('2d'), px0 = L - 56, py0 = trackT - pad; pg.setTransform(dpr, 0, 0, dpr, 0, 0); pg.clearRect(0, 0, W, H);
+      pg.beginPath(); pg.roundRect(px0, py0, pw, phh, 18); pg.fillStyle = 'rgba(10,11,17,.78)'; pg.fill(); pg.save(); pg.clip();
+      q = pg.createLinearGradient(L, 0, curX, 0); q.addColorStop(0, 'rgba(0,0,0,.35)'); q.addColorStop(1, 'rgba(0,0,0,0)'); pg.fillStyle = q; pg.fillRect(px0, py0, curX - px0, phh);   // the played side darker
+      q = pg.createLinearGradient(0, py0, 0, py0 + phh * 0.4); q.addColorStop(0, 'rgba(255,255,255,.075)'); q.addColorStop(1, 'rgba(255,255,255,0)'); pg.fillStyle = q; pg.fillRect(px0, py0, pw, phh * 0.4);
+      q = pg.createLinearGradient(0, py0 + phh * 0.75, 0, py0 + phh); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(1, 'rgba(0,0,0,.28)'); pg.fillStyle = q; pg.fillRect(px0, py0 + phh * 0.75, pw, phh * 0.25);
+      pg.strokeStyle = 'rgba(255,255,255,.2)'; pg.lineWidth = 1; pg.beginPath(); pg.moveTo(px0 + 22, py0 + 1.5); pg.lineTo(px0 + pw - 22, py0 + 1.5); pg.stroke(); pg.restore();
+      pg.globalCompositeOperation = 'destination-in'; q = pg.createLinearGradient(px0, 0, px0 + pw, 0); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(0.12, '#000'); q.addColorStop(0.88, '#000'); q.addColorStop(1, 'rgba(0,0,0,0)');
+      pg.fillStyle = q; pg.fillRect(0, 0, W, H); pg.globalCompositeOperation = 'source-over';
     }
     // The count-in opens the board from the cursor outward on its first beat, rising into place.
     const op = intro ? Math.max(0, Math.min(1, (introEl - intro.card) / (1.4 * intro.B))) : 1, ope = 1 - (1 - op) ** 3;
@@ -5792,7 +5800,7 @@
       const hq = g.createLinearGradient(0, trackT - H * 0.22, 0, trackB + H * 0.22); hq.addColorStop(0, acss(mood.c, 0)); hq.addColorStop(0.3, acss(mood.c, 0.07 * bigK)); hq.addColorStop(0.5, acss(mood.d, 0.03 * bigK)); hq.addColorStop(0.7, acss(mood.c, 0.07 * bigK)); hq.addColorStop(1, acss(mood.c, 0));
       g.fillStyle = hq; g.fillRect(0, trackT - H * 0.22, W, trackB - trackT + H * 0.44);
     }
-    g.drawImage(arcadeBoard.static, 0, 0, W, H);
+    g.drawImage(arcadeBoard.static, 0, 0, W, H); g.drawImage(arcadeBoard.panel, 0, 0, W, H);
 
     // ---- the track: blue at x4 ----
     g.save();
@@ -5800,24 +5808,32 @@
     let q;
     if (x4k > 0.01) {   // x4: the board turns blue, strongest at the cursor (user: "I liked when the board turned blue before")
       const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);   // kept in range: a very narrow window put it below 0 and addColorStop threw
-      q.addColorStop(0, `rgba(21,87,192,${0.18 * x4k})`); q.addColorStop(cp, `rgba(30,110,230,${(0.5 + 0.06 * beat) * x4k})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(21,87,192,${0.22 * x4k})`); q.addColorStop(1, `rgba(21,87,192,${0.1 * x4k})`);
+      q.addColorStop(0, 'rgba(21,87,192,0)'); q.addColorStop(cp, `rgba(30,110,230,${(0.5 + 0.06 * beat) * x4k})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(21,87,192,${0.22 * x4k})`); q.addColorStop(1, 'rgba(21,87,192,0)');
       g.fillStyle = q; g.fill();
     }
-    if (bigK > 0.01) { g.fillStyle = acss(mood.d, 0.07 * bigK); g.fill(); }
+    if (bigK > 0.01) { q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0); q.addColorStop(0, acss(mood.d, 0)); q.addColorStop(0.15, acss(mood.d, 0.07 * bigK)); q.addColorStop(0.85, acss(mood.d, 0.07 * bigK)); q.addColorStop(1, acss(mood.d, 0)); g.fillStyle = q; g.fill(); }
+    // (the washes below fade out at both ends: the board is borderless)
     const warm = build * (1 - x4k) * (1 - encK);      // a streak building: the track warms in the song's colour toward the cursor, before x4's blue
     if (warm > 0.01) {
       const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
-      q.addColorStop(0, acss(mood.d, 0.05 * warm)); q.addColorStop(cp, acss(mood.d, (0.16 + 0.03 * beat) * warm)); q.addColorStop(Math.min(1, cp + 0.35), acss(mood.d, 0.06 * warm)); q.addColorStop(1, acss(mood.d, 0.02 * warm));
+      q.addColorStop(0, acss(mood.d, 0)); q.addColorStop(cp, acss(mood.d, (0.16 + 0.03 * beat) * warm)); q.addColorStop(Math.min(1, cp + 0.35), acss(mood.d, 0.06 * warm)); q.addColorStop(1, acss(mood.d, 0));
       g.fillStyle = q; g.fill();
     }
     if (encK > 0.01) {                                   // Encore: the board turns gold, strongest at the cursor (as x4 turns it blue)
       const cp = Math.max(0, Math.min(0.65, (curX - (L - 56)) / pw)); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0);
-      q.addColorStop(0, `rgba(160,95,8,${0.16 * encK})`); q.addColorStop(cp, `rgba(225,150,25,${(0.4 + 0.06 * beat) * encK})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(160,95,8,${0.2 * encK})`); q.addColorStop(1, `rgba(160,95,8,${0.08 * encK})`);
+      q.addColorStop(0, 'rgba(160,95,8,0)'); q.addColorStop(cp, `rgba(225,150,25,${(0.4 + 0.06 * beat) * encK})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(160,95,8,${0.2 * encK})`); q.addColorStop(1, 'rgba(160,95,8,0)');
       g.fillStyle = q; g.fill();
     }
-    if (bigK > 0.01) { g.save(); g.strokeStyle = acss(mood.c, 0.4 * bigK); g.lineWidth = 1.4; g.shadowColor = acss(mood.c, 1); g.shadowBlur = 26 * bigK; g.stroke(); g.restore(); }   // its rim lit
+    if (bigK > 0.01) { g.save(); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.15, acss(mood.c, 0.4 * bigK)); q.addColorStop(0.85, acss(mood.c, 0.4 * bigK)); q.addColorStop(1, acss(mood.c, 0)); g.strokeStyle = q; g.lineWidth = 1.4; g.shadowColor = acss(mood.c, 1); g.shadowBlur = 26 * bigK; g.stroke(); g.restore(); }   // its rim lit
     g.clip();
     const sp = trackH / n, sy = (s) => trackT + (n - 1 - s) * sp + sp / 2, fa = AVIS * 0.25, fb = AVIS, wt = warp(t), X = (tt) => L + (warp(tt) - wt + fa) / (fa + fb) * (R - L);
+    {   // Polish (arcade.html): Spotlight (light where you play, the far end dimmer, back to nothing at the faded edge) and Glass's
+        // slow sweep of light every 8 s (its sheen, shadow and top edge are on the panel layer)
+      const px0 = L - 56, py0 = trackT - pad, dx = R - (R - L) * 0.3;
+      arcadeSoft(g, curX, (trackT + trackB) / 2, trackH * 0.95, mood.c, 0.09);
+      q = g.createLinearGradient(dx, 0, px0 + pw, 0); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(0.6, 'rgba(0,0,0,.3)'); q.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = q; g.fillRect(dx, py0, px0 + pw - dx, phh);
+      const swp = ((ms / 1000) % 8) / 8; if (swp < 0.35) { const sx = px0 - 200 + (pw + 400) * (swp / 0.35); q = g.createLinearGradient(sx - 120, py0, sx + 120, py0 + phh); q.addColorStop(0, 'rgba(255,255,255,0)'); q.addColorStop(0.5, 'rgba(255,255,255,.05)'); q.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q; g.fillRect(sx - 120, py0, 240, phh); }
+    }
     const sa = (ms - arcadeBoard.sweepAt) / 800;   // the multiplier went up: one soft band of light along the track
     if (sa >= 0 && sa < 1) { const sx = curX + (R - curX) * sa, w = W * 0.12; q = g.createLinearGradient(sx - w, 0, sx + w, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.16 * (1 - sa))); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(sx - w, trackT - pad, w * 2, phh); }
     if (bigAge < 0.9) {                                  // a big moment coming in: a soft flash and a bright band out from the cursor
@@ -5831,20 +5847,42 @@
         if (j === 0) { g.strokeStyle = 'rgba(255,255,255,.09)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, trackT - 6); g.lineTo(x, trackB + 6); g.stroke(); }
         g.fillStyle = j === 0 ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.14)'; g.fillRect(x - 0.5, trackB + pad - 7, 1, j === 0 ? 6 : 4); }
     }
-    // strings: brighter for a moment when played, vibrating out from the cursor
+    // strings: brighter for a moment when played, rippling out from the cursor
     for (let s = 0; s < n; s++) {
       // a hit rings its string brighter and longer (user picked "Hit feel": 0.25 s -> 0.45 s, vibrating 0.9 s); a streak warms every string
       const age = (ms - (game.laneHitMs[s] ?? -1e9)) / 1000, a = Math.min(1, Math.exp(-age / 0.45) + 0.8 * landF);
-      const sc3 = amix(amix(amix(crgb(s), mood.c, 0.22 * warm), [125, 211, 252], 0.45 * x4k), [253, 224, 140], 0.4 * encK), lw = Math.max(1, 2.4 - s * (1.4 / n)) + a;
+      const sc3 = amix(amix(amix(crgb(s), mood.c, 0.22 * warm), [125, 211, 252], 0.45 * x4k), [253, 224, 140], 0.4 * encK), gauge = 4.2 - 2.3 * s / Math.max(1, n - 1), lw = gauge + a;   // Real strings: thickness by gauge (4.2 px low E .. 1.9 px top)
       g.beginPath();
-      if (age < 0.9) { const amp = sizeSp * 0.12 * Math.exp(-age * 4.5); for (let x = L - 10; x <= R + 10; x += 5) { const dd = Math.abs(x - curX), y = sy(s) + amp * Math.exp(-dd / (W * 0.14)) * Math.sin(dd * 0.07 - age * 70); x === L - 10 ? g.moveTo(x, y) : g.lineTo(x, y); } }
+      // Ripple (user picked it in arcade.html's Live strings; was a wave shaking out from the cursor): a hit sends a pulse out
+      // both ways from the cursor that bounces off the board's ends, turned over as on a real string, and dies away. Half the
+      // mockup's height (user: "the ripple effect is too strong").
+      if (age < 1.5) {
+        const a0 = L - 10, len = R + 10 - a0, amp = sizeSp * 0.055 * Math.exp(-age / 0.6), wd = sizeSp * 0.8;
+        for (let x = a0; x <= R + 10; x += 5) {
+          let sum = 0; for (const dir of [1, -1]) { const p = curX - a0 + dir * len * 1.6 * age, kk = Math.floor(p / len), f = p - kk * len, even = ((kk % 2) + 2) % 2 === 0; sum += (even ? 1 : -1) * Math.exp(-(((x - a0 - (even ? f : len - f)) / wd) ** 2)); }
+          const y = sy(s) + amp * 0.7 * sum; x === a0 ? g.moveTo(x, y) : g.lineTo(x, y);
+        }
+      }
       else { g.moveTo(L - 10, sy(s)); g.lineTo(R + 10, sy(s)); }
       g.strokeStyle = acss(sc3, 0.08 + 0.22 * a + 0.06 * warm); g.lineWidth = lw + 5 + 6 * a; g.stroke();   // a soft glow (a stroke, not shadowBlur)
-      g.strokeStyle = acss(sc3, 0.38 + 0.45 * a + 0.15 * x4k + 0.12 * warm); g.lineWidth = lw; g.stroke();
+      // Borderless: the strings fade in and out at the board's ends
+      const fq = g.createLinearGradient(L - 10, 0, R + 10, 0), cc = acss(sc3, 0.38 + 0.45 * a + 0.15 * x4k + 0.12 * warm); fq.addColorStop(0, acss(sc3, 0)); fq.addColorStop(0.08, cc); fq.addColorStop(0.92, cc); fq.addColorStop(1, acss(sc3, 0));
+      g.strokeStyle = fq; g.lineWidth = lw; g.stroke();
+      if (s < (n >= 6 ? 3 : n - 1)) { g.setLineDash([1.2, 1.6]); g.strokeStyle = 'rgba(0,0,0,.35)'; g.stroke(); g.setLineDash([]); }   // Real strings: windings on the wound strings,
+      g.strokeStyle = 'rgba(255,255,255,.32)'; g.lineWidth = 0.8; g.stroke();                                                        // a metal sheen
+      arcadeSoft(g, L + (((ms / 1000) * 0.12 + s * 0.27) % 1) * (R - L), sy(s), sizeSp * 0.3, [255, 255, 255], 0.1);                 // and a slow glint
     }
     // which notes are on screen (binary search to the first one near the left edge)
     let lo = 0, hi = notes.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (X(notes[mid][0]) < L - 80) lo = mid + 1; else hi = mid; }
     const vis = []; for (let k = lo; k < notes.length && X(notes[k][0]) < R + 80; k++) if (notes[k][2] < n) vis.push(k);
+    // Trail (user picked it in arcade.html): a hit note leaves a comet along its string back toward the cursor and a soft
+    // glow, fading over ~2 s as the tab carries it off; a miss leaves none.
+    for (const k of vis) {
+      if (game.result[k] !== 'hit') continue; const age = t - (game.hitAt[k] ?? notes[k][0]); if (age < 0.02 || age > 2.4) continue;
+      const x = X(notes[k][0]), y = sy(notes[k][2]), c = amix(crgb(notes[k][2]), [125, 211, 252], 0.4 * x4k), kf = Math.exp(-age / 0.9), len = Math.min(curX - x, sizeSp * 2.4);
+      if (len > 1) { const tq = (a) => { const q2 = g.createLinearGradient(x, 0, x + len, 0); q2.addColorStop(0, acss(c, a * kf)); q2.addColorStop(1, acss(c, 0)); return q2; }; g.fillStyle = tq(0.16); g.fillRect(x, y - sizeSp * 0.17, len, sizeSp * 0.34); g.fillStyle = tq(0.7); g.fillRect(x, y - 1.5, len, 3); }
+      arcadeSoft(g, x, y, sizeSp * 0.55, c, 0.3 * kf);
+    }
     // Notes struck together (a double stop / chord: within 30 ms on different strings), by their first note.
     const sz = Math.round(sizeSp * 0.6 * 0.75 * P.fit), markW = sizeSp * 0.36 * 0.7, lay = new Map(), chordOf = new Map(), chords = [];
     for (let i = 0; i < vis.length; i++) {
@@ -5975,8 +6013,9 @@
     // lit meanwhile and flashing when that note's hit; the second note's keycap is tinted to match (`tied`, keycaps below).
     for (const k of vis) {
       const it = lay.get(k), lm = it && it.form !== 'none' && notes[k][4] ? legatoMarks(d, k) : null; if (!lm) continue;
-      const slid = lm.into === '/' || lm.into === '\\', legato = lm.into === 'h' || lm.into === 'p'; if (!slid && !legato && !lm.out) continue;
-      const s = notes[k][2], y = sy(s), x = px(it), res = game.result[k], ch = sz * 1.12, h = ch * 0.44, rise = ch * 0.22;
+      // No slides any more (user: "can we remove the slide indicator?"): only hammer-ons / pull-offs get a band
+      const legato = lm.into === 'h' || lm.into === 'p'; if (!legato) continue;
+      const s = notes[k][2], y = sy(s), x = px(it), res = game.result[k], ch = sz * 1.12, h = ch * 0.44;
       const c3 = res === 'miss' ? [110, 110, 120] : amix(crgb(s), [125, 211, 252], 0.4 * x4k), A = edgeOf(x), dim = notes[k][0] < t - 0.02 || res ? 0.45 : 1, pv = lm.prev >= 0 ? lay.get(lm.prev) : null;
       const band = (pts, f0, f1, lit, u) => {              // along pts (its ends under keycaps), faded to f0 / f1 at its ends; the spark at u along pts[1] -> pts[2]
         const xa = pts[0][0], xb = pts[pts.length - 1][0], grad = (fn) => { const q = g.createLinearGradient(xa, 0, Math.max(xb, xa + 1), 0); q.addColorStop(0, fn(f0)); q.addColorStop(1, fn(f1)); return q; };
@@ -5994,24 +6033,95 @@
         }
         g.lineCap = 'butt'; g.lineJoin = 'miter';
       };
-      const tilt = (up) => (up ? -1 : 1) * rise, eB = x - half(it), eA = pv ? px(pv) + half(pv) : 0;   // up the neck: rising to the right
-      if ((slid || legato) && pv && pv.form !== 'none' && eB - eA >= 6) {   // from the note before (closer slides get a slur, below)
+      const eB = x - half(it), eA = pv ? px(pv) + half(pv) : 0;
+      if (legato && pv && pv.form !== 'none' && eB - eA >= 6) {   // from the note before
         const ta = notes[lm.prev][0], tb = notes[k][0], u = (t - ta) / Math.max(0.05, tb - ta), go = u > 0 && u < 1 && res !== 'miss';
         const hitAge = res === 'hit' ? t - (game.hitAt[k] ?? tb) : 9, pop = hitAge >= 0 && hitAge < 0.35 ? 1 - hitAge / 0.35 : 0;
-        const dy = slid ? tilt(lm.into === '/') : 0, kA = pv.form === 'mark' ? 0.4 : 1, kB = it.form === 'mark' ? 0.4 : 1;   // (a diamond is smaller than a keycap)
-        g.globalAlpha = go || pop ? A : A * dim; band([[px(pv), y], [eA, y - dy * kA], [eB, y + dy * kB], [x, y]], 1, 1, go ? 1 : pop, go ? u : null);
-      } else if (slid && !(pv && pv.form !== 'none')) { g.globalAlpha = A * dim; const up = lm.into === '/'; band([[eB - sz * 1.1, y - 2 * tilt(up)], [eB, y], [x, y]], 0.55, 1, 0, null); }   // slid in
-      const eR = x + half(it), room = info[k].next < Infinity ? X(info[k].next) - eR - sz * 0.75 : sz * 1.1, out = Math.min(sz * 1.1, room);   // stopping before the next note
-      if (lm.out && out > sz * 0.5) { g.globalAlpha = A * dim; const up = lm.out === '/'; band([[x, y], [eR, y], [eR + out, y + 2 * tilt(up) * (out / (sz * 1.1))]], 1, 0.55, 0, null); }   // slides off
+        g.globalAlpha = go || pop ? A : A * dim; band([[px(pv), y], [eA, y], [eB, y], [x, y]], 1, 1, go ? 1 : pop, go ? u : null);
+      }
       g.globalAlpha = 1;
+    }
+    // The electric trail (user picked it in arcade.html: Light pass › Bounce, Straight, With the notes, Electric, Behind the notes,
+    // Press keys, Hit / miss; "I like this"): a bolt from the note just played to the next one, moving with the tab: it leaves with
+    // that note and crosses to the next in a straight line, landing on it as it reaches the cursor. Drawn behind the keycaps. It
+    // grows with the multiplier: x1 one quiet strand, x2 + glow and forks, x3 + braided strands, sparks and an arc reaching for
+    // the next note, x4 electric blue, wider and longer with more of everything; gold in Encore. A hit launches it with a burst;
+    // after a miss it drops grey and fades, coming back in on the next note. landK / landAge: the note it last landed on (its
+    // keycap dips, below).
+    let landK = -1, landAge = 9;
+    if (game.on) {
+      const segAt = (tq) => { let a1 = 0, b1 = notes.length; while (a1 < b1) { const m = (a1 + b1) >> 1; if (notes[m][0] <= tq) a1 = m + 1; else b1 = m; } const a = a1 - 1; if (a < 0) return null;
+        const b = info[a].after; return b >= 0 && notes[b][0] - notes[a][0] <= 3 && notes[a][2] < n && notes[b][2] < n ? [a, b] : null; };
+      const ballAt = (tq) => {
+        const sg = segAt(tq); if (!sg) return null;
+        const [a, b] = sg, na = notes[a], nb = notes[b], gap = nb[0] - na[0], since = tq - na[0], u = Math.min(1, since / gap), ux = u * u * (3 - 2 * u), miss = game.result[a] === 'miss';
+        const o = { a, b, since, gap, u, miss, alpha: 1, x: X(na[0]) + (X(nb[0]) - X(na[0])) * ux, y: sy(na[2]) + (sy(nb[2]) - sy(na[2])) * ux, c: amix(crgb(na[2]), crgb(nb[2]), ux) };
+        if (miss) {                                       // the drop, then dropping back in on the next note
+          const kd = Math.max(0, since - 0.1) / 0.35, back = Math.max(0, 1 - (gap - since) / 0.25);
+          if (kd < 1) { o.x = X(na[0]); o.y = sy(na[2]) + sizeSp * 0.7 * kd * kd; o.alpha = 1 - kd; o.c = [130, 132, 140]; }
+          else if (back > 0) { o.x = X(nb[0]); o.y = sy(nb[2]) - sizeSp * 0.8 * (1 - back) ** 2; o.alpha = back; o.c = crgb(nb[2]); } else o.alpha = 0;
+        }
+        return o;
+      };
+      const bl = ballAt(t);
+      if (bl && !bl.miss) { landK = bl.a; landAge = bl.since; }
+      if (bl && bl.alpha > 0) {
+        const r = sizeSp * 0.11, fr = Math.floor(ms / 1000 * 30), hash = (i, f = fr) => { const v = Math.sin(i * 127.1 + f * 311.7) * 43758.5453; return v - Math.floor(v) - 0.5; };
+        const hitA = game.result[bl.a] === 'hit' ? t - (game.hitAt[bl.a] ?? notes[bl.a][0]) : 9, flash = hitA >= 0 && hitA < 0.15 ? 1 - hitA / 0.15 : 0;
+        const lv = mult, Wd = [0, 0.6, 0.8, 1, 1.4][lv], J = [0, 0.6, 0.8, 1, 1.3][lv], x4 = lv === 4 && !encOn;
+        const gc = encOn ? [251, 191, 36] : x4 ? [80, 190, 255] : amix(bl.c, [125, 211, 252], 0.4), vc = encOn ? [253, 230, 138] : x4 ? [140, 150, 255] : amix(bl.c, [167, 139, 250], 0.3);
+        const inten = bl.alpha * [0, 0.6, 0.8, 1, 1.15][lv] * (0.75 + 0.5 * Math.abs(hash(7))) * (hash(3) > (lv === 4 ? 0.3 : 0.42) ? 1.5 : 1);   // flicker, now and then a flash
+        const path = (span, steps) => { const pts = []; for (let j = steps; j >= 0; j--) { const p = ballAt(t - span * j / steps); if (p && p.a === bl.a && p.alpha) pts.push(p); } return pts; };
+        // a jagged line through pts: midpoint displacement, 3 levels, pinched at both ends
+        const jag = (pts, seed, amp) => {
+          let a = pts.map((p) => [p.x, p.y]);
+          for (let lvl = 0; lvl < 3; lvl++) { const nn = []; for (let k = 0; k < a.length - 1; k++) { const p = a[k], q2 = a[k + 1], dx = q2[0] - p[0], dy = q2[1] - p[1], l = Math.hypot(dx, dy) || 1, m = amp * 0.55 ** lvl * hash(seed + k * 7 + lvl * 131);
+            nn.push(p, [(p[0] + q2[0]) / 2 - dy / l * m, (p[1] + q2[1]) / 2 + dx / l * m]); } nn.push(a[a.length - 1]); a = nn; }
+          return a.map((p, k) => { const f = k / (a.length - 1), pin = Math.sin(Math.PI * Math.min(1, f * 1.15)) ** 0.6, o = pts[Math.round(f * (pts.length - 1))]; return [o.x + (p[0] - o.x) * pin, o.y + (p[1] - o.y) * pin, f]; });
+        };
+        const bolt = (b, w, c3, a) => { for (let q2 = 0; q2 < 4; q2++) { const from = Math.floor(b.length * q2 / 4), to = Math.min(b.length - 1, Math.floor(b.length * (q2 + 1) / 4)); g.strokeStyle = acss(c3, a * (q2 + 1) / 4); g.lineWidth = w; g.beginPath(); g.moveTo(b[from][0], b[from][1]); for (let k = from + 1; k <= to; k++) g.lineTo(b[k][0], b[k][1]); g.stroke(); } };
+        if (hitA >= 0 && hitA < 0.25) {                   // the hit that launched it: a glow and a fan of sparks
+          const kb = hitA / 0.25, bx = X(notes[bl.a][0]), by = sy(notes[bl.a][2]), ca = crgb(notes[bl.a][2]); arcadeSoft(g, bx, by, r * 2.5, ca, 0.25 * (1 - kb));
+          for (let j = 0; j < 4; j++) { const an = -Math.PI * (0.15 + 0.7 * j / 3), dd = r * (1.2 + 2.5 * kb); g.globalAlpha = 0.7 * (1 - kb); g.fillStyle = j % 2 ? '#fff' : acss(ca, 1); g.beginPath(); g.arc(bx + Math.cos(an) * dd, by + Math.sin(an) * dd, 1.6 * (1 - kb) + 0.5, 0, 7); g.fill(); }
+          g.globalAlpha = 1;
+        }
+        g.save(); g.globalCompositeOperation = 'lighter'; g.lineJoin = 'round'; g.lineCap = 'round';
+        const pts = path(Math.max(0.05, Math.min(bl.since, lv === 4 ? 0.7 : 0.45)), lv === 4 ? 14 : 10);
+        if (pts.length > 1) {
+          const main = jag(pts, 1, sizeSp * 0.22 * J);
+          if (lv >= 2) bolt(main, 9 * Wd, gc, 0.10 * inten); bolt(main, 4 * Wd, gc, 0.35 * inten); bolt(main, 1.4 * Wd, [240, 248, 255], 0.95 * inten);   // haze, colour, white core
+          if (lv >= 3) for (const sd of lv === 4 ? [2, 3, 4] : [2, 3]) { const b = jag(pts, sd * 17, sizeSp * 0.3 * J); bolt(b, 2, sd === 2 ? vc : gc, 0.35 * inten); bolt(b, 0.8, [220, 235, 255], 0.5 * inten); }   // strands braided round it
+          if (lv >= 2) for (let k = 6; k < main.length - 4; k += lv === 4 ? 6 : 9) if (hash(k + 40) > 0) {   // forks
+            const b = main[k], an = Math.atan2(hash(k + 41), hash(k + 42)), l = sizeSp * (0.15 + 0.3 * (hash(k + 43) + 0.5));
+            g.strokeStyle = acss(gc, 0.5 * b[2] * inten); g.lineWidth = 1; g.beginPath(); g.moveTo(b[0], b[1]); g.lineTo(b[0] + Math.cos(an) * l * 0.5 + hash(k + 44) * sizeSp * 0.1, b[1] + Math.sin(an) * l * 0.5 + hash(k + 45) * sizeSp * 0.1); g.lineTo(b[0] + Math.cos(an) * l, b[1] + Math.sin(an) * l); g.stroke();
+          }
+        }
+        const nS = [0, 0, 0, 14, 26][lv];                // sparks shed from where it was a moment ago, flying out and falling, gone in 0.4 s
+        for (let k = 0; k < nS; k++) {
+          const age = (k * (0.4 / nS) + ((ms / 1000 * 0.9) % (0.4 / nS))) % 0.4, te = t - age, p = ballAt(te); if (!p || !p.alpha || p.miss) continue; const seed = Math.floor(te * 60) + k;
+          const vx = hash(seed, 0) * sizeSp * 3, vy = hash(seed + 5, 0) * sizeSp * 2.4 - sizeSp * 0.6, x = p.x + vx * age, y = p.y + vy * age + sizeSp * 5 * age * age;
+          g.strokeStyle = acss(amix(gc, [255, 255, 255], 0.5), (1 - age / 0.4) * bl.alpha); g.lineWidth = 1.3; g.beginPath(); g.moveTo(x, y); g.lineTo(x - vx * 0.025, y - (vy + sizeSp * 10 * age) * 0.025); g.stroke();
+        }
+        const u0 = lv === 4 ? 0.4 : 0.6;                  // reaching ahead: a thin arc flickering out to the next note's key
+        if (lv >= 3 && !bl.miss && bl.u > u0 && bl.u < 0.98 && hash(11) > -0.25) {
+          const tx = X(notes[bl.b][0]), ty = sy(notes[bl.b][2]), dd = Math.hypot(tx - bl.x, ty - bl.y);
+          if (dd > sizeSp * 0.3) { const arc = jag([{ x: bl.x, y: bl.y }, { x: (bl.x + tx) / 2, y: (bl.y + ty) / 2 }, { x: tx, y: ty }], 77, Math.min(sizeSp * 0.25, dd * 0.25)), ka = (bl.u - u0) / (0.98 - u0); bolt(arc, 3, gc, 0.25 * ka * inten); bolt(arc, 1, [235, 245, 255], 0.7 * ka * inten); }
+        }
+        arcadeSoft(g, bl.x, bl.y, r * 3.2, gc, (bl.miss ? 0.06 : 0.3 + 0.25 * flash) * Math.min(1.3, inten));   // the head: a white-hot point and a starburst
+        const nR = [0, 0, 4, 6, 10][lv];
+        for (let k = 0; k < nR; k++) { const an = k * Math.PI * 2 / nR + hash(k + 60) * 0.8, l = r * (0.9 + 1.6 * (hash(k + 61) + 0.5)) * (lv === 4 ? 1.4 : 1); g.strokeStyle = acss([235, 245, 255], 0.6 * bl.alpha); g.lineWidth = 1; g.beginPath(); g.moveTo(bl.x, bl.y); g.lineTo(bl.x + Math.cos(an) * l, bl.y + Math.sin(an) * l); g.stroke(); }
+        g.fillStyle = bl.miss ? 'rgb(150,152,160)' : '#ffffff'; g.beginPath(); g.arc(bl.x, bl.y, r * (0.4 + 0.12 * (hash(99) + 0.5)), 0, 7); g.fill();
+        g.restore();
+      }
     }
     for (const k of vis.slice().reverse()) {
       const it = lay.get(k); if (!it || it.form === 'none') continue;
       const nt = notes[k], s = nt[2], x = it.grp ? it.gx : it.x, res = game.result[k], missed = res === 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : 9;
       // Hammered / pulled / slid from the note before (`tied`): its keycap tinted like the band joining them; hit, it dips as if
       // hammered (a pull-off flicks up instead).
-      const lmK = !it.grp && nt[4] ? legatoMarks(d, k) : null, tied = !!lmK && lmK.prev >= 0 && !!lmK.into && 'hp/\\'.includes(lmK.into) && lay.get(lmK.prev)?.form !== 'none';
-      const y = sy(s) + (tied && (lmK.into === 'h' || lmK.into === 'p') && hitAge >= 0 && hitAge < 0.2 ? (lmK.into === 'p' ? -1 : 1) * sz * 0.16 * Math.sin(Math.PI * hitAge / 0.2) : 0);
+      const lmK = !it.grp && nt[4] ? legatoMarks(d, k) : null, tied = !!lmK && lmK.prev >= 0 && !!lmK.into && 'hp'.includes(lmK.into) && lay.get(lmK.prev)?.form !== 'none';
+      const y = sy(s) + (tied && (lmK.into === 'h' || lmK.into === 'p') && hitAge >= 0 && hitAge < 0.2 ? (lmK.into === 'p' ? -1 : 1) * sz * 0.16 * Math.sin(Math.PI * hitAge / 0.2) : 0)
+        + (k === landK && landAge < 0.2 ? sizeSp * 0.07 * Math.sin(Math.PI * landAge / 0.2) : 0);   // Press keys: the key the electric trail lands on dips
       // Gold: a live Encore phrase's notes, and every note in Encore (user picked Gold notes): warm keycaps, a gold rim and glow, a glint now and then
       const phx = plan && enc ? plan.phraseOf[k] : -1, gd = !missed && !!enc && ((!!enc.on && nt[0] >= enc.on.t0 && nt[0] < enc.on.t1) || (phx >= 0 && enc.st[phx] !== 'broken' && enc.st[phx] !== 'skip'));
       const c = missed ? [110, 110, 120] : gd ? ENCORE_GOLD : crgb(s), cs = missed ? '#6b6b78' : gd ? '#fbbf24' : col(s), isNext = Math.abs(nt[0] - nextT) < 0.03 && !res;
@@ -6055,55 +6165,24 @@
       }
       const cw = it.cw, ch = sz * 1.12, inTail = tailOf.has(k) && !tailOf.get(k).holding;   // its capsule is its keycap (drawn with the hold)
       if (inTail && !fl) { g.fillStyle = missed ? '#8b8b96' : '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.globalAlpha = 1; if (pop > 1) g.restore(); continue; }
+      // Keycaps (arcade.html's Polish): a faint glow under it in the string's colour, a drop shadow (an offset fill, no blur:
+      // blurred shadows were the cost when the board lagged), a face lit from above and its top edge catching the light (below)
+      const face = !fl && !gd;
+      if (face) { arcadeSoft(g, x, y + ch * 0.4, cw * 0.9, c, 0.14 * g.globalAlpha); if (!isNext) { g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2 + 3, cw, ch, ch * 0.3); g.fillStyle = 'rgba(0,0,0,.4)'; g.fill(); } }
       if (isNext || fl) { g.shadowColor = cs; g.shadowBlur = 10 + 14 * Math.max(near, fl); } else if (gd) { g.shadowColor = cs; g.shadowBlur = 8; }
-      g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : gd ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill(); g.shadowBlur = 0;
+      g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3);
+      if (face) { const kq = g.createLinearGradient(0, y - ch / 2, 0, y + ch / 2); kq.addColorStop(0, 'rgba(38,40,54,.97)'); kq.addColorStop(1, 'rgba(8,9,13,.97)'); g.fillStyle = kq; }
+      else g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : 'rgba(30,22,6,.94)';
+      g.fill(); g.shadowBlur = 0;
       if (tied && !fl && !gd) { g.fillStyle = acss(c, 0.16); g.fill(); }
       g.strokeStyle = gd ? acss(c, 0.75 + 0.25 * Math.max(near, isNext ? 1 : 0)) : acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
       if (gd && !fl && !passed) {                        // a glint crossing the gold keycap now and then
         g.save(); g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.clip(); const gx = x - cw + ((ms / 1000 * 0.9 + k * 0.13) % 1.6) * cw * 1.6, gq = g.createLinearGradient(gx - 6, y - ch / 2, gx + 6, y + ch / 2);
         gq.addColorStop(0, 'rgba(255,240,200,0)'); gq.addColorStop(0.5, 'rgba(255,240,200,.28)'); gq.addColorStop(1, 'rgba(255,240,200,0)'); g.fillStyle = gq; g.fillRect(x - cw / 2, y - ch / 2, cw, ch); g.restore();
       }
+      if (face) { g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x - cw / 2 + ch * 0.3, y - ch / 2 + 1.4); g.lineTo(x + cw / 2 - ch * 0.3, y - ch / 2 + 1.4); g.stroke(); }
       g.fillStyle = fl > 0.4 ? '#0a0b10' : missed ? '#8b8b96' : '#f5f5f7'; g.fillText(String(nt[3]), x, y + sz * 0.04); g.globalAlpha = 1;
       if (pop > 1) g.restore();
-    }
-    // A slide between notes too close for its band (above): a slur over them with / or \ on it. (Hammer-ons / pull-offs were
-    // slurs with h / p here; user: "I don't like the h and p, I know if it is a hammeron or pulloff based off the notes", then a
-    // band, above.) The second note needs no pluck of its own.
-    g.lineCap = 'round';
-    for (const k of vis) {
-      const it = lay.get(k), lm = it && it.form !== 'none' && notes[k][4] ? legatoMarks(d, k) : null; if (!lm) continue;
-      const s = notes[k][2], y = sy(s), x = px(it), res = game.result[k], ch = sz * 1.12;
-      const c3 = res === 'miss' ? [110, 110, 120] : amix(crgb(s), [255, 255, 255], 0.3), pv = lm.prev >= 0 ? lay.get(lm.prev) : null;
-      g.globalAlpha = edgeOf(x) * (notes[k][0] < t - 0.02 || res ? 0.4 : 0.95); g.strokeStyle = g.fillStyle = acss(c3, 1); g.lineWidth = 1.8;
-      if ((lm.into === '/' || lm.into === '\\') && pv && pv.form !== 'none' && px(it) - half(it) - px(pv) - half(pv) < 6) {
-        const xl = px(pv), xa = xl + half(pv) + 3, xb = x - half(it) - 3, legato = lm.into === 'h' || lm.into === 'p';
-        // Moving (user: "can we make the hammer on and pull off have an animation?"): from the first note to the second a
-        // spark of light runs along the mark, so it reaches the second note as you should hammer (it rides the cursor); the
-        // mark glows meanwhile, and flashes with h / p popping when the second note is hit.
-        const ta = notes[lm.prev][0], tb = notes[k][0], u = (t - ta) / Math.max(0.05, tb - ta), A = edgeOf(x), base = g.globalAlpha;
-        const go = u > 0 && u < 1 && res !== 'miss', hitAge = res === 'hit' ? t - (game.hitAt[k] ?? tb) : 9;
-        const pop = hitAge >= 0 && hitAge < 0.35 ? 1 - hitAge / 0.35 : 0, lit = go ? 1 : pop, cs3 = crgb(s);
-        let path, at;                                    // the mark's path, and a point along it (0-1)
-        if (legato || xb - xa < 8) {                     // a slur from note to note over their keycaps, its mark on top
-          const top = y - ch / 2 - 2, rise = Math.min(12, 5 + (x - xl) * 0.1), mx = (xl + x) / 2, x0 = xl + 3, x1 = x - 3, cy = top - rise * 2;
-          path = () => { g.beginPath(); g.moveTo(x0, top); g.quadraticCurveTo(mx, cy, x1, top); };
-          at = (v) => [(1 - v) ** 2 * x0 + 2 * (1 - v) * v * mx + v * v * x1, (1 - v) ** 2 * top + 2 * (1 - v) * v * cy + v * v * top];
-          if (lit > 0) { g.globalAlpha = A * lit; path(); g.strokeStyle = acss(cs3, 0.35); g.lineWidth = 7; g.stroke(); g.strokeStyle = g.fillStyle = acss(c3, 1); }   // the glow
-          g.globalAlpha = lit > 0 ? A : base; g.lineWidth = 2 + lit; path(); g.stroke();
-          if (!legato) {                                 // no h / p (user: "I know if it is a hammeron or pulloff based off the notes"); a slide this close keeps its / or \
-            const fz = Math.max(11, Math.round(sz * 0.56)) * (1 + 0.4 * pop);
-            g.font = `700 ${fz}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = pop ? acss(amix(c3, [255, 255, 255], pop), 1) : acss(c3, 1);
-            g.fillText(lm.into, mx, top - rise - 5); g.fillStyle = acss(c3, 1);
-          }
-        }
-        if (go) {                                        // the spark and a short fading trail behind it
-          g.globalAlpha = A;
-          for (let i = 4; i >= 1; i--) { const [qx, qy] = at(Math.max(0, u - i * 0.05)); g.fillStyle = acss(amix(cs3, [255, 255, 255], 0.5), 0.5 * (1 - i / 5)); g.beginPath(); g.arc(qx, qy, 2.4 - i * 0.3, 0, 7); g.fill(); }
-          const [qx, qy] = at(u); arcadeSoft(g, qx, qy, sz * 0.55, cs3, 0.75); g.fillStyle = '#fff'; g.beginPath(); g.arc(qx, qy, 2.6, 0, 7); g.fill();
-          g.fillStyle = acss(c3, 1);
-        }
-        g.globalAlpha = base; g.lineWidth = 1.8;
-      }
     }
     g.lineCap = 'butt'; g.globalAlpha = 1;
     // the cursor: a slim line with a soft column of light
@@ -6202,28 +6281,54 @@
       }
       g.restore();
     }
-    const ry = trackT - pad - 44, sx = hr - 2;
-    const calls = [...game.bursts.filter((b) => !b.messy && b.label !== false).map((b) => ({ at: b.at, life: 0.6, text: b.perfect ? 'Perfect' : 'Good', fill: b.perfect ? '#fcd34d' : '#f5f5f4' })),
-                   ...game.mistakes.map((mk) => ({ at: mk.at, life: 0.9, text: String(mk.text), fill: mk.amber ? '#fbbf24' : '#f87171', sub: mk.sub }))].sort((a, b) => b.at - a.at);
-    const call = calls[0];
-    if (call && (ms - call.at) / 1000 < call.life) {      // the latest call, at the right edge
-      const age = (ms - call.at) / 1000; g.globalAlpha = Math.max(0, 1 - Math.max(0, age - call.life * 0.5) / (call.life * 0.5));
-      g.textAlign = 'right'; g.textBaseline = 'alphabetic'; g.font = `600 20px ${GAME_FONT}`; g.fillStyle = call.fill; g.fillText(call.text, sx, ry + 6 - 6 * Math.max(0, 1 - age / 0.15));
-      if (call.sub) { g.font = `500 12px ${GAME_FONT}`; g.fillStyle = 'rgba(245,245,247,.6)'; g.fillText(call.sub, sx, ry + 22); }
-      g.globalAlpha = 1;
+    // Hits scroll with the board (user: "can we also put the hit indicator underneath the line?", then "improve the look of the
+    // hit indicator ... more interesting", "it's so fast that you can't really even read it" and "maybe scroll the hits along with
+    // the board as you play?"; was one call at the right edge): under the board each judged note gets its tag, born at the
+    // cursor with a pop and carried off left with the tab, fading over 2.5 s. PERFECT gold (a shine as it's born), GOOD silver,
+    // MESSY amber, MISS red (a shake); where notes come too fast for a word, a dot in its colour. A chord gets one tag.
+    if (game.on && !game.pr) {
+      const ty = cBot + 24, TAG = { Perfect: [[252, 211, 77], 'PERFECT'], Good: [[226, 232, 240], 'GOOD'], Messy: [[251, 191, 36], 'MESSY'], miss: [[248, 113, 113], 'MISS'] };
+      g.save(); g.font = `800 11px ${GAME_FONT}`; g.letterSpacing = '1.5px'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      let edge = Infinity, lastT = Infinity;
+      for (let k = Math.min(notes.length, game.next + 2) - 1; k >= 0 && k >= game.next - 80; k--) {
+        const nt = notes[k], res = game.result[k]; if (!res || nt[2] >= n) continue;
+        if (Math.abs(nt[0] - lastT) < 0.03) continue; lastT = nt[0];   // a chord: one tag
+        const age = res === 'hit' ? t - (game.hitAt[k] ?? nt[0]) : t - nt[0] - 0.15; if (age < 0) continue; if (age > 2.5) break;
+        const [c3, word] = TAG[res === 'miss' ? 'miss' : game.grade[k]] || TAG.Good, x = X(nt[0]);
+        const a = Math.min(1, (2.5 - age) / 0.8) * Math.max(0, Math.min(1, (x - L + 30) / 60)); if (a <= 0) continue;
+        const tw = g.measureText(word).width, w = tw + 18, h = 18;
+        if (x + w / 2 < edge - 4) {                        // room for its word
+          const pop = 1 + 0.3 * Math.max(0, 1 - age / 0.14), sh = res === 'miss' ? Math.sin(age * 60) * 3 * Math.max(0, 1 - age / 0.3) : 0;
+          g.save(); g.globalAlpha = a; g.translate(x + sh, ty); g.scale(pop, pop);
+          if (word === 'PERFECT' && age < 0.5) arcadeSoft(g, 0, 0, w * 0.8, c3, 0.25 * (1 - age / 0.5));
+          g.beginPath(); g.roundRect(-w / 2, -h / 2, w, h, h / 2); g.fillStyle = 'rgba(9,10,15,.85)'; g.fill(); g.strokeStyle = acss(c3, 0.7); g.lineWidth = 1; g.stroke();
+          if (word === 'PERFECT') { const q2 = g.createLinearGradient(0, -6, 0, 6); q2.addColorStop(0, '#fff3c4'); q2.addColorStop(0.5, '#fcd34d'); q2.addColorStop(1, '#e08a0b'); g.fillStyle = q2; }
+          else if (word === 'GOOD') { const q2 = g.createLinearGradient(0, -6, 0, 6); q2.addColorStop(0, '#ffffff'); q2.addColorStop(1, '#aab4c3'); g.fillStyle = q2; } else g.fillStyle = acss(c3, 1);
+          g.fillText(word, 0.75, 0.5);
+          if (word === 'PERFECT' && age < 0.45) {          // a shine across as it's born
+            g.save(); g.beginPath(); g.roundRect(-w / 2, -h / 2, w, h, h / 2); g.clip(); const sx = -w / 2 - 10 + (w + 20) * (age / 0.45), sq = g.createLinearGradient(sx - 8, 0, sx + 8, 0);
+            sq.addColorStop(0, 'rgba(255,255,255,0)'); sq.addColorStop(0.5, 'rgba(255,255,255,.6)'); sq.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sq; g.fillRect(sx - 8, -h / 2, 16, h); g.restore();
+          }
+          g.restore(); edge = x - w * pop / 2;   // (room for it while it pops)
+        } else if (x + 3 < edge - 3) {                     // too close: a dot
+          g.globalAlpha = a; g.fillStyle = acss(c3, 0.9); g.beginPath(); g.arc(x, ty, 2.6, 0, 7); g.fill(); edge = x - 3;
+        }
+      }
+      g.letterSpacing = '0px'; g.restore(); g.globalAlpha = 1;
     }
     { // a moment every 50 notes in a row (user: "I don't want to show the streak, but show something at 50/100/150"): a large
-      // light number over the middle of the track, NOTE STREAK under it, thin lines drawing out to each side, ~1.6 s
+      // light number under the board (user: "can we also put the streak popup under the board instead of on it?"; was over the
+      // middle of the track), below the hit tags, NOTE STREAK under it, thin lines drawing out to each side, ~1.6 s
       const m50 = Math.floor(game.streak / 50) * 50;
       if (m50 > (arcadeBoard.mileN || 0)) { arcadeBoard.mileN = m50; arcadeBoard.mileAt = ms; } else if (m50 < (arcadeBoard.mileN || 0)) arcadeBoard.mileN = m50;
       const ma = (ms - (arcadeBoard.mileAt ?? -1e9)) / 1000;
       if (arcadeBoard.mileN > 0 && ma >= 0 && ma < 1.6) {
-        const a = Math.min(1, ma / 0.18) * Math.min(1, (1.6 - ma) / 0.45), scl = 0.92 + 0.08 * Math.min(1, ma / 0.25), cx = (hl + hr) / 2, cy = trackT + trackH * 0.5;
+        const a = Math.min(1, ma / 0.18) * Math.min(1, (1.6 - ma) / 0.45), scl = 0.92 + 0.08 * Math.min(1, ma / 0.25), cx = (hl + hr) / 2, cy = Math.min(cBot + 84, H - 22);   // (kept on screen in a short window)
         g.save(); g.globalAlpha = a; g.translate(cx, cy); g.scale(scl, scl); g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-        g.font = `200 64px ${GAME_FONT}`; g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 18; g.fillStyle = acss(mood.c, 1); g.fillText(String(arcadeBoard.mileN), 0, 0); g.shadowBlur = 0;
-        const nw = g.measureText(String(arcadeBoard.mileN)).width, ext = Math.min(1, ma / 0.5) * 120; g.strokeStyle = acss(mood.c, 0.7); g.lineWidth = 1;
-        g.beginPath(); g.moveTo(-nw / 2 - 16, -20); g.lineTo(-nw / 2 - 16 - ext, -20); g.moveTo(nw / 2 + 16, -20); g.lineTo(nw / 2 + 16 + ext, -20); g.stroke();
-        g.font = `600 11px ${GAME_FONT}`; g.letterSpacing = '3px'; g.fillStyle = 'rgba(245,245,247,.75)'; g.fillText('NOTE STREAK', 0, 20); g.letterSpacing = '0px'; g.restore();
+        g.font = `200 44px ${GAME_FONT}`; g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 14; g.fillStyle = acss(mood.c, 1); g.fillText(String(arcadeBoard.mileN), 0, 0); g.shadowBlur = 0;
+        const nw = g.measureText(String(arcadeBoard.mileN)).width, ext = Math.min(1, ma / 0.5) * 100; g.strokeStyle = acss(mood.c, 0.7); g.lineWidth = 1;
+        g.beginPath(); g.moveTo(-nw / 2 - 14, -14); g.lineTo(-nw / 2 - 14 - ext, -14); g.moveTo(nw / 2 + 14, -14); g.lineTo(nw / 2 + 14 + ext, -14); g.stroke();
+        g.font = `600 10px ${GAME_FONT}`; g.letterSpacing = '3px'; g.fillStyle = 'rgba(245,245,247,.75)'; g.fillText('NOTE STREAK', 0, 16); g.letterSpacing = '0px'; g.restore();
       }
     }
     game.bursts = game.bursts.filter((b) => ms - b.at < 700);
@@ -9096,7 +9201,7 @@
           for (const j of game.members[k]) {
             game.result[j] = 'hit'; game.hitAt[j] = now; game.grade[j] = grade;
             game.laneHit[notes[j][2]] = now; game.laneHitMs[notes[j][2]] = at;
-            game.bursts.push({ s: notes[j][2], at, perfect: grade === 'Perfect', messy: false, k: j, label: notes[j][2] === top });
+            game.bursts.push({ s: notes[j][2], at, perfect: grade === 'Perfect', messy: false, k: j, label: notes[j][2] === top, dt: pluck.t - notes[k][0] });
           }
           checkEvent({ e: 'hit', k, at: now, pluck: pluck.t, chord: game.members[k].length, grade });
           game.hits++; game.judged++; game.streak++;
@@ -9176,7 +9281,7 @@
         // For the hit animation (on its own clock, performance.now()): a burst on that
         // string, the multiplier badge pulsing when it goes up, streak milestones.
         const at = performance.now();
-        game.bursts.push({ s: notes[k][2], at, perfect: game.grade[k] === 'Perfect', messy, k });
+        game.bursts.push({ s: notes[k][2], at, perfect: game.grade[k] === 'Perfect', messy, k, dt: pluck.t - ns });   // dt: how early (-) / late (+), for the timing gauge
         if (multiplier() > before) game.multAt = at;
         if (game.streak % 50 === 0) game.milestone = { n: game.streak, at };
         addScore(100 * multiplier(), now);

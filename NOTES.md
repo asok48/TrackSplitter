@@ -1077,6 +1077,11 @@ User: "Can we try adding it to game mode?" The Game section works for guitar tab
 
 ## Guitar calibration
 
+(Moved from CLAUDE.md, word for word.)
+Timing and string calibration follow the input's Bass / Guitar switch: guitar has its own
+keys (+ `-guitar`, `calKey`, `CALIBRATION_KEYS` in app.py), loaded by `loadCalibrations()`.
+Strings dialog: Open strings · 1 min (default) | Full (`strcalMode`, `strcalPlan()`).
+
 User: "add timing and string calibration for guitar similar to how bass works". Both follow
 the input's Bass / Guitar switch: guitar has its own calibrations (keys + `-guitar`, `calKey`;
 in localStorage and the library's `.calibration.json`, `CALIBRATION_KEYS` in app.py), loaded
@@ -1101,6 +1106,11 @@ of 6 shown, all right. Not measured on real recordings: the user's labelled bass
 (`.bass-recordings`) would show how much open-only loses against Full.
 
 ## Guitar game feel
+
+(Moved from CLAUDE.md, word for word.)
+`tab.strum_times` / `tab.snap_to_strums` move heard guitar notes onto strums
+(`GUITAR_HEARD_RULES` 2); looser strum and chord rules in the game. Not yet tried on a
+real guitar.
 
 User: "the timing of the notes on the highway seems a little off and it's pretty difficult to
 play and get a consistent streak". Measured on the user's real American Idiot (its guitar
@@ -1565,6 +1575,12 @@ with the band.
   Scarlett and said it seems to work.
 
 ## Guitar chords (input drawer)
+
+(Moved from CLAUDE.md, word for word.)
+Guitar mode of the input (same `instrument` switch): `heardNotes` (harmonic multi-pitch
+on a second analyser), `chordOf` (16 shapes, slash chords), `chordTracker` (strum
+detection, agreement before showing). Tested on sampled guitar chords; not yet on the
+user's real guitar.
 
 The user asked for chord recognition for guitar input. It uses the same Bass | Guitar
 switch as the guitar mode above (`instrument`, `track-splitter-instrument`; the chords
@@ -2887,6 +2903,134 @@ progessing the new one, just do a ring on the outside").
   Footage: the user's reference was a photo from inside a festival crowd (warm golden haze, lights through smoke, silhouettes
   with hands up); a shortlist was found on Pexels (free licence; e.g. 7722221, 16501141, 19679435, 720p files 1-15 MB), then
   "abandon this idea". Nothing was downloaded. The game keeps the song colours, hit feel and streak build-up.
+- "I would like it to feel more like an arcade game" -> "not like an actual arcade game, but ... how the highway looks. I would
+  like it to look more alive somehow" (2026-11-07). Of ten ideas (live strings, trail, light pass, the song's bass drawn on the
+  board, drums on the glass, beat-tick chase, breathing notes, choruses opening up, a far layer, a camera push) the user picked
+  1-3, mocked up in `design/game-mockups/arcade.html` under Alive (all on by default there): Live strings (`fx.live`, `swing`,
+  `shape`: the played string vibrates as long as its note rings (until its end or the next note on that string, then damped in
+  ~60 ms), widest at the cursor and still at the board's ends, a faint blur band between its extremes; simulated pluck strength
+  per note, beat 1 harder; "Use my bass" (`toggleMic`) drives it from the input's level instead, on the string the tab played
+  last; replaces String wave while on), Trail (`fx.trail`: a hit note leaves a comet along its string toward the cursor and a
+  glow, fading over ~2 s), Light pass (`fx.pass`, `passStyle` Along the string / To the next note, `?pass=`: a hit sends a bright
+  head to the following note in up to 0.45 s, which then glows inside, `glowIn`, until played). Some misses (`fx.misses`,
+  `?misses=1`): every 13th note missed (streak resets, no trail / pass, keycap rim greys via `missedColor`). Checked in the
+  browser pane: no console errors, all three visible.; "Use my bass" not tried with the Scarlett.
+  - User: "I like how I've set it up on the arcade page" (seen in the browser pane: the defaults plus Light pass › To the next
+    note, misses off; now the mockup's defaults), "I think the strings shaking could use some work. I like the idea of
+    something bouncing between the notes being hit". Added string styles under Live strings (`liveStyle`, `?strings=`):
+    Ripple (default; `rip`: a pulse runs out both ways from the cursor, reflects off the board's ends turned over, dies
+    away), Hum (one slow smooth sway, 3-4 Hz), Blur (the string stays straight, a haze as wide as its swing with faint
+    edges), Shake (the first try). Light pass › Bounce (`?pass=bounce`, `ballAt`): a ball hopping from note to note (next
+    note in time), landing on each as it reaches the cursor (Lands ahead, `bounceLead` / `?lead=ahead`: 0.5 s early); it
+    stays at one place across while the tab slides under it, hop higher with a longer gap (capped inside the panel),
+    squash on landing, a splash ring where it lands, a short trail. Microphone is blocked in the browser pane, so "Use my
+    bass" needs Chrome. Every style combination stepped through 120 frames by hand (the pane was hidden): no errors. A first
+    build failed to load: `-(x)**2` again.
+  - "I like the bounce idea. I feel like we could improve that": of six ideas (Ride, rolls on fast runs / along holds, a
+    dotted path preview, landings press the keys, hit vs miss, an orb look) the user picked "1 4 5". In the mockup (Bounce
+    options, all on by default; `ballAt(time)` now worked out before the strings): Ride (`bounceLead` 'ride', the default;
+    `?lead=ride`): when you play a note the ball leaps forward onto the next one (in up to 0.35 s, `F`), rests on its keycap
+    and rides it into the cursor, then takes off as you play that one. Press keys (`fx.press`, `landing`): the keycap it lands
+    on dips (0.2 s) and a ripple runs out along that string from the landing point (`rip` now takes an origin). Hit / miss
+    (`fx.react`; not with Lands ahead): a hit launches it with a flash and a fan of sparks; after a missed note it thuds
+    (squashed flat, grey), drops and fades, then drops back in on the next note. Checked by stepping each Bounce option with
+    and without misses: no errors.
+  - "I like when was more smooth going with the word" (read as: the earlier smooth bounce felt better than Ride's quick
+    leaps): Lands on the cursor is the default again, with Press keys and Hit / miss on it; Ride's leap now takes 70% of
+    the gap (up to 1.2 s) instead of 0.35 s at most.
+  - "It would look cooler if it was traveling with the notes and maybe be a bit less distracting": new default With the
+    notes (`bounceLead` 'travel', `?lead=travel`): the ball leaves with the note it bounced off, sliding with it, then
+    glides (smoothstep across) to the next note and lands on it at the cursor, same landings as Lands on the cursor. Calmer
+    in every mode: ball 0.11 of the string spacing (was 0.15), tinted in the string colour instead of white, half the glow
+    and trail, hops at most 0.9 spacing (was 1.5; Ride unchanged), a fainter splash, 4 smaller sparks on a hit, a smaller
+    landing ripple. Checked every mode with and without misses: no errors.
+  - "I think it might be less distracting if we move it behind the notes? What do you think?" -> agreed, with the ball
+    travelling along the string lines (not landing on top of the keycaps), so on a note it's hidden and only its glow shows
+    round the key: Behind the notes (`fx.behind`, on by default; `drawBall` called before the keycaps, else after; `top` is
+    the string itself). Checked every mode, behind and in front, with and without misses: no errors.
+  - "I think some other design other than a ball might look cooler": Shape picker (`bShape`, `?shape=`): Comet (default;
+    a bright point with a tapering tail back along its path, 0.22 s), Thread (a thin line of light along the whole hop from
+    the note it left, fading toward that end), Diamond (like the repeat diamonds, a quarter turn per hop), Pick (a bass
+    pick, its point leading the way it moves), Ring (hollow, swells on landing), Ball. Each checked in Travel and Ride, with
+    and without misses: no errors; stills of Thread / Pick / Diamond mid-hop looked right (small in the narrow pane).
+  - "What about an electric trail?": Electric shape (now the default, `?shape=electric`): a jagged bolt along the last 0.4 s
+    of the path, its zigzag re-drawn 25 times a second (seeded by the frame, so it flickers), widest mid-way and pinched at
+    both ends, small forks every few points; three strokes (wide glow and colour in the string's colour shifted toward
+    electric blue, a white core) and a crackling white head. Checked in every mode, behind / in front, with and without
+    misses: no errors; a still mid-hop showed the bolt and its forks.
+  - "Make it go along the strings instead of bouncing": Path picker (`bPath`, `?path=`): Along the strings (default; no hop,
+    it stays on the string it left and crosses to the next note's string late in the gap, u 0.55-0.85 eased) or Bounce (the
+    arcs). With the notes keeps it near the cursor, so the cross reads as a zap down / up the cursor line. Checked every mode
+    on both paths, with and without misses: no errors.
+  - "The electricity should look cooler" + "I also don't like the curving": Electric rebuilt: drawn as added light
+    (`globalCompositeOperation='lighter'`, overlaps bloom); a main bolt (haze, colour, white core) plus two thinner strands
+    braided round it (one violet-tinted), each a midpoint-displacement zigzag (`jag`, 3 levels) pinched at both ends and
+    re-drawn 30 times a second; brightness flickers with an occasional flash; forks; 14 sparks shed from where the head was,
+    flying out and falling (stateless, from `ballAt` at past times); in the last 40% of a gap a thin arc flickers out to the
+    next note's key; the head a white point with a 6-ray starburst. Along the strings now crosses in a straight, sudden zap
+    (u 0.8-0.86, linear) instead of the eased S-bend. No errors in any mode; ~2.4 ms a frame in the (hidden) pane.
+  - "Is should travel between strings" (read as: cross to the next note's string as it goes, not zap at the end): Straight
+    path (default, `?path=straight`): across and up / down on the same easing, so it runs in a straight line from note to
+    note (moving with the tab) through the space between the strings. Along the strings and Bounce stay as choices. No
+    errors in any mode; a still showed the bolt climbing from an E-string note toward a D-string note.
+  - "I feel like the 4x should look different compared to the normal one" (read as the electric trail: blue on the blue x4
+    board, the same at every level): it builds with the multiplier (`lv`): x1 one quiet strand (60% width / zigzag /
+    brightness), x2 + glow and forks, x3 + two braided strands, 14 sparks and the reaching arc, x4 gold (string colour 85%
+    toward #ffba34, orange strands, warm core) and 1.4x wide, 0.7 s long, three strands, more forks, 26 sparks, more
+    flashes, reaching from 40% of the gap, a 10-ray starburst. x4 is painted normally, not added (added gold on the blue
+    board came out white). No errors at x1-x4 in Straight / Bounce, With the notes / Ride, with and without misses.
+  - "I like the idea of it getting bigger as the streak builds. Can we make it blue when it is 4x?": x4 is electric blue
+    now (strands #50beff and #8c96ff, white core, added light again), keeping x4's size, length, strands and sparks; x1-x3
+    stay the string's colour tinted blue. No errors.
+  - User: "I like this". Settled look in the mockup (its defaults): Live strings Ripple, Trail, Light pass › Bounce, Path
+    Straight, With the notes, Shape Electric (building with the multiplier, blue at x4), Behind the notes, Press keys,
+    Hit / miss.
+- In the game (2026-11-07, "Yes, build it"), `drawArcade`: strings ripple on a hit (from `game.laneHitMs`; a pulse out both
+  ways from the cursor, reflecting off the board's ends, 0.055 of the note spacing, half the mockup's after "the ripple
+  effect is too strong", also halved in the mockup); Trail on hit notes (`game.result` / `game.hitAt`); the electric trail
+  (`segAt` / `ballAt`, `info[i].after` from `arcadePrep`: the next note in time, a chord's notes sharing one) behind the
+  keycaps, levels by `multiplier()`, blue at x4, gold in Encore; the key it lands on dips (`landK` / `landAge`); a hit
+  launches it with sparks, after a miss it drops grey and drops back in. Mid-build requests:
+  - "Can we also put the hit indicator underneath the line?" -> the call (Perfect / Good / MISS / WRONG) sits under the
+    cursor's line (was at the right edge).
+  - "Can we remove the slide indicator?" -> slide bands, slid-in / slide-off stubs and the close-slide slur with / or \
+    are gone; hammer-on / pull-off bands stay (judging unchanged).
+  - "And improve the timing look?" -> the call pops in (uppercase, letter-spaced, Perfect glowing gold) and under it an
+    EARLY | LATE gauge: each hit's tick where it landed (bursts now carry `dt`, pluck minus note time), the Perfect window
+    as a soft gold zone, the latest bright, the last 6 fading; a miss flashes the gauge red. Not in practice.
+  - "Realistically, I won't be looking at the timing much while I am playing" -> the gauge is out again; the popping call
+    stays (bursts keep `dt`). Timing could go on the note itself or the results screen instead.
+  - "Improve the look of the hit indicator still though to make it more interesting": a pill opening from the cursor's line,
+    letters dropping in, PERFECT gold with a shine, sparks and ×N, GOOD silver, MISS shaking. "It's so fast that you can't
+    really even read it" (on Hysteria every note restarted it; captures showed empty pills): held steady (same word only
+    pulsed, a new one after 0.25 s). Then "maybe scroll the hits along with the board as you play?" -> replaced by tags that
+    scroll: under the board each judged note gets its tag (PERFECT gold with a shine as it's born, GOOD silver, MESSY amber,
+    MISS red with a shake), born at the cursor with a pop and carried left with the tab, fading over 2.5 s; a dot in its
+    colour where notes are too close for a word; a chord one tag; not in practice. On Hysteria (busy) mostly dots behind the
+    newest word; 120 fps, 95th-percentile 8.9 ms, no console errors.
+- "I just feel like we could visually make it look overall better" -> "Yes, mock up": Polish row in arcade.html (`pol`,
+  `?polish=glass,keys,...|all`), each its own switch, off to start: Glass (a sheen across the panel's top, a fine bright
+  top edge, a shadow at the bottom, a slow sweep of light every 8 s), Keycaps (a face lit from above, a drop shadow, a top
+  edge catching the light, a faint glow under it in the string's colour; single keycaps only so far), Spotlight (light
+  where you play, the far end dimmer), Real strings (thickness by gauge 4.2 / 3.4 / 2.6 / 1.9 px, windings on E A D, a
+  metal sheen, a slow glint), Borderless (no box, border or shadow; the panel and strings fade out at both ends; the x4
+  outline still draws), All. All 32 combinations, normal and x4: no errors.
+  - "We can add all the changes we put before, including the hit indicator. Can we also put the streak popup under the board
+    instead of on it?" -> all five in the game (`drawArcade`): the panel is its own layer (`arcadeBoard.panel`, drawn once per
+    window size with the static layers): fill, darker played side, Glass's sheen / bottom shadow / top edge, then faded out
+    at both ends (destination-in); the washes inside (streak warmth, x4 blue, Encore gold, big moments' fill and rim) fade to
+    nothing at both ends too (a first build still showed the box's rounded corner through them); Spotlight and Glass's sweep
+    per frame; strings by gauge (4.2 px lowest .. 1.9 px top), windings on the wound strings (E A D on guitar), a sheen, a
+    glint, fading at the ends; keycaps with a lit face, a top-edge highlight, a glow under them and a drop shadow drawn as an
+    offset fill (no blur, after the earlier lag). The 50-note streak moment sits under the board below the hit tags
+    (`cBot + 84`, kept on screen in a short window; 44 px number, was 64 px over the track's middle). Hit tags leave room
+    for one popping. Tested in a game on the library copy with the simulated Scarlett: 120 fps, 95th-percentile 8.7 ms, no
+    console errors; the streak moment not seen (needs 50 in a row).
+  Tested on a library copy (Hysteria only, port 7874, launch.json "game-test") with the song's bass-only track as a
+  simulated Scarlett (a fresh MediaStreamDestination per getUserMedia call, started when the game starts the song):
+  hits scored, bolt, trail, ripple, gauge (since removed) and MISS seen; 120 fps, 95th-percentile frame 8.4-8.8 ms in the browser pane; no
+  console errors (only the input's permission error from before the simulation). Not yet tried with the real bass, x4 /
+  Encore not reached in the test.
 
 ## Open ideas / to do
 

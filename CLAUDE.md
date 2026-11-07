@@ -261,6 +261,7 @@ Moments (`moments.html`): Encore (`encorePlan`, `game.enc`, `encoreTick`, `addSc
 Arcade also draws chord frames (`chords`), held tubes only past a beat (`tails`), slurs / slides (`legatoMarks`); bass double stops
 judged as one (`bassChordPluck`, `chordNear`; `game.strums` = guitar's strum path); `gameNotesFor` sorts notes by time.
 Board mood from the song's cover (`songPalette`, `songMood`, `arcadeBoard.pal`); hits pop / ring / pulse the cursor; the streak warms the board (`build`, `warm`).
+Alive board (arcade.html › Alive): ripple strings, hit trail, electric trail note to note (`ballAt`, `info[i].after`, blue at x4); hit tags and the streak moment under the board; borderless panel layer (`arcadeBoard.panel`), glass, gauge strings, keycap faces; no slide marks.
 
 ## Guitar game (step 2)
 
@@ -271,15 +272,11 @@ to Guitar; chords (notes within 30 ms) are judged and scored as one note (`strum
 
 ## Guitar calibration
 
-Timing and string calibration follow the input's Bass / Guitar switch: guitar has its own
-keys (+ `-guitar`, `calKey`, `CALIBRATION_KEYS` in app.py), loaded by `loadCalibrations()`.
-Strings dialog: Open strings · 1 min (default) | Full (`strcalMode`, `strcalPlan()`).
+Own keys per instrument (`calKey`, `CALIBRATION_KEYS`); see NOTES.md.
 
 ## Guitar game feel
 
-`tab.strum_times` / `tab.snap_to_strums` move heard guitar notes onto strums
-(`GUITAR_HEARD_RULES` 2); looser strum and chord rules in the game. Not yet tried on a
-real guitar.
+Strum snapping (`tab.snap_to_strums`); see NOTES.md.
 
 ## My tab: recording your own playing
 
@@ -306,10 +303,7 @@ Tuner, Record. Stays on between songs; reopens on dropouts (`reopenInput`).
 
 ## Guitar chords (input drawer)
 
-Guitar mode of the input (same `instrument` switch): `heardNotes` (harmonic multi-pitch
-on a second analyser), `chordOf` (16 shapes, slash chords), `chordTracker` (strum
-detection, agreement before showing). Tested on sampled guitar chords; not yet on the
-user's real guitar.
+`heardNotes`, `chordOf`, `chordTracker`; see NOTES.md.
 
 ## UI (static/index.html)
 

@@ -24,6 +24,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <b>Arcade</b>
  <span id="songs"></span><span class="sep"></span>
  <button data-fx="rings">Rings</button><button data-fx="sparks">Hit sparks</button><button data-fx="wave">String wave</button><span class="sep"></span>
+ <span style="color:rgba(245,245,247,.4)">Alive</span><button data-fx="live">Live strings</button><span id="live-bar" style="display:contents"><button data-lstyle="ripple">Ripple</button><button data-lstyle="hum">Hum</button><button data-lstyle="blur">Blur</button><button data-lstyle="shake">Shake</button></span><button data-mic>Use my bass</button><button data-fx="trail">Trail</button><button data-fx="pass">Light pass</button><span id="pass-bar" style="display:contents"><button data-pass="string">Along the string</button><button data-pass="next">To the next note</button><button data-pass="bounce">Bounce</button><span id="lead-bar" style="display:contents"><button data-lead="travel">With the notes</button><button data-lead="cursor">Lands on the cursor</button><button data-lead="ahead">Lands ahead</button><button data-lead="ride">Ride</button><span style="color:rgba(245,245,247,.4)">Path</span><button data-bpath="straight">Straight</button><button data-bpath="strings">Along the strings</button><button data-bpath="arc">Bounce</button><span style="color:rgba(245,245,247,.4)">Shape</span><button data-bshape="electric">Electric</button><button data-bshape="comet">Comet</button><button data-bshape="thread">Thread</button><button data-bshape="diamond">Diamond</button><button data-bshape="pick">Pick</button><button data-bshape="ring">Ring</button><button data-bshape="ball">Ball</button><button data-fx="behind">Behind the notes</button><button data-fx="press">Press keys</button><button data-fx="react">Hit / miss</button></span></span><button data-fx="misses">Some misses</button><span class="sep"></span>
+ <span style="color:rgba(245,245,247,.4)">Polish</span><button data-pol="glass">Glass</button><button data-pol="keys">Keycaps</button><button data-pol="spot">Spotlight</button><button data-pol="strings">Real strings</button><button data-pol="float">Borderless</button><button data-pol="all">All</button><span class="sep"></span>
  <button data-fx="pools">Background</button><button data-bg="mesh">Mesh</button><button data-bg="studio">Studio</button><button data-bg="stage">Stage</button><button data-bg="aurora">Aurora</button><button data-bg="landscape">Landscape</button><button data-bg="pools">Pools</button><button data-fx="edges">Edge glow</button><button data-fx="dust">Dust</button><button data-fx="sweep">Milestone sweep</button><button data-fx="hud">Score</button><button data-fx="x4">x4 preview</button><button data-fx="outline">x4 outline</button><button data-fx="glint">x4 glint</button>
  <span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Repeats</span><button data-rep="pips">Pips</button><button data-rep="echoes">Echoes</button><button data-rep="chevrons">Chevrons</button><button data-rep="bars">Bars</button>
@@ -41,7 +43,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <label>Size <input type="range" id="size" min="0.5" max="1.5" step="0.05" value="0.75"><span id="sizev">0.75×</span></label>
  <button data-pause>Pause</button>
 </div>
-<div class="note">Space pauses · the streak builds as the passage plays (every note counts as hit) · x2 at 10, x3 at 20, x4 at 30</div>
+<div class="note">Space pauses · the streak builds as the passage plays (every note counts as hit) · x2 at 10, x3 at 20, x4 at 30 · Some misses: every 13th note missed (streak resets) · Use my bass: pluck to move the string</div>
 <script src="note-styles-data.js"></script>
 <script>
 const COL=['#6ee7a8','#f8a1a1','#f6d878','#8fb8fa'],NAMES=['E','A','D','G'];   // softer than the game's lane colours
@@ -53,7 +55,18 @@ let W=0,H=0,clock=0,last=performance.now(),paused=false,spread=true,speedSet=0.7
  song=Object.keys(PASSAGES)[1];
 let notes,bars,warp,info,mood={c:[245,230,211],d:[192,132,87]},sweepAt=-9,lastMult=1;
 let holdStyle='glass',scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='row',stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
-const fx={x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
+// Alive (user: "I would like it to look more alive somehow", picked 1-3 of the ideas): Live strings (the played string
+// vibrates as long as the note rings, harder on a harder pluck; with "Use my bass" it follows the input's level; replaces
+// String wave while on), Trail (each hit note leaves a glow that slides off with the tab; a miss leaves none and goes
+// grey), Light pass (a hit sends light along to the next note, which then glows inside until you play it)
+// The user's setup (2026-11-07): Light pass To the next note. Then ("the strings shaking could use some work", "I like the
+// idea of something bouncing between the notes being hit"): string styles (Ripple / Hum / Blur / Shake) and Bounce
+// Polish (user: "I just feel like we could visually make it look overall better" -> "Yes, mock up"): each its own switch, off
+// to start so they can be compared: Glass, Keycaps, Spotlight, Real strings, Borderless
+const pol={glass:false,keys:false,spot:false,strings:false,float:false};
+let bPath='straight',bShape='electric',passStyle='next',liveStyle='ripple',bounceLead='travel',   // user: "it would look cooler if it was traveling with the notes and maybe be a bit less distracting"
+missed=new Set(),mic=null,tNow=0;
+const fx={behind:true,press:true,react:true,live:true,trail:true,pass:true,misses:false,x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
 
 function makeWarp(base,need){                  // spread fast runs (as in note-styles.html); need = board units between distinct notes on a string
  const step=0.01,T=26,want=new Float32Array(Math.ceil(T/step)).fill(1),lastOn={};
@@ -78,7 +91,9 @@ function load(){
  // (user: "it says notes are repeats when they are not": A5 E0 A5 had counted, comparing only within a string)
  notes.forEach((n,i)=>{const p=prev[n[2]];let pk=i-1;while(pk>=0&&n[0]-notes[pk][0]<0.03&&notes[pk][2]!==n[2])pk--;
   const q=pk>=0?notes[pk]:null,rep=!!q&&q[2]===n[2]&&q[3]===n[3]&&n[0]-q[0]<2.5;const repN=rep?(info.get(q).repN||0)+1:0;prev[n[2]]=n;const mult=Math.min(4,1+Math.floor(i/10));score+=50*mult;info.set(n,{rep,repN,i,mult,score,next:Infinity,prev:p?p[0]:-Infinity})});
- const after={};for(let k=notes.length-1;k>=0;k--){const n=notes[k];info.get(n).next=after[n[2]]??Infinity;after[n[2]]=n[0]}
+ const after={},afterN={};let nxt=null;for(let k=notes.length-1;k>=0;k--){const n=notes[k],I=info.get(n);I.next=after[n[2]]??Infinity;I.nextN=afterN[n[2]]||null;after[n[2]]=n[0];afterN[n[2]]=n;
+  I.after=nxt;if(!nxt||k===0||n[0]-notes[k-1][0]>=0.03)nxt=n}   // after: the next note in time (a chord's notes share one)
+ missed=new Set(fx.misses?notes.filter((n,i)=>i%13===12):[]);   // Some misses: every 13th note missed
  // one note size for the whole song (user: "the changing note sizes is tough"): small enough that 80% of the gaps between
  // numbered notes on a string fit a keycap with 8 px to spare (not below 80%); the rest lose their keycap, not their size
  {const fs0=Math.min(H*0.3,250)/4*0.6*size,ux=(W*0.97-Math.max(W*0.09,96))/(VIS*1.25),gaps=[];
@@ -88,7 +103,8 @@ function load(){
 function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;g.setTransform(d,0,0,d,0,0)}
 addEventListener('resize',()=>{resize();if(notes)load()});resize();
 const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),css=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
-const missedColor=(n,c)=>c;
+const missedColor=(n,c)=>missed.has(n)&&tNow-n[0]>0.12?[110,112,120]:c;   // a missed note greys out once it's past
+const glowIn=(x,y,w,c,pr)=>{const q=g.createRadialGradient(x,y,0,x,y,w*0.6);q.addColorStop(0,css(c,0.45*pr));q.addColorStop(1,css(c,0.08*pr));g.fillStyle=q;g.fill()};   // Light pass: the keycap lit inside (its path still set)
 const hudGap=()=>hudStyle==='center'?92:24;   // where a milestone shows: above the score group when centred
 const ease=(a,b,k)=>a.map((v,i)=>v+(b[i]-v)*k);
 function soft(x,y,r,c,a){const q=g.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(c,a));q.addColorStop(1,css(c,0));g.fillStyle=q;g.fillRect(x-r,y-r,r*2,r*2)}
@@ -103,8 +119,9 @@ function frame(ms){
  const dt=Math.min(0.05,(ms-last)/1000);if(!paused)clock+=(ms-last)/1000;last=ms;
  const t=clock%24;
  // streak so far (every note counts as hit), the multiplier, and the mood easing toward its colours
- let k=-1;for(let i=0;i<notes.length&&notes[i][0]<=t;i++)k=i;
- const streak=k+1,score=k>=0?info.get(notes[k]).score:0;let mult=Math.min(4,1+Math.floor(streak/10));
+ let k=-1,lm=-1;for(let i=0;i<notes.length&&notes[i][0]<=t;i++){k=i;if(missed.has(notes[i]))lm=i}
+ tNow=t;
+ const streak=k-lm,score=k>=0?info.get(notes[k]).score:0;let mult=Math.min(4,1+Math.floor(streak/10));
  if(fx.x4)mult=4;                                  // the x4 preview
  x4k+=((mult===4?1:0)-x4k)*Math.min(1,dt/0.5*3);  // x4 fades in and out over about half a second
  if(mult>lastMult&&fx.sweep)sweepAt=clock;lastMult=mult;
@@ -205,17 +222,27 @@ function frame(ms){
  // ---- the track: a dark glass panel ----
  g.save();
  const pad=18;g.beginPath();g.roundRect(L-56,trackT-pad,R-L+56+pad,trackH+pad*2,18);
- g.shadowColor='rgba(0,0,0,.6)';g.shadowBlur=40;g.fillStyle='rgba(10,11,17,.82)';g.fill();g.shadowBlur=0;
- let q=g.createLinearGradient(0,trackT-pad,0,trackB+pad);q.addColorStop(0,'rgba(255,255,255,.05)');q.addColorStop(1,'rgba(255,255,255,.012)');g.fillStyle=q;g.fill();
+ let q;
+ if(pol.float){                                   // Borderless: no box, no shadow; the panel fades out at both ends
+  q=g.createLinearGradient(L-56,0,R+pad,0);q.addColorStop(0,'rgba(10,11,17,0)');q.addColorStop(0.12,'rgba(10,11,17,.78)');q.addColorStop(0.88,'rgba(10,11,17,.78)');q.addColorStop(1,'rgba(10,11,17,0)');g.fillStyle=q;g.fill()}
+ else{g.shadowColor='rgba(0,0,0,.6)';g.shadowBlur=40;g.fillStyle='rgba(10,11,17,.82)';g.fill();g.shadowBlur=0;
+  q=g.createLinearGradient(0,trackT-pad,0,trackB+pad);q.addColorStop(0,'rgba(255,255,255,.05)');q.addColorStop(1,'rgba(255,255,255,.012)');g.fillStyle=q;g.fill()}
  if(x4k>0.01){                                    // x4: the board turns blue (user: "I liked when the board turned blue before"), strongest at the cursor
   const wq=g.createLinearGradient(L-56,0,R+pad,0),cp=Math.max(0,Math.min(0.65,(curX-(L-56))/(R+pad-(L-56))));   // kept in range (a very narrow window put it below 0 and the frame threw)
   wq.addColorStop(0,`rgba(21,87,192,${0.18*x4k})`);wq.addColorStop(cp,`rgba(30,110,230,${(0.5+0.06*beat)*x4k})`);wq.addColorStop(Math.min(1,cp+0.35),`rgba(21,87,192,${0.22*x4k})`);wq.addColorStop(1,`rgba(21,87,192,${0.1*x4k})`);
   g.fillStyle=wq;g.fill()}
- g.strokeStyle=`rgba(${125*x4k+255*(1-x4k)|0},${211*x4k+255*(1-x4k)|0},255,${0.07+0.25*x4k})`;g.lineWidth=1;g.stroke();
+ if(!pol.float){g.strokeStyle=`rgba(${125*x4k+255*(1-x4k)|0},${211*x4k+255*(1-x4k)|0},255,${0.07+0.25*x4k})`;g.lineWidth=1;g.stroke()}
  g.clip();
  const sp=trackH/4,sy=s=>trackT+(3-s)*sp+sp/2,fa=VIS*0.25,fb=VIS,wt=warp(t),X=tt=>L+(warp(tt)-wt+fa)/(fa+fb)*(R-L);
  // the played side a shade darker
  q=g.createLinearGradient(L,0,curX,0);q.addColorStop(0,'rgba(0,0,0,.35)');q.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=q;g.fillRect(L-56,trackT-pad,curX-L+56,trackH+pad*2);
+ {const px0=L-56,py0=trackT-pad,pw0=R-L+56+pad,ph0=trackH+pad*2,midY=(trackT+trackB)/2;
+  if(pol.spot){soft(curX,midY,trackH*0.95,mood.c,0.09);q=g.createLinearGradient(R-(R-L)*0.3,0,R+pad,0);q.addColorStop(0,'rgba(0,0,0,0)');q.addColorStop(1,'rgba(0,0,0,.32)');g.fillStyle=q;g.fillRect(R-(R-L)*0.3,py0,(R-L)*0.3+pad,ph0)}   // Spotlight: light where you play, the far end dimmer
+  if(pol.glass){                                  // Glass: a sheen across the top, a fine bright top edge, a shadow at the bottom, a slow sweep now and then
+   q=g.createLinearGradient(0,py0,0,py0+ph0*0.4);q.addColorStop(0,'rgba(255,255,255,.075)');q.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=q;g.fillRect(px0,py0,pw0,ph0*0.4);
+   q=g.createLinearGradient(0,py0+ph0*0.75,0,py0+ph0);q.addColorStop(0,'rgba(0,0,0,0)');q.addColorStop(1,'rgba(0,0,0,.28)');g.fillStyle=q;g.fillRect(px0,py0+ph0*0.75,pw0,ph0*0.25);
+   g.strokeStyle='rgba(255,255,255,.2)';g.lineWidth=1;g.beginPath();g.moveTo(px0+22,py0+1.5);g.lineTo(px0+pw0-22,py0+1.5);g.stroke();
+   const sw=(clock%8)/8;if(sw<0.35){const sx=px0-200+(pw0+400)*(sw/0.35);q=g.createLinearGradient(sx-120,py0,sx+120,py0+ph0);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.05)');q.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=q;g.fillRect(px0,py0,pw0,ph0)}}}
  // milestone sweep: one soft band of light running from the cursor to the far end when the multiplier goes up
  const sa=(clock-sweepAt)/0.8;
  if(sa>=0&&sa<1){const sx=curX+(R-curX)*sa,w=W*0.12;q=g.createLinearGradient(sx-w,0,sx+w,0);q.addColorStop(0,css(mood.c,0));q.addColorStop(0.5,css(mood.c,0.16*(1-sa)));q.addColorStop(1,css(mood.c,0));g.fillStyle=q;g.fillRect(sx-w,trackT-pad,w*2,trackH+pad*2)}
@@ -225,14 +252,73 @@ function frame(ms){
    if(j===0){g.strokeStyle='rgba(255,255,255,.09)';g.lineWidth=1;g.beginPath();g.moveTo(x,trackT-6);g.lineTo(x,trackB+6);g.stroke()}
    g.fillStyle=j===0?'rgba(255,255,255,.35)':'rgba(255,255,255,.14)';g.fillRect(x-0.5,trackB+pad-7,1,j===0?6:4)}}
  // strings: thin, soft colour, a little brighter for a moment when played
- const lastOn=[-9,-9,-9,-9];for(const n of notes)if(n[0]<=t)lastOn[n[2]]=n[0];
- for(let s=0;s<4;s++){const a=Math.exp(-(t-lastOn[s])/0.25),age=t-lastOn[s];
-  g.strokeStyle=css(ease(rgb(COL[s]),[125,211,252],0.45*x4k),0.38+0.45*a+0.15*x4k);g.lineWidth=2.4-s*0.35+a;g.shadowColor=COL[s];g.shadowBlur=4+10*a;
+ const lastOn=[-9,-9,-9,-9],lastN=[null,null,null,null];for(const n of notes)if(n[0]<=t&&!missed.has(n)){lastOn[n[2]]=n[0];lastN[n[2]]=n}
+ // Live strings: how far each string swings now. Simulated: a pluck strength per note (beat 1 harder), ringing while the
+ // note lasts, damped fast when the next note on the string comes. My bass: the input's level on the last played string.
+ let micS=-1;if(mic){mic.an.getFloatTimeDomainData(mic.buf);let e=0;for(const v of mic.buf)e+=v*v;const db=10*Math.log10(e/mic.buf.length+1e-12);
+  const raw=Math.max(0,Math.min(1,(db+50)/32));if(raw>mic.lvl+0.15)mic.pluckAt=clock;mic.lvl=Math.max(raw,mic.lvl*Math.exp(-dt/0.12));for(let s=0;s<4;s++)if(lastN[s]&&(micS<0||lastOn[s]>lastOn[micS]))micS=s}
+ const swing=s=>{if(!fx.live)return 0;if(mic)return s===micS?sp*0.18*mic.lvl:0;const n=lastN[s];if(!n)return 0;
+  const I=info.get(n),age=t-n[0],ring=Math.max(0.15,Math.min(n[1],I.next)-n[0]),str=0.6+0.4*Math.abs(Math.sin(I.i*12.9898)*43758%1)+(Math.abs(((n[0]-ed[0])/barLen)%1)<0.04?0.25:0);
+  const env=Math.min(1,age/0.015)*(age<ring?Math.exp(-age/1.2):Math.exp(-ring/1.2)*Math.exp(-(age-ring)/0.06));return sp*0.13*str*env};
+ const shape=x=>x<curX?Math.sin(Math.PI/2*Math.max(0,(x-L+10)/(curX-L+10))):Math.cos(Math.PI/2*Math.min(1,(x-curX)/(R+10-curX)));   // still at the board's ends, widest where you play
+ // Bounce, worked out before the strings so a landing can ripple its string (user: "I like the bounce idea. I feel like we
+ // could improve that", picked Ride, Press keys, Hit / miss). ballAt(time) -> where the ball is:
+ //  travel         - (default) leaves with the note it bounced off, sliding with it, then glides over to the next note
+ //                   and lands on it at the cursor: the same landings as cursor, but it moves with the tab
+ //  cursor / ahead - it stays at one place across and hops onto each note as the note reaches it (ahead: 0.5 s early)
+ //  ride           - when you play a note it leaps forward onto the next one (over 70% of the gap), rides it into the cursor
+ //                   and takes off again as you play that one
+ //  Hit / miss: a hit launches it with a burst; on a miss it drops with a thud, dims, and drops back in on the next note
+ let ballAt=null,landing=null;
+ if(fx.pass&&passStyle==='bounce'){
+  const ride=bounceLead==='ride',travel=bounceLead==='travel',lead=bounceLead==='ahead'?0.5:0,react=fx.react&&bounceLead!=='ahead',top=s=>fx.behind?sy(s):sy(s)-sz0*0.56-sp*0.15,sz0=Math.round(sp*0.6*size*songFit);
+  const seg=tl=>{let a=null;for(const n of notes){if(n[0]<=tl)a=n;else break}const b=a&&info.get(a).after;return b&&b[0]-a[0]<=3?[a,b]:null};
+  ballAt=tq=>{const tl=tq+lead,sg=seg(tl);if(!sg)return null;const[a,b]=sg,gap=b[0]-a[0],since=tl-a[0],ca=rgb(COL[a[2]]),cb=rgb(COL[b[2]]),miss=react&&missed.has(a);
+   const F=ride?Math.min(1.2,gap*0.7):gap,   // ride's leap takes most of the gap, so it flows (was 0.35 s at most)
+  u=Math.min(1,since/F),x1=ride||travel?X(b[0]):X(tl),xa=ride?curX:travel?X(a[0]):X(tl),ux=travel?u*u*(3-2*u):u;
+   const hop=Math.min(ride?sp*0.45+Math.abs(x1-curX)*0.22:sp*0.2+gap*sp*0.7,ride?sp*1.5:sp*0.9,Math.min(top(a[2]),top(b[2]))-trackT+8);
+   const sk=bPath==='straight'?ux:bPath==='strings'?Math.max(0,Math.min(1,(u-0.8)/0.06)):u;   // straight: across and up/down together, a straight line from note to note (moving with the tab)
+     // along the strings: stays on its string, then a straight, sudden zap across late in the gap (u 0.8-0.86; user: "I also don't like the curving", it was an eased S-bend over 0.55-0.85)
+   const o={a,b,since,miss,F,alpha:1,sq:0,x:xa+(x1-xa)*ux,y:top(a[2])+(top(b[2])-top(a[2]))*sk-(bPath==='arc'?hop*4*u*(1-u):0),c:ease(ca,cb,u)};
+   const dl=Math.min(since,Math.abs(since-F));if(dl<0.06)o.sq=1-dl/0.06;
+   if(miss){const k=since/0.35,back=ride?Math.max(0,Math.min(1,(since-0.35)/0.2)):Math.max(0,1-(gap-since)/0.25);
+    if(k<1){o.x=ride?X(a[0]):X(a[0]+lead);o.y=top(a[2])+sp*0.7*k*k;o.alpha=1-k;o.c=[130,132,140];o.sq=since<0.08?1.6*(1-since/0.08):0}   // the thud and drop
+    else if(back>0){o.x=ride||travel?X(b[0]):X(tl);o.y=top(b[2])-sp*0.8*(1-back)**2;o.alpha=back;o.c=cb;o.sq=0}   // dropping back in
+    else o.alpha=0}
+   return o};
+  // the last landing (for Press keys): cursor / ahead land on a when it reaches the ball; ride lands on b after its leap
+  const bl=ballAt(t);if(bl&&!bl.miss){if(ride){if(bl.since>=bl.F)landing={n:bl.b,age:bl.since-bl.F}}else landing={n:bl.a,age:bl.since}}
+  if(landing)landing.x=X(landing.n[0]);
+ }
+ // String styles (user: "the strings shaking could use some work"):
+ //  ripple - a pulse runs out both ways from the cursor, bounces off the board's ends (turning over, as on a real string)
+ //           and dies away
+ //  hum    - one slow, smooth sway of the whole string, no jitter
+ //  blur   - the string stays straight; a soft haze as wide as its swing, like a long exposure of a vibrating string
+ //  shake  - the first try: a fast standing wave with a blur band
+ const a0=L-10,len0=R+10-a0,rip=(x,age,o=curX)=>{let sum=0;for(const dir of[1,-1]){const p=o-a0+dir*len0*1.6*age,k=Math.floor(p/len0),f=p-k*len0,even=((k%2)+2)%2===0;
+   sum+=(even?1:-1)*Math.exp(-(((x-a0-(even?f:len0-f))/(sp*0.8))**2))}return 0.7*sum};
+ for(let s=0;s<4;s++){const a=Math.exp(-(t-lastOn[s])/0.25),age=t-lastOn[s],amp=swing(s),ph=clock*Math.PI*2*[7,8.5,10,12][s],c0=ease(rgb(COL[s]),[125,211,252],0.45*x4k);
+  const pAge=mic?clock-mic.pluckAt:age;
+  const off=liveStyle==='shake'?x=>{const u=(x-a0)/len0;return amp*shape(x)*(Math.sin(ph)+0.3*Math.sin(u*Math.PI*4)*Math.sin(ph*2.1))}
+   :liveStyle==='hum'?x=>amp*0.75*Math.sin(Math.PI*(x-a0)/len0)**0.8*Math.sin(clock*Math.PI*2*[3,3.4,3.8,4.2][s])
+   :liveStyle==='ripple'?x=>amp*0.6*rip(x,pAge):null;   // half (user: "the ripple effect is too strong")
+  if(amp>0.4&&(liveStyle==='shake'||liveStyle==='blur')){const k=liveStyle==='blur'?1.4:1;g.beginPath();for(let x=a0;x<=R+10;x+=6)g.lineTo(x,sy(s)-amp*k*shape(x));for(let x=R+10;x>=a0;x-=6)g.lineTo(x,sy(s)+amp*k*shape(x));   // the blur a vibrating string leaves
+   g.fillStyle=css(c0,(liveStyle==='blur'?0.08:0.05)+(liveStyle==='blur'?0.9:0.6)*amp/sp);g.fill();
+   if(liveStyle==='blur'){g.strokeStyle=css(c0,Math.min(0.4,2.4*amp/sp));g.lineWidth=1;g.stroke()}}   // its two edges, faint
+  g.strokeStyle=css(c0,0.38+0.45*Math.max(a,Math.min(1,amp/(sp*0.1)))+0.15*x4k);g.lineWidth=(pol.strings?[4.2,3.4,2.6,1.9][s]:2.4-s*0.35)+a;g.shadowColor=COL[s];g.shadowBlur=4+10*a;
   g.beginPath();
-  if(fx.wave&&age<0.5){const amp=sp*0.1*Math.exp(-age*7);   // arcade: the string vibrates out from where it was played
+  const lr=fx.press&&landing&&landing.n[2]===s&&landing.age<1.2?x=>sp*0.05*Math.exp(-landing.age/0.4)*rip(x,landing.age,landing.x):null;   // Press keys: a ripple from where the ball landed
+  if((amp>0.4&&off)||lr){for(let x=a0;x<=R+10;x+=5){const y=sy(s)+(amp>0.4&&off?off(x):0)+(lr?lr(x):0);x===a0?g.moveTo(x,y):g.lineTo(x,y)}}
+  else if(fx.wave&&!fx.live&&age<0.5){const amp=sp*0.1*Math.exp(-age*7);   // arcade: the string vibrates out from where it was played
    for(let x=L-10;x<=R+10;x+=5){const d=Math.abs(x-curX),y=sy(s)+amp*Math.exp(-d/(W*0.2))*Math.sin(d*0.07-age*70);x===L-10?g.moveTo(x,y):g.lineTo(x,y)}}
   else{g.moveTo(L-10,sy(s));g.lineTo(R+10,sy(s))}
-  g.stroke()}
+  if(pol.float){const fq=g.createLinearGradient(L-10,0,R+10,0),cc=g.strokeStyle;fq.addColorStop(0,'rgba(0,0,0,0)');fq.addColorStop(0.08,cc);fq.addColorStop(0.92,cc);fq.addColorStop(1,'rgba(0,0,0,0)');g.strokeStyle=fq}   // Borderless: strings fade in and out at the ends
+  g.stroke();
+  if(pol.strings){g.shadowBlur=0;const th=[4.2,3.4,2.6,1.9][s]+a;   // Real strings: windings on E A D, a metal sheen, a slow glint
+   if(s<3){g.setLineDash([1.2,1.6]);g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=th;g.stroke();g.setLineDash([])}
+   g.strokeStyle='rgba(255,255,255,.32)';g.lineWidth=0.8;g.stroke();
+   soft(L+((clock*0.12+s*0.27)%1)*(R-L),sy(s),sp*0.3,[255,255,255],0.1)}}
  g.shadowBlur=0;
  // held notes: a line along the string while it rings (the only lines on the track)
  const vis=notes.filter(n=>{const x=X(n[0]);return x>L-60&&x<R+60});
@@ -283,6 +369,13 @@ function frame(ms){
    g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=0.8;g.beginPath();g.moveTo(a+w/2,y-w/2+0.8);g.lineTo(x1-w/2,y-w/2+0.8);g.stroke();
    if(holding)soft(curX,y,sp*0.55,c3,0.4+0.15*pulse)}
  }
+ // Trail: a hit note leaves a comet along its string, brightest at the note and fading back toward the cursor, and a soft
+ // glow under it; both fade over ~2 s as the tab carries them off
+ if(fx.trail)for(const n of vis){const age=t-n[0];if(age<0.02||age>2.4||missed.has(n))continue;
+  const x=X(n[0]),y=sy(n[2]),c=ease(rgb(COL[n[2]]),[125,211,252],0.4*x4k),k=Math.exp(-age/0.9),len=Math.min(curX-x,sp*2.4);
+  if(len>1){const q=(a0)=>{const q=g.createLinearGradient(x,0,x+len,0);q.addColorStop(0,css(c,a0*k));q.addColorStop(1,css(c,0));return q};
+   g.fillStyle=q(0.16);g.fillRect(x,y-sp*0.17,len,sp*0.34);g.fillStyle=q(0.7);g.fillRect(x,y-1.5,len,3)}
+  soft(x,y,sp*0.55,c,0.3*k)}
  // the notes: numbers on dark keycaps
  const nextT=Math.min(...notes.filter(n=>n[0]>t).map(n=>n[0])),ringed=new Set(notes.filter(n=>n[0]>t).slice(0,2));
  const sz=Math.round(sp*0.6*size*songFit);
@@ -323,13 +416,88 @@ function frame(ms){
    if((a&&a.form==='cap'&&!a.dy&&Math.abs(it.x-cx(a))<hw(a)+markW/2+2)||(b&&b.form==='cap'&&!b.dy&&Math.abs(cx(b)-it.x)<hw(b)+markW/2+2))it.form='none'});
   let edge=-Infinity;for(const it of items){if(it.form==='mark'&&it.x-markW/2<edge+1)it.form='none';if(it.form!=='none'&&!it.dy)edge=it.grp?it.grp[0].gcx+it.grp[0].gw/2:it.x+(it.form==='mark'?markW/2:it.cw/2)}
  }
+ // Light pass: a hit sends light to the note after it (on its string, or the next note anywhere) in up to 0.45 s; once it
+ // arrives that note glows inside (a flash, then steady) until it's played
+ const prime=new Map(),passes=[];
+ if(fx.pass&&passStyle!=='bounce')for(const n of notes){const age=t-n[0];if(age<0.02||age>2.6||missed.has(n))continue;
+  const tg=passStyle==='string'?info.get(n).nextN:info.get(n).after;if(!tg||tg[0]-n[0]>2.2||tg[0]<=t)continue;
+  const D=Math.min(0.45,(tg[0]-n[0])*0.6),p=(age-0.02)/D;
+  if(p<1)passes.push([n,tg,p]);else prime.set(tg,Math.max(prime.get(tg)||0,0.55+0.45*Math.exp(-(age-0.02-D)/0.25)))}
+ // Bounce (user: "I like the idea of something bouncing between the notes being hit"): the ball from ballAt, squashed as it
+ // lands and takes off (Behind the notes, user: "it might be less distracting if we move it behind the notes": drawn under
+ // the keycaps, so on a note only its glow shows round the key), with a short trail, a splash where it lands and (Hit / miss) a burst when a hit launches it
+ const drawBall=()=>{if(!ballAt)return;const bl=ballAt(t);
+  if(bl&&bl.alpha>0){const r=sp*0.11;   // smaller and softer (user: "a bit less distracting")
+   if(bShape==='ball'||bShape==='ring')for(let j=6;j>=1;j--){const p=ballAt(t-0.022*j);if(!p||p.a!==bl.a||!p.alpha)continue;g.globalAlpha=0.18*(1-j/7)*p.alpha;g.fillStyle=css(p.c,1);g.beginPath();g.arc(p.x,p.y,r*(1-j*0.09),0,7);g.fill()}
+   g.globalAlpha=1;
+   if(landing&&landing.age<0.25){const k=landing.age/0.25,ln=landing.n;g.strokeStyle=css(rgb(COL[ln[2]]),0.35*(1-k));g.lineWidth=1.2;g.beginPath();g.ellipse(X(ln[0]),sy(ln[2]),r*(1.2+2.2*k),r*(0.5+0.9*k),0,0,7);g.stroke()}   // a splash where it lands
+   if(fx.react&&bounceLead!=='ahead'&&!bl.miss&&bl.since<0.25){const k=bl.since/0.25,bx=X(bl.a[0]),by=sy(bl.a[2])-(fx.behind?0:sz*0.56),ca=rgb(COL[bl.a[2]]);   // the hit that launched it
+    soft(bx,by,r*2.5,ca,0.25*(1-k));for(let j=0;j<4;j++){const ang=-Math.PI*(0.15+0.7*j/3),d=r*(1.2+2.5*k);g.globalAlpha=0.7*(1-k);g.fillStyle=j%2?'#fff':css(ca,1);g.beginPath();g.arc(bx+Math.cos(ang)*d,by+Math.sin(ang)*d,1.6*(1-k)+0.5,0,7);g.fill()}g.globalAlpha=1}
+   const flash=fx.react&&!bl.miss&&bl.since<0.15?1-bl.since/0.15:0;
+   // Shapes (user: "I think some other design other than a ball might look cooler"):
+   //  comet   - a bright point with a tail flowing back along its path, tapering and fading
+   //  thread  - a thin line of light drawn along the whole hop from the note it left, fading toward that end, a bright head
+   //  diamond - like the repeat diamonds: a small diamond with a facet of light, spinning a quarter turn each hop
+   //  pick    - a bass pick, its point leading the way it moves
+   //  ring    - a hollow ring of light that swells as it lands
+   //  ball    - the first one
+   //  electric - (user: "what about an electric trail?") a bolt along the last 0.45 s of its path, re-drawn 30 times a second:
+   //            a main bolt + two braided strands drawn as added light, forks, sparks, an arc reaching to the next note
+   const fill=bl.miss?[150,152,160]:ease(bl.c,[255,255,255],0.6),pv=ballAt(t-0.016),ang=pv?Math.atan2(bl.y-pv.y,bl.x-pv.x):0;
+   const path=(span,steps)=>{const pts=[];for(let j=steps;j>=0;j--){const p=ballAt(t-span*j/steps);if(p&&p.a===bl.a&&p.alpha)pts.push(p)}return pts};
+   const tail=(pts,w,a)=>{for(let j=1;j<pts.length;j++){const k=j/(pts.length-1);g.strokeStyle=css(pts[j].c,a*k*bl.alpha);g.lineWidth=Math.max(0.5,w*k);g.lineCap='round';g.beginPath();g.moveTo(pts[j-1].x,pts[j-1].y);g.lineTo(pts[j].x,pts[j].y);g.stroke()}g.lineCap='butt'};
+   g.globalAlpha=bl.alpha;
+   if(bShape==='electric'){   // (user: "the electricity should look cooler"): braided strands, added light, sparks, a reaching arc
+    const fr=Math.floor(clock*30),hash=(i,f=fr)=>{const v=Math.sin(i*127.1+f*311.7)*43758.5453;return v-Math.floor(v)-0.5};
+    // it builds with the multiplier (user: "I feel like the 4x should look different compared to the normal one"): x1 one quiet
+    // strand, x2 + glow and forks, x3 + braided strands and sparks, x4 electric blue (user: "can we make it blue when it is 4x?"; was gold), wider,
+    // longer, more of everything, reaching for the next note sooner
+    const lv=mult,W=[0,0.6,0.8,1,1.4][lv],J=[0,0.6,0.8,1,1.3][lv],x4=lv===4;
+    const gc=x4?[80,190,255]:ease(bl.c,[125,211,252],0.4),vc=x4?[140,150,255]:ease(bl.c,[167,139,250],0.3),inten=bl.alpha*[0,0.6,0.8,1,1.15][lv]*(0.75+0.5*Math.abs(hash(7)))*(hash(3)>(x4?0.3:0.42)?1.5:1);   // flicker, now and then a flash
+    // a jagged line through pts: midpoint displacement, 3 levels, pinched at both ends
+    const jag=(pts,seed,amp)=>{let a=pts.map(p=>[p.x,p.y]);for(let lv=0;lv<3;lv++){const n=[];for(let k=0;k<a.length-1;k++){const p=a[k],q=a[k+1],dx=q[0]-p[0],dy=q[1]-p[1],l=Math.hypot(dx,dy)||1,m=amp*0.55**lv*hash(seed+k*7+lv*131);
+      n.push(p,[(p[0]+q[0])/2-dy/l*m,(p[1]+q[1])/2+dx/l*m])}n.push(a[a.length-1]);a=n}
+     return a.map((p,k)=>{const f=k/(a.length-1),pin=Math.sin(Math.PI*Math.min(1,f*1.15))**0.6,o=pts[Math.round(f*(pts.length-1))];return[o.x+(p[0]-o.x)*pin,o.y+(p[1]-o.y)*pin,f]})};
+    const stroke=(b,w,col,a)=>{const c4=4;for(let q=0;q<c4;q++){const from=Math.floor(b.length*q/c4),to=Math.min(b.length-1,Math.floor(b.length*(q+1)/c4));g.strokeStyle=css(col,a*(q+1)/c4);g.lineWidth=w;g.beginPath();g.moveTo(b[from][0],b[from][1]);for(let k=from+1;k<=to;k++)g.lineTo(b[k][0],b[k][1]);g.stroke()}};
+    g.save();g.globalCompositeOperation='lighter';g.lineJoin='round';g.lineCap='round';
+    const pts=path(Math.max(0.05,Math.min(bl.since,x4?0.7:0.45)),x4?14:10);
+    if(pts.length>1){
+     const main=jag(pts,1,sp*0.22*J);if(lv>=2)stroke(main,9*W,gc,0.10*inten);stroke(main,4*W,gc,0.35*inten);stroke(main,1.4*W,[240,248,255],0.95*inten);   // the main bolt: haze, colour, white core
+     if(lv>=3)for(const sd of x4?[2,3,4]:[2,3]){const b=jag(pts,sd*17,sp*0.3*J);stroke(b,2,sd===2?vc:gc,0.35*inten);stroke(b,0.8,[220,235,255],0.5*inten)}   // two thinner strands braided round it
+     if(lv>=2)for(let k=6;k<main.length-4;k+=x4?6:9)if(hash(k+40)>0){const b=main[k],an=Math.atan2(hash(k+41),hash(k+42)),l=sp*(0.15+0.3*(hash(k+43)+0.5)),fk=[b,[b[0]+Math.cos(an)*l*0.5+hash(k+44)*sp*0.1,b[1]+Math.sin(an)*l*0.5+hash(k+45)*sp*0.1],[b[0]+Math.cos(an)*l,b[1]+Math.sin(an)*l]];   // forks
+      g.strokeStyle=css(gc,0.5*b[2]*inten);g.lineWidth=1;g.beginPath();g.moveTo(fk[0][0],fk[0][1]);g.lineTo(fk[1][0],fk[1][1]);g.lineTo(fk[2][0],fk[2][1]);g.stroke()}}
+    // sparks shed along the way: each from where the head was a moment ago, flying out and falling, gone in 0.4 s
+    const nS=[0,0,0,14,26][lv];for(let k=0;k<nS;k++){const age=(k*(0.4/nS)+((clock*0.9)%(0.4/nS)))%0.4,te=t-age,p=ballAt(te);if(!p||!p.alpha||p.miss)continue;const seed=Math.floor(te*60)+k;
+     const vx=hash(seed,0)*sp*3,vy=hash(seed+5,0)*sp*2.4-sp*0.6,x=p.x+vx*age,y=p.y+vy*age+sp*5*age*age,a=(1-age/0.4)*bl.alpha;
+     g.strokeStyle=css(ease(gc,[255,255,255],0.5),a);g.lineWidth=1.3;g.beginPath();g.moveTo(x,y);g.lineTo(x-vx*0.025,y-(vy+sp*10*age)*0.025);g.stroke()}
+    // reaching ahead: as it nears the next note, a thin arc flickers out to that note's key
+    {const u=Math.min(1,bl.since/bl.F);if(lv>=3&&!bl.miss&&u>(x4?0.4:0.6)&&u<0.98&&hash(11)>-0.25){const tx=X(bl.b[0]),ty=sy(bl.b[2]),d=Math.hypot(tx-bl.x,ty-bl.y);if(d>sp*0.3){
+      const arc=jag([{x:bl.x,y:bl.y},{x:(bl.x+tx)/2,y:(bl.y+ty)/2},{x:tx,y:ty}],77,Math.min(sp*0.25,d*0.25));const u0=x4?0.4:0.6,ka=(u-u0)/(0.98-u0);stroke(arc,3,gc,0.25*ka*inten);stroke(arc,1,[235,245,255],0.7*ka*inten)}}}
+    // the head: a white-hot point and a starburst of short rays
+    soft(bl.x,bl.y,r*3.2,gc,(bl.miss?0.06:0.3+0.25*flash)*Math.min(1.3,inten));
+    const nR=[0,0,4,6,10][lv];for(let k=0;k<nR;k++){const an=k*Math.PI*2/nR+hash(k+60)*0.8,l=r*(0.9+1.6*(hash(k+61)+0.5))*(x4?1.4:1);g.strokeStyle=css([235,245,255],0.6*bl.alpha);g.lineWidth=1;g.beginPath();g.moveTo(bl.x,bl.y);g.lineTo(bl.x+Math.cos(an)*l,bl.y+Math.sin(an)*l);g.stroke()}
+    g.fillStyle='#ffffff';g.beginPath();g.arc(bl.x,bl.y,r*(0.4+0.12*(hash(99)+0.5)),0,7);g.fill();
+    g.restore()}
+   else if(bShape==='comet'){tail(path(0.22,12),r*1.3,0.7);soft(bl.x,bl.y,r*2.4,bl.c,bl.miss?0.08:0.3+0.2*flash);g.fillStyle=css(fill,1);g.beginPath();g.arc(bl.x,bl.y,r*0.55*(1+0.3*flash),0,7);g.fill()}
+   else if(bShape==='thread'){tail(path(Math.max(0.05,Math.min(bl.since,1.2)),24),2,0.85);soft(bl.x,bl.y,r*2,bl.c,bl.miss?0.08:0.28+0.2*flash);g.fillStyle=css(fill,1);g.beginPath();g.arc(bl.x,bl.y,r*0.4,0,7);g.fill()}
+   else{soft(bl.x,bl.y,r*3,bl.c,bl.miss?0.1:0.22+0.15*flash);g.save();g.translate(bl.x,bl.y);
+    if(bShape==='pick'){g.rotate(ang-Math.PI/2);const q=r*1.15*(1+0.1*flash);g.scale(1+0.15*bl.sq,1-0.15*bl.sq);   // its point leads (the shape points down before turning)
+     g.beginPath();g.moveTo(-q,-q*0.6);g.quadraticCurveTo(0,-q*1.15,q,-q*0.6);g.quadraticCurveTo(q*0.8,q*0.25,0,q*1.1);g.quadraticCurveTo(-q*0.8,q*0.25,-q,-q*0.6);g.closePath();
+     g.fillStyle=css(fill,1);g.fill();g.strokeStyle=css(bl.c,1);g.lineWidth=1.5;g.stroke();g.fillStyle='rgba(255,255,255,.5)';g.beginPath();g.ellipse(-q*0.25,-q*0.45,q*0.3,q*0.12,-0.3,0,7);g.fill()}
+    else if(bShape==='diamond'){const u=Math.min(1,bl.since/bl.F);g.rotate(Math.PI/4+(Math.PI/2)*(u*u*(3-2*u)));const w=r*1.5*(1+0.1*flash)*(1+0.2*bl.sq);
+     g.beginPath();g.roundRect(-w/2,-w/2,w,w,w*0.18);g.fillStyle=css(bl.c,0.35);g.fill();g.strokeStyle=css(fill,1);g.lineWidth=1.6;g.stroke();g.fillStyle='rgba(255,255,255,.5)';g.beginPath();g.roundRect(-w*0.32,-w*0.32,w*0.3,w*0.3,w*0.06);g.fill()}
+    else if(bShape==='ring'){const w=r*(1+0.5*bl.sq+0.2*flash);g.strokeStyle=css(fill,1);g.lineWidth=2;g.beginPath();g.arc(0,0,w,0,7);g.stroke();g.strokeStyle=css(bl.c,0.4);g.lineWidth=5;g.stroke()}
+    else{g.scale((1+0.3*bl.sq)*(1+0.1*flash),Math.max(0.4,1-0.3*bl.sq)*(1+0.1*flash));g.fillStyle=css(fill,1);g.beginPath();g.arc(0,0,r,0,7);g.fill();g.strokeStyle=css(bl.c,1);g.lineWidth=2;g.stroke()}
+    g.restore()}
+   g.globalAlpha=1}};
+ if(fx.behind)drawBall();
  for(const n of vis.slice().reverse()){
-  const I=info.get(n),x=X(n[0]),y=sy(n[2])+(lay.get(n).dy||0),age=t-n[0],played=age>0.02,c=rgb(COL[n[2]]),open=n[3]===0,isNext=n[0]===nextT,it=lay.get(n);
+  const I=info.get(n),x=X(n[0]),y=sy(n[2])+(lay.get(n).dy||0)+(fx.press&&landing&&landing.n===n&&landing.age<0.2?sp*0.07*Math.sin(Math.PI*landing.age/0.2):0),age=t-n[0],miss=missed.has(n),played=age>0.02,c=rgb(COL[n[2]]),open=n[3]===0,isNext=n[0]===nextT,it=lay.get(n),pr=prime.get(n)||0;
   if(it.form==='none')continue;
   if(it.form==='mark'){                            // a quick repeat (or no room): a short mark on the string, in time
    // Repeat styles (user: "the repeat notes could look cooler"): bars, pips (glowing diamonds), echoes (small keycaps
    // with no number), chevrons (pointing the way the tab moves); each brightens as it comes due and flashes when played.
-   const ea=Math.max(0,Math.min(1,(R-x)/((R-L)*0.18))),near=!played?Math.max(0,1-(n[0]-t)/0.6):0,fl=played&&age<0.18?1-age/0.18:0;
+   const ea=Math.max(0,Math.min(1,(R-x)/((R-L)*0.18))),near=!played?Math.max(0,1-(n[0]-t)/0.6):0,fl=played&&!miss&&age<0.18?1-age/0.18:0;
    g.save();g.translate(x,y);g.globalAlpha=ea*(played?Math.max(0.25,0.9-age*2):0.8+0.2*near);
    g.shadowColor=COL[n[2]];g.shadowBlur=repStyle==='bars'?0:6+12*Math.max(near,fl);
    const ec=repStyle==='echoes',col=fl>0.3&&!ec?'#ffffff':COL[n[2]],grow=1+(ec?0.12:0.5)*fl+0.15*near;   // echoes: a subtler hit (user: "can we give it an effect on hit? Maybe more subtle")g.scale(grow,grow);
@@ -344,7 +512,7 @@ function frame(ms){
     if(echo==='ripple'){const ow=w*(1.45+0.35*near);box(ow,0.34);g.lineWidth=1;g.strokeStyle=css(c3,0.35*(1-fl));g.stroke();w*=0.85}
     if(echo==='glass'){box(w*1.15,0.3);const q=g.createLinearGradient(0,-w*0.6,0,w*0.6);q.addColorStop(0,css(c3,0.55+0.4*fl));q.addColorStop(1,css(c3,0.12+0.5*fl));g.fillStyle=q;g.fill();
      g.lineWidth=1;g.strokeStyle=css(c3,0.9);g.stroke();g.shadowBlur=0;g.fillStyle='rgba(255,255,255,.45)';g.fillRect(-w*0.38,-w*0.5,w*0.76,1.2)}   // a light top edge
-    else{box(w,0.3);g.fillStyle=css(c3,(echo==='outline'||echo==='fading'?0.2:0.12)+0.5*fl);g.fill();g.lineWidth=1.6;g.strokeStyle=col;g.stroke()}
+    else{box(w,0.3);g.fillStyle=css(c3,(echo==='outline'||echo==='fading'?0.2:0.12)+0.5*fl+0.35*pr);g.fill();g.lineWidth=1.6;g.strokeStyle=col;g.stroke()}
     // the user found the mini number could get crowded ("give me other options"): simile (the repeat sign), a dot, or auto
     // (the number only when the echo has room around it)
     if(echo==='simile'){g.shadowBlur=0;const r=w*0.1,c4=css(c3,0.9);g.strokeStyle=c4;g.fillStyle=c4;g.lineWidth=1.4;g.beginPath();g.moveTo(w*0.2,-w*0.22);g.lineTo(-w*0.2,w*0.22);g.stroke();
@@ -352,7 +520,7 @@ function frame(ms){
     if(echo==='diamond'){g.shadowBlur=0;g.fillStyle='rgba(255,255,255,.4)';g.beginPath();g.roundRect(-w*0.3,-w*0.3,w*0.28,w*0.28,w*0.06);g.fill()}   // a facet of light at the top
     if(echo==='dot'){g.shadowBlur=0;g.fillStyle=css(c3,0.95);g.beginPath();g.arc(0,0,w*0.13,0,7);g.fill()}
     if(echo==='mini'||(echo==='auto'&&it.room>w*2.4)){g.shadowBlur=0;g.font=`700 ${Math.round(w*0.52)}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(c3,0.85+0.15*fl);g.fillText(String(n[3]),0,w*0.03)}   // the fret, tiny
-    const ha=played&&age<0.35?age/0.35:-1;   // on hit: a thin outline rippling out and fading
+    const ha=played&&!miss&&age<0.35?age/0.35:-1;   // on hit: a thin outline rippling out and fading
     if(ha>=0){g.shadowBlur=0;box(w*(1.05+0.9*ha),0.32);g.lineWidth=1.2;g.strokeStyle=css(c3,0.55*(1-ha));g.stroke()}
    }
    else{const w=markW,h=sp*0.32;g.strokeStyle=col;g.lineWidth=3;g.lineCap='round';g.lineJoin='round';g.beginPath();g.moveTo(w*0.35,-h/2);g.lineTo(-w*0.35,0);g.lineTo(w*0.35,h/2);g.stroke()}
@@ -360,13 +528,13 @@ function frame(ms){
    // the same effects as the numbered notes, at an echo's size (user: "can we make an effect even on the repeat notes?")
    g.save();g.translate(x,y);g.shadowBlur=0;
    if(fx.rings&&ringed.has(n)&&!played&&n[0]-t<0.7){const kk=(n[0]-t)/0.7;g.globalAlpha=ea*(1-kk)*0.8;g.strokeStyle=COL[n[2]];g.lineWidth=1.2+1.3*(1-kk);g.beginPath();g.arc(0,0,markW*0.75+kk*markW*1.8,0,7);g.stroke()}
-   if(fx.sparks&&played&&age<0.3){const pp=1-age/0.3;g.globalAlpha=ea;soft(0,0,markW*2.2,rgb(COL[n[2]]),0.35*pp);
+   if(fx.sparks&&played&&!miss&&age<0.3){const pp=1-age/0.3;g.globalAlpha=ea;soft(0,0,markW*2.2,rgb(COL[n[2]]),0.35*pp);
     for(let j=0;j<4;j++){const ang=j*1.57+0.8+info.get(n).i,d=markW*(0.6+1.6*(1-pp));g.globalAlpha=ea*pp;g.fillStyle=j%2?css(mood.c,1):COL[n[2]];g.beginPath();g.arc(Math.cos(ang)*d,Math.sin(ang)*d,1.6*pp+0.4,0,7);g.fill()}}
    g.restore();continue}
   const fs=Math.round(it.fs*it.k);g.font=`700 ${fs}px ${FONT}`;
   const cw=it.cw*it.k,ch=fs*1.12;
   const edgeA=Math.max(0,Math.min(1,(R-x)/((R-L)*0.18)))*Math.max(0,Math.min(1,(x-L+30)/60));
-  const hit=played&&age<0.2?1-age/0.2:0;
+  const hit=played&&!miss&&age<0.2?1-age/0.2:0;
   g.globalAlpha=edgeA*(played?Math.max(0.28,1-age/0.4):I.rep?0.62:1);
   const near=!played?Math.max(0,1-(n[0]-t)/0.7):0;   // the keycap's rim brightens as it comes due
   if(hit)soft(x,y,fs*1.8,c,0.35*hit);
@@ -374,7 +542,7 @@ function frame(ms){
   // arcade: a ring closing in on the next two notes over the last 0.7 s
   if(fx.rings&&ringed.has(n)&&!played&&n[0]-t<0.7){const kk=(n[0]-t)/0.7;g.save();g.globalAlpha=edgeA*(1-kk)*0.85;g.strokeStyle=COL[n[2]];g.lineWidth=1.5+2*(1-kk);g.beginPath();g.arc(x,y,ch*0.62+kk*ch*1.4,0,7);g.stroke();g.restore()}
   // arcade: a hit flares, rings out and throws a few sparks
-  if(fx.sparks&&played&&age<0.35){const pp=1-age/0.35;g.save();g.globalAlpha=pp;g.strokeStyle=COL[n[2]];g.lineWidth=2;g.beginPath();g.arc(x,y,ch*(0.6+1.2*(1-pp)),0,7);g.stroke();
+  if(fx.sparks&&played&&!miss&&age<0.35){const pp=1-age/0.35;g.save();g.globalAlpha=pp;g.strokeStyle=COL[n[2]];g.lineWidth=2;g.beginPath();g.arc(x,y,ch*(0.6+1.2*(1-pp)),0,7);g.stroke();
    for(let j=0;j<6;j++){const ang=j*1.05+I.i*1.3,d=ch*(0.55+1.5*(1-pp));g.fillStyle=j%2?css(mood.c,1):COL[n[2]];g.beginPath();g.arc(x+Math.cos(ang)*d,y+Math.sin(ang)*d,2.2*pp+0.5,0,7);g.fill()}g.restore()}
   if(it.grp){                                      // joined: the group's one keycap, drawn with its first note; each number dims as it's played
    const gr=it.grp,g0=gr[0];if(g0!==it){g.globalAlpha=1;continue}
@@ -391,17 +559,29 @@ function frame(ms){
    {g.fillStyle=COL[n[2]];g.beginPath();g.arc(x,y0,3.2,0,7);g.fill();g.strokeStyle=css(c,0.75);g.lineWidth=1.4;g.beginPath();g.moveTo(x,y0);g.lineTo(x,ey);g.stroke()}
    if(isNext||hit){g.shadowColor=COL[n[2]];g.shadowBlur=10+12*Math.max(near,hit)}
    g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,h*0.3);
-   g.fillStyle=hit?css(c,0.9*hit+0.1):'rgba(9,10,15,.94)';g.fill();g.shadowBlur=0;g.strokeStyle=css(cc,0.55+0.4*Math.max(near,isNext?0.6:0));g.lineWidth=1.2;g.stroke();
+   g.fillStyle=hit?css(c,0.9*hit+0.1):'rgba(9,10,15,.94)';g.fill();g.shadowBlur=0;if(pr&&!hit)glowIn(x,y,w,c,pr);g.strokeStyle=css(cc,0.55+0.4*Math.max(near,isNext?0.6:0));g.lineWidth=1.2;g.stroke();
    g.textAlign='center';g.textBaseline='middle';g.fillStyle=hit>0.4?'#0a0b10':'#f5f5f7';g.fillText(String(n[3]),x,y+fs*0.04);g.globalAlpha=1;continue}
   if(it.form==='text'){                           // no room for a keycap: just the number
    if(isNext||hit){g.shadowColor=COL[n[2]];g.shadowBlur=12}
    g.textAlign='center';g.textBaseline='middle';g.fillStyle='#f5f5f7';g.fillText(String(n[3]),x,y+fs*0.04);g.shadowBlur=0;g.globalAlpha=1;continue}
+  if(pol.keys&&!hit)soft(x,y+ch*0.4,cw*0.9,c,0.14*g.globalAlpha);   // Keycaps: a faint glow under it in the string's colour
+  if(pr&&!hit){g.shadowColor=COL[n[2]];g.shadowBlur=8+10*pr}
   g.beginPath();g.roundRect(x-cw/2,y-ch/2,cw,ch,ch*0.3);
-  g.fillStyle=hit?css(c,0.9*hit+0.1):'rgba(9,10,15,.92)';g.fill();g.shadowBlur=0;
-  g.strokeStyle=css(ease(c,[125,211,252],0.6*x4k),I.rep?0.25:0.35+0.6*Math.max(near,isNext?0.6:0)+0.2*x4k);g.lineWidth=1.2;g.stroke();   // open strings like any other number (user: "can we make zero like the other numbers?")
+  if(pol.keys&&!hit){const kq=g.createLinearGradient(0,y-ch/2,0,y+ch/2);kq.addColorStop(0,'rgba(38,40,54,.97)');kq.addColorStop(1,'rgba(8,9,13,.97)');g.fillStyle=kq;   // a face lit from above, a drop shadow
+   if(!isNext&&!pr){g.shadowColor='rgba(0,0,0,.65)';g.shadowBlur=8;g.shadowOffsetY=3}}
+  else g.fillStyle=hit?css(c,0.9*hit+0.1):'rgba(9,10,15,.92)';
+  g.fill();g.shadowBlur=0;g.shadowOffsetY=0;if(pr&&!hit)glowIn(x,y,cw,c,pr);
+  g.strokeStyle=css(ease(missedColor(n,c),[125,211,252],0.6*x4k),I.rep?0.25:0.35+0.6*Math.max(near,isNext?0.6:0)+0.2*x4k);g.lineWidth=1.2;g.stroke();   // open strings like any other number (user: "can we make zero like the other numbers?")
+  if(pol.keys&&!hit){g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=1;g.beginPath();g.moveTo(x-cw/2+ch*0.3,y-ch/2+1.4);g.lineTo(x+cw/2-ch*0.3,y-ch/2+1.4);g.stroke()}   // its top edge catching the light
   g.textAlign='center';g.textBaseline='middle';g.fillStyle=hit>0.4?'#0a0b10':'#f5f5f7';g.fillText(String(n[3]),x,y+fs*0.04);
   g.globalAlpha=1;
  }
+ // the light on its way: a bright head with a short tail, the colour turning from the note's to the target's
+ for(const [n,tg,p] of passes){const e=1-(1-p)**2,b=Math.max(0,e-0.3),x0=X(n[0]),y0=sy(n[2]),x1=X(tg[0]),y1=sy(tg[2])+(lay.get(tg)?.dy||0),
+   c=ease(ease(rgb(COL[n[2]]),rgb(COL[tg[2]]),e),[125,211,252],0.4*x4k),hx=x0+(x1-x0)*e,hy=y0+(y1-y0)*e,tx=x0+(x1-x0)*b,ty=y0+(y1-y0)*b;
+  const q=g.createLinearGradient(tx,ty,hx,hy);q.addColorStop(0,css(c,0));q.addColorStop(1,css(c,0.9));g.strokeStyle=q;g.lineWidth=2.2;g.lineCap='round';
+  g.beginPath();g.moveTo(tx,ty);g.lineTo(hx,hy);g.stroke();g.lineCap='butt';soft(hx,hy,sp*0.3,c,0.6);g.fillStyle='#fff';g.beginPath();g.arc(hx,hy,2.2,0,7);g.fill()}
+ if(!fx.behind)drawBall();
  // the cursor: a slim line with a soft column of light, a touch brighter on the beat
  q=g.createLinearGradient(curX-16,0,curX+16,0);q.addColorStop(0,css(mood.c,0));q.addColorStop(0.5,css(mood.c,0.1+0.08*beat));q.addColorStop(1,css(mood.c,0));g.fillStyle=q;g.fillRect(curX-16,trackT-pad,32,trackH+pad*2);
  g.restore();
@@ -525,15 +705,32 @@ function show(){
  document.getElementById('echo-bar').style.display=repStyle==='echoes'?'contents':'none';
  bar.querySelectorAll('[data-echo]').forEach(b=>b.classList.toggle('on',b.dataset.echo===echo));
  bar.querySelectorAll('[data-fx]').forEach(b=>b.classList.toggle('on',fx[b.dataset.fx]));
+ bar.querySelectorAll('[data-pass]').forEach(b=>b.classList.toggle('on',b.dataset.pass===passStyle));
+ document.getElementById('pass-bar').style.display=fx.pass?'contents':'none';
+ document.getElementById('lead-bar').style.display=passStyle==='bounce'?'contents':'none';
+ document.getElementById('live-bar').style.display=fx.live?'contents':'none';
+ bar.querySelectorAll('[data-pol]').forEach(b=>b.classList.toggle('on',b.dataset.pol==='all'?Object.values(pol).every(Boolean):pol[b.dataset.pol]));
+ bar.querySelectorAll('[data-bpath]').forEach(b=>b.classList.toggle('on',b.dataset.bpath===bPath));
+ bar.querySelectorAll('[data-bshape]').forEach(b=>b.classList.toggle('on',b.dataset.bshape===bShape));
+ bar.querySelectorAll('[data-lead]').forEach(b=>b.classList.toggle('on',b.dataset.lead===bounceLead));
+ bar.querySelectorAll('[data-lstyle]').forEach(b=>b.classList.toggle('on',b.dataset.lstyle===liveStyle));
+ bar.querySelector('[data-mic]').classList.toggle('on',!!mic);
  bar.querySelector('[data-spread]').classList.toggle('on',spread);
  bar.querySelector('[data-pause]').textContent=paused?'Play':'Pause';
 }
 bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
- if(b.dataset.look2)scoreLook=b.dataset.look2;else if(b.dataset.award)award2=b.dataset.award;else if(b.dataset.hud)hudStyle=b.dataset.hud;else if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.hold)holdStyle=b.dataset.hold;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx)fx[b.dataset.fx]=!fx[b.dataset.fx];else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
+ if(b.dataset.look2)scoreLook=b.dataset.look2;else if(b.dataset.award)award2=b.dataset.award;else if(b.dataset.hud)hudStyle=b.dataset.hud;else if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.hold)holdStyle=b.dataset.hold;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.pass)passStyle=b.dataset.pass;else if(b.dataset.lead)bounceLead=b.dataset.lead;else if(b.dataset.bshape)bShape=b.dataset.bshape;else if(b.dataset.bpath)bPath=b.dataset.bpath;else if(b.dataset.pol){if(b.dataset.pol==='all'){const on=!Object.values(pol).every(Boolean);for(const k in pol)pol[k]=on}else pol[b.dataset.pol]=!pol[b.dataset.pol]}else if(b.dataset.lstyle)liveStyle=b.dataset.lstyle;else if('mic' in b.dataset){toggleMic();return}else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx){fx[b.dataset.fx]=!fx[b.dataset.fx];if(b.dataset.fx==='misses')load()}else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
+// Use my bass: the input's level drives Live strings (on the string the tab played last; the game would use the detected string)
+async function toggleMic(){
+ if(mic){mic.stream.getTracks().forEach(x=>x.stop());mic.ctx.close();mic=null;show();return}
+ try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  const ctx=new AudioContext(),an=ctx.createAnalyser();an.fftSize=1024;ctx.createMediaStreamSource(stream).connect(an);mic={stream,ctx,an,buf:new Float32Array(1024),lvl:0,pluckAt:-9};fx.live=true}
+ catch(e){alert('Couldn\'t open the input: '+e.message)}
+ show()}
 addEventListener('keydown',e=>{if(e.key===' '){paused=!paused;e.preventDefault();show()}});
 const sp=document.getElementById('speed');sp.oninput=()=>{speedSet=+sp.value;document.getElementById('speedv').textContent=speedSet+'×';load()};
 const sz=document.getElementById('size');sz.oninput=()=>{size=+sz.value;document.getElementById('sizev').textContent=size+'×';load()};
 const rs=document.getElementById('repsize');rs.oninput=()=>{repSize=+rs.value;document.getElementById('repsizev').textContent=repSize+'×'};
-const qs=new URLSearchParams(location.search);if(qs.get('t'))clock=+qs.get('t');if(qs.get('pause'))paused=true;if(qs.get('x4'))fx.x4=true;if(qs.get('award'))award2=qs.get('award');if(qs.get('hud'))hudStyle=qs.get('hud');if(qs.get('stagger'))stagger=qs.get('stagger');if(qs.get('bg'))bgStyle=qs.get('bg');if(qs.get('rep'))repStyle=qs.get('rep');if(qs.get('echo'))echo=qs.get('echo');if(qs.get('song'))song=Object.keys(PASSAGES)[+qs.get('song')];
+const qs=new URLSearchParams(location.search);if(qs.get('t'))clock=+qs.get('t');if(qs.get('pause'))paused=true;if(qs.get('x4'))fx.x4=true;if(qs.get('award'))award2=qs.get('award');if(qs.get('hud'))hudStyle=qs.get('hud');if(qs.get('stagger'))stagger=qs.get('stagger');if(qs.get('bg'))bgStyle=qs.get('bg');if(qs.get('rep'))repStyle=qs.get('rep');if(qs.get('echo'))echo=qs.get('echo');if(qs.get('pass'))passStyle=qs.get('pass');if(qs.get('lead'))bounceLead=qs.get('lead');if(qs.get('shape'))bShape=qs.get('shape');if(qs.get('path'))bPath=qs.get('path');if(qs.get('polish'))for(const k of qs.get('polish').split(','))if(k==='all')for(const j in pol)pol[j]=true;else if(k in pol)pol[k]=true;if(qs.get('strings'))liveStyle=qs.get('strings');if(qs.get('misses'))fx.misses=true;if(qs.get('song'))song=Object.keys(PASSAGES)[+qs.get('song')];
 load();show();requestAnimationFrame(frame);
 </script>
