@@ -51,7 +51,7 @@ import uvicorn
 import yt_dlp
 from demucs.apply import apply_model
 from demucs.pretrained import get_model
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -3496,6 +3496,82 @@ def delete_artist(req: IdRequest):
     return {"ok": True}
 
 
+# Screen recordings (user: "I would like to be able to record my games with the entire screen and both the song and my
+# input", "when I record my screen, all I hear is my bass", "record my entire usage while I have recording enabled, not
+# just during the song"; then only inside the Encore app, which records its own window, desktop/): the page records the
+# picture and the sound with two recorders (in Electron one recorder with both stalled: nothing came out) and sends both
+# here in pieces as it goes (a crash keeps what came so far); finished, they're put together as an MP4 QuickTime plays:
+# the H.264 picture copied as it is, the sound made AAC (a VP8/VP9 picture is converted). Kept in ~/Movies/Encore,
+# outside the library (whose folders are artists).
+RECORDINGS_DIR = Path.home() / "Movies" / "Encore"
+_recordings = {}   # id -> {"video": file, "audio": file, "h264": bool, "name": the final name without .mp4}
+
+
+def recording(rec_id):
+    r = _recordings.get(rec_id)
+    if not r:
+        raise HTTPException(404, "That recording isn't open.")
+    return r
+
+
+@api.post("/api/recording/start")
+def recording_start(h264: int = 1):
+    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"Encore {time.strftime('%Y-%m-%d at %H.%M.%S')}"
+    r = {"video": RECORDINGS_DIR / f".{name}.video.webm", "audio": RECORDINGS_DIR / f".{name}.audio.webm", "h264": bool(h264), "name": name}
+    r["video"].write_bytes(b"")
+    r["audio"].write_bytes(b"")
+    rec_id = uuid.uuid4().hex
+    _recordings[rec_id] = r
+    return {"id": rec_id, "name": name}
+
+
+@api.post("/api/recording/{rec_id}/chunk")
+async def recording_chunk(rec_id: str, request: Request, track: str = "video"):
+    r = recording(rec_id)
+    if track not in ("video", "audio"):
+        raise HTTPException(400, "A piece is video or audio.")
+    data = await request.body()
+    with open(r[track], "ab") as f:
+        f.write(data)
+    return {"bytes": r[track].stat().st_size}
+
+
+@api.post("/api/recording/{rec_id}/finish")
+def recording_finish(rec_id: str):
+    r = recording(rec_id)
+    _recordings.pop(rec_id, None)
+    video, audio, final = r["video"], r["audio"], RECORDINGS_DIR / f"{r['name']}.mp4"
+    if not video.stat().st_size:
+        video.unlink()
+        audio.unlink(missing_ok=True)
+        raise HTTPException(400, "Nothing was recorded.")
+    sound = ["-i", str(audio)] if audio.stat().st_size else []
+    picture = ["-c:v", "copy"] if r["h264"] else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+    cmd = [FFMPEG, "-v", "error", "-y", "-i", str(video), *sound, "-map", "0:v", *(["-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if sound else []),
+           *picture, "-movflags", "+faststart", str(final)]
+    done = subprocess.run(cmd, capture_output=True)
+    if done.returncode == 0 and final.exists() and final.stat().st_size:
+        video.unlink()   # our own temporary files, replaced by the MP4
+        audio.unlink(missing_ok=True)
+        return {"path": str(final), "name": final.name}
+    for part in (video, audio):                        # couldn't be put together: keep them as the browser recorded them
+        if part.exists() and part.stat().st_size:
+            part.rename(RECORDINGS_DIR / part.name.lstrip("."))
+    return {"path": str(RECORDINGS_DIR / video.name.lstrip(".")), "name": video.name.lstrip("."), "note": "kept as recorded"}
+
+
+@api.post("/api/recording/reveal")
+def recording_reveal(path: str = ""):
+    target = Path(path) if path else RECORDINGS_DIR
+    if path and (target.parent != RECORDINGS_DIR or not target.exists()):
+        raise HTTPException(404, "That recording isn't there any more.")
+    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "darwin":
+        subprocess.run(["open", "-R", str(target)] if path else ["open", str(target)])
+    return {"ok": True}
+
+
 @api.post("/api/open-folder")
 def open_folder():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -3894,6 +3970,18 @@ def create_shortcut(req: ShortcutRequest = ShortcutRequest()):
     except (OSError, subprocess.CalledProcessError) as e:
         raise HTTPException(500, f"Couldn't create the shortcut: {e}")
     return {"path": str(path)}
+
+
+@api.post("/api/encore-app")
+def make_encore_app():
+    """Builds ~/Applications/Encore.app (desktop/make-app.sh: Electron, downloaded once and checksum-checked, running
+    desktop/main.js): Encore in its own window, with window-only recording (user: "make this into its own app")."""
+    if sys.platform != "darwin":
+        raise HTTPException(400, "The Encore app is for Macs.")
+    done = subprocess.run(["/bin/sh", str(APP_ROOT / "desktop" / "make-app.sh")], cwd=APP_ROOT, capture_output=True, text=True, timeout=900)
+    if done.returncode != 0:
+        raise HTTPException(500, f"Couldn't make the Encore app: {(done.stderr or done.stdout).strip().splitlines()[-1:] or ['unknown error']}")
+    return {"path": done.stdout.strip().splitlines()[-1]}
 
 
 class FreshStaticFiles(StaticFiles):

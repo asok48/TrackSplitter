@@ -1,0 +1,390 @@
+<!doctype html><meta charset="utf-8"><title>Encore results and progress</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Two pieces only, kept off ui.html / arcade.html (user: "lets do mockups in a new page, the current one has way too much
+     on it"). Picked from "make it look more complete" (2026-11-08): a richer results screen and the song's progress in a game.
+     Everything here is data the game already keeps: game.result[k] (hit / miss), game.grade[k] (Perfect / Good / Messy),
+     game.hitAt[k] (so each hit's timing), the bars (tab lines), encorePlan's phrases and the light cues' big moments.
+     The run is made up (a 3:18 song at 120 bpm, a hard stretch in the middle) and judged as the cursor passes. -->
+<style>
+:root{color-scheme:dark;--ink:#f5f5f7;--dim:rgba(245,245,247,.6);--faint:rgba(245,245,247,.34);--line:rgba(255,255,255,.09);
+ --mood:245,230,211;--font:-apple-system,"SF Pro Display",system-ui,sans-serif;
+ --perfect:#f6d878;--good:#d9dee5;--messy:#c4a1ff;--miss:#f27b7b}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#06070b;color:var(--ink);font:400 14px var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
+#bg{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit}
+.caps{font:600 10.5px var(--font);letter-spacing:.24em;text-transform:uppercase;color:var(--faint)}
+.silver{background:linear-gradient(#fff,#c3c9d2);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pill{height:40px;padding:0 24px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);
+ font:600 11.5px var(--font);letter-spacing:.2em;text-transform:uppercase;cursor:pointer;transition:background .15s,border-color .15s}
+.pill:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.35)}
+.pill.primary{background:var(--ink);color:#0a0b10;border-color:transparent;box-shadow:0 8px 30px rgba(var(--mood),.18)}
+.pill.primary:hover{background:#fff}
+.pill.sm{height:28px;padding:0 14px;font-size:10px;letter-spacing:.18em}
+canvas.rec{display:block}
+.screen{position:fixed;inset:0;display:none}
+.screen.on{display:block;animation:in .45s ease}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* mockup controls: one row, few switches */
+.bar{position:fixed;top:14px;left:18px;right:18px;z-index:9;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font:600 12.5px var(--font)}
+.bar b{font:700 15px var(--font);margin-right:6px}
+.bar button{border:0;background:none;padding:3px 0;color:rgba(245,245,247,.45);cursor:pointer;border-bottom:1.5px solid transparent}
+.bar button.on{color:#fff;border-bottom-color:rgba(255,255,255,.7)}
+.bar .sep{width:1px;height:14px;background:rgba(255,255,255,.15)}
+.bar .lbl{color:rgba(245,245,247,.4)}
+.bar .grp{display:contents}
+.bar .grp.off{display:none}
+
+/* ---- results ---- */
+#t-res .wrap{position:absolute;inset:64px 56px 34px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.head{display:flex;flex-direction:column;align-items:center;text-align:center}
+.song{margin-bottom:12px}
+#res-tier{font:600 12px var(--font);letter-spacing:.32em;margin-top:4px;transition:color .3s}
+#res-score{font:200 76px var(--font);line-height:1;margin:12px 0 8px;font-variant-numeric:tabular-nums}
+.best-line{display:flex;gap:12px;align-items:center;justify-content:center;min-height:24px}
+.newbest{font:600 10.5px var(--font);letter-spacing:.24em;padding:5px 12px;border-radius:999px;color:#0a0b10;background:rgb(var(--mood));opacity:0;transform:scale(.8);transition:opacity .3s,transform .3s}
+.newbest.on{opacity:1;transform:none}
+
+/* the breakdown: each count fades up in turn after the score */
+.counts{display:flex;margin:26px 0 22px}
+.counts>div{padding:0 30px;border-left:1px solid var(--line);opacity:0;transform:translateY(6px);transition:opacity .4s,transform .4s}
+.counts>div.on{opacity:1;transform:none}
+.counts>div:first-child{border-left:0}
+.counts b{display:block;font:200 30px var(--font);margin-top:6px;font-variant-numeric:tabular-nums}
+.counts b small{font-size:15px;color:var(--faint)}
+.counts .k-perfect .caps{color:var(--perfect)}.counts .k-good .caps{color:var(--good)}
+.counts .k-messy .caps{color:var(--messy)}.counts .k-miss .caps{color:var(--miss)}
+
+/* the run across the song */
+.run{width:min(980px,100%);opacity:0;transition:opacity .5s}
+.run.on{opacity:1}
+.run .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+#run-cv{display:block;width:100%;height:118px;cursor:crosshair}
+.axis{display:flex;justify-content:space-between;margin-top:6px;font:300 11px var(--font);color:var(--faint);font-variant-numeric:tabular-nums}
+#run-tip{position:fixed;z-index:5;pointer-events:none;padding:7px 11px;border-radius:9px;background:rgba(12,13,20,.82);border:1px solid var(--line);
+ backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font:300 12.5px var(--font);white-space:nowrap;opacity:0;transition:opacity .12s}
+#run-tip b{font-weight:500}
+.below{display:flex;justify-content:space-between;align-items:flex-start;gap:40px;margin-top:18px}
+.weak{display:flex;flex-direction:column;gap:8px}
+.weak .spot{display:flex;align-items:center;gap:14px;font:300 14px var(--font)}
+.weak .spot em{font-style:normal;color:var(--faint);font-size:12px;margin-left:6px}
+.weak .spot .dot{width:7px;height:7px;border-radius:50%;background:var(--miss);box-shadow:0 0 8px var(--miss)}
+.timing{min-width:300px}
+.timing p{margin:8px 0 0;font:300 14px var(--font)}
+.timing p em{font-style:normal;color:var(--faint);font-size:12px}
+#tim-cv{display:block;width:300px;height:44px;margin-top:8px}
+.btns{display:flex;gap:12px;margin-top:22px}
+
+/* Split layout: record + score on the left, the breakdown and timing on the right, the run underneath */
+.split .top-row{display:grid;grid-template-columns:auto 1fr;gap:56px;align-items:center;width:min(980px,100%)}
+.split .head{flex-direction:row;gap:26px;text-align:left;align-items:center}
+.split .head .txt{display:flex;flex-direction:column;align-items:flex-start}
+.split .best-line{justify-content:flex-start}
+.split .counts{margin:0;display:grid;grid-template-columns:repeat(3,auto);row-gap:16px;justify-content:end}
+.split .counts>div:nth-child(4){border-left:0}
+.top-row{display:contents}
+.head .txt{display:contents}
+
+/* ---- in game: a stand-in for the Arcade board, only to show where the progress sits ---- */
+#t-game{cursor:default}
+#game-cv{position:absolute;inset:0;width:100%;height:100%}
+.plaque{position:absolute;top:58px;right:48px;display:flex;align-items:center;gap:14px}
+.plaque .num{font:200 34px var(--font);line-height:1;font-variant-numeric:tabular-nums;text-align:right;min-width:150px}
+.plaque .tier{margin-top:6px;text-align:right}
+.plaque .stack{display:flex;flex-direction:column;align-items:flex-end}
+#pg-plaque{display:none;width:150px;height:3px;margin-top:9px}
+</style>
+<canvas id="bg"></canvas>
+
+<div class="bar" id="bar">
+ <b>Encore</b>
+ <button data-go="res" class="on">Results</button><button data-go="game">In game</button>
+ <span class="sep"></span>
+ <span class="grp" id="g-res">
+  <span class="lbl">Layout</span><button data-lay="stack" class="on">Stacked</button><button data-lay="split">Split</button>
+  <span class="sep"></span>
+  <span class="lbl">Run</span><button data-graph="bars" class="on">Bars</button><button data-graph="ribbon">Ribbon</button>
+  <span class="sep"></span>
+  <span class="lbl">How it went</span><button data-skill="0.93" class="on">Good</button><button data-skill="0.75">Rough</button><button data-skill="1">Full combo</button>
+  <span class="sep"></span><button id="replay">Replay</button>
+ </span>
+ <span class="grp off" id="g-game">
+  <span class="lbl">Progress</span><button data-pos="top" class="on">Top edge</button><button data-pos="under">Under board</button><button data-pos="plaque">In score</button>
+  <span class="sep"></span>
+  <span class="lbl">Marks</span><button data-mark="encore" class="on">Encore phrases</button><button data-mark="big" class="on">Big moments</button><button data-mark="time" class="on">Time</button>
+ </span>
+</div>
+
+<!-- Results -->
+<section class="screen on" id="t-res">
+ <div class="wrap" id="res-wrap">
+  <div class="top-row">
+   <div class="head">
+    <canvas class="rec" id="res-rec" data-size="150"></canvas>
+    <div class="txt">
+     <div class="song caps" style="order:-1">Flower Power Madness · The Sunny Days · Hard</div>
+     <div id="res-tier" class="caps"></div>
+     <div id="res-score" class="silver">0</div>
+     <div class="best-line"><span class="newbest" id="newbest">NEW BEST</span><span class="caps" id="prevbest">Previous best 44,960</span></div>
+    </div>
+   </div>
+   <div class="counts" id="counts">
+    <div class="k-acc"><span class="caps">Accuracy</span><b id="c-acc"></b></div>
+    <div class="k-perfect"><span class="caps">Perfect</span><b id="c-perfect"></b></div>
+    <div class="k-good"><span class="caps">Good</span><b id="c-good"></b></div>
+    <div class="k-messy"><span class="caps">Messy</span><b id="c-messy"></b></div>
+    <div class="k-miss"><span class="caps">Miss</span><b id="c-miss"></b></div>
+    <div class="k-streak"><span class="caps">Best streak</span><b id="c-streak"></b></div>
+   </div>
+  </div>
+  <div class="run" id="run">
+   <div class="row"><span class="caps">Your run</span><span class="caps" id="run-sum"></span></div>
+   <canvas id="run-cv"></canvas>
+   <div class="axis" id="axis"></div>
+   <div class="below">
+    <div class="weak" id="weak"></div>
+    <div class="timing"><span class="caps">Timing</span><canvas id="tim-cv"></canvas><p id="tim-txt"></p></div>
+   </div>
+  </div>
+  <div class="btns"><button class="pill">Songs</button><button class="pill" id="b-practise">Practise the hard parts</button><button class="pill primary">Play again</button></div>
+ </div>
+</section>
+<div id="run-tip"></div>
+
+<!-- In game -->
+<section class="screen" id="t-game">
+ <canvas id="game-cv"></canvas>
+ <div class="plaque">
+  <canvas class="rec" id="pl-rec" data-size="56"></canvas>
+  <div class="stack"><div class="num silver" id="pl-score">0</div><div class="tier caps" id="pl-tier"></div><canvas id="pg-plaque"></canvas></div>
+ </div>
+</section>
+
+<script>
+const FONT='-apple-system,"SF Pro Display",system-ui,sans-serif',DPR=Math.min(2,devicePixelRatio||1);
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const rgb=(h)=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),css=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`,ease=(a,b,k)=>a.map((v,i)=>v+(b[i]-v)*k);
+const COL={Perfect:'#f6d878',Good:'#d9dee5',Messy:'#c4a1ff',miss:'#f27b7b'};
+const mmss=(s)=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+
+// ---- records: the same drawing as ui.html / the game's drawRecord ----
+const TIERS=[['NO RECORD YET',['#2e2e36','#4a4a55','#2e2e36']],['BRONZE',['#6b3a16','#c97f42','#7d4620']],['SILVER',['#737b86','#d9dee5','#858d98']],
+             ['GOLD',['#8a5c03','#efc244','#a06c06']],['PLATINUM',['#9aa4b0','#e8edf2','#b0b9c3']],['DIAMOND',['#4fa9de','#cdeeff','#9b8cec']]];
+const VIVID=['#ff9a52','#eef4ff','#ffcf33','#cfe3ff','#5fd0ff'];
+const tierOf=(v)=>Math.min(5,Math.floor(v)),tierName=(v)=>{const t=tierOf(v);return t?TIERS[t][0]+' RECORD':'NO RECORD YET'};
+const tierColor=(v)=>tierOf(v)?TIERS[tierOf(v)][1][1]:'rgba(245,245,247,.4)';
+function drawRecord(g,r0,v,t,popAt=-9){
+ const tier=tierOf(v),frac=tier>=5?0:v-tier,mt=TIERS[tier][1],small=r0<14;
+ const pop=1+0.25*Math.max(0,1-(t-popAt)/0.35),r=r0*pop;
+ const metal=(m)=>{const q=g.createLinearGradient(-r,-r,r,r);q.addColorStop(0,m[0]);q.addColorStop(0.5,m[1]);q.addColorStop(1,m[2]);return q};
+ g.save();
+ g.shadowColor='rgba(0,0,0,.55)';g.shadowBlur=r*0.4;g.shadowOffsetY=r*0.1;g.beginPath();g.arc(0,0,r,0,7);g.fillStyle=metal(mt);g.fill();g.shadowColor='transparent';
+ if(!tier){g.globalAlpha=0.6;g.fill();g.globalAlpha=1}
+ const vc=VIVID[Math.min(4,tier)],ang=-Math.PI/2+Math.PI*2*frac;
+ if(!small)for(let i=0;i<9;i++){g.beginPath();g.arc(0,0,r*(0.5+i*0.055),0,7);g.strokeStyle=i%2?'rgba(0,0,0,.14)':'rgba(255,255,255,.12)';g.lineWidth=Math.max(0.5,r/40);g.stroke()}
+ g.save();g.beginPath();g.arc(0,0,r,0,7);g.clip();g.rotate(t*0.8);
+ for(const k of[0,Math.PI]){g.save();g.rotate(k);const q=g.createLinearGradient(-r*0.2,-r,r*0.2,-r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.28)');q.addColorStop(1,'rgba(255,255,255,0)');
+  g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2-0.3,-Math.PI/2+0.3);g.closePath();g.fillStyle=q;g.fill();g.restore()}
+ g.restore();
+ g.beginPath();g.arc(0,0,r-0.5,0,7);g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=1;g.stroke();
+ const rr=r+Math.max(2.5,r*0.13),lw=Math.max(1.8,r*0.1);
+ if(tier<5){g.beginPath();g.arc(0,0,rr,0,7);g.strokeStyle='rgba(255,255,255,.1)';g.lineWidth=lw;g.stroke()}
+ if(frac>0){g.save();g.beginPath();g.arc(0,0,rr,-Math.PI/2,ang);g.strokeStyle=vc;g.lineWidth=lw;g.lineCap='round';g.shadowColor=vc;g.shadowBlur=small?3:r*0.3;g.globalAlpha=0.65+0.35*frac;g.stroke();g.restore()}
+ g.beginPath();g.arc(0,0,r*0.36,0,7);g.fillStyle='rgba(0,0,0,.22)';g.fill();g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=0.7;g.stroke();
+ g.fillStyle='#050506';g.beginPath();g.arc(0,0,Math.max(1,r*0.07),0,7);g.fill();
+ const sa=(t-popAt)/0.7;if(sa>=0&&sa<1){g.save();g.beginPath();g.arc(0,0,r,0,7);g.clip();const sx=-r*1.4+2.8*r*sa,q=g.createLinearGradient(sx-r*0.3,-r,sx+r*0.3,r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.6)');q.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=q;g.fillRect(-r,-r,2*r,2*r);g.restore()}
+ g.restore();
+}
+function sizeRec(c){const s=+c.dataset.size||40;c.style.width=c.style.height=s+'px';c.width=c.height=Math.round(s*DPR)}
+function paintRec(c,t,v,popAt=-9){const g=c.getContext('2d'),s=+c.dataset.size||40;g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,s,s);g.translate(s/2,s/2);drawRecord(g,s/2*0.78,v,t,popAt)}
+$$('canvas.rec').forEach(sizeRec);
+function fit(c){const w=c.clientWidth,h=c.clientHeight;if(c.width!==Math.round(w*DPR)||c.height!==Math.round(h*DPR)){c.width=Math.round(w*DPR);c.height=Math.round(h*DPR)}const g=c.getContext('2d');g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,w,h);return [g,w,h]}
+
+// ---- the song and a made-up run: 99 bars of 2 s; sparse intro, busier choruses, a hard stretch in bars 52-59 ----
+let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const BAR=2,NB=99,DUR=NB*BAR;
+const busy=(b)=>b<8?2:b>=52&&b<60?8:((b>>3)%2?6:4);
+const NOTES=[];for(let b=0;b<NB;b++){const n=busy(b);for(let i=0;i<n;i++)NOTES.push({t:b*BAR+i*BAR/n+0.02,bar:b,s:(i*3+b)%4,f:[0,3,5,7,2,5,0,7][(i+b)%8]})}
+const ENC=[16,17,36,37,68,69,84,85];                     // encorePlan's 2-bar phrases (bars)
+const BIG=[32,48,64,80];                                  // the light cues' big moments (bars)
+let RUN=[];
+function judgeRun(skill){   // result + grade + timing for every note, like game.result / game.grade / game.hitAt
+ seed=11;RUN=NOTES.map(n=>{
+  const hard=n.bar>=52&&n.bar<60?(skill<1?0.3:0):n.bar>=88?0.05:0,p=skill-hard;
+  if(rnd()>p)return {res:'miss'};
+  const dt=(-0.016+(rnd()+rnd()+rnd()-1.5)*0.05*(skill<0.8?1.5:1))*(skill>=1?0.6:1);
+  const grade=skill<1&&rnd()<0.03+hard*0.4?'Messy':Math.abs(dt)<0.04?'Perfect':'Good';
+  return {res:'hit',grade,dt}});
+}
+function stats(){
+ const c={Perfect:0,Good:0,Messy:0,miss:0};let st=0,best=0;
+ for(const r of RUN){c[r.res==='miss'?'miss':r.grade]++;if(r.res==='hit'&&r.grade!=='Messy'){st++;best=Math.max(best,st)}else st=0}
+ const hit=NOTES.length-c.miss,acc=(c.Perfect+c.Good*0.8+c.Messy*0.4)/NOTES.length;
+ const dts=RUN.filter(r=>r.res==='hit').map(r=>r.dt),mean=dts.reduce((a,b)=>a+b,0)/Math.max(1,dts.length);
+ // weak spots: runs of bars where under 75% was hit cleanly, 3 worst
+ const per=[];for(let b=0;b<NB;b++)per.push({n:0,ok:0});NOTES.forEach((n,k)=>{per[n.bar].n++;if(RUN[k].res==='hit'&&RUN[k].grade!=='Messy')per[n.bar].ok++});
+ const spots=[];let s0=-1;for(let b=0;b<=NB;b++){const bad=b<NB&&per[b].n&&per[b].ok/per[b].n<0.75;if(bad&&s0<0)s0=b;if(!bad&&s0>=0){const ps=per.slice(s0,b),n=ps.reduce((a,p)=>a+p.n,0),ok=ps.reduce((a,p)=>a+p.ok,0);if(n>=6)spots.push({a:s0,b:b-1,share:ok/n,lost:n-ok});s0=-1}}
+ for(let i=spots.length-1;i>0;i--)if(spots[i].a-spots[i-1].b<=3){const x=spots[i-1],y=spots.splice(i,1)[0],n=x.lost/(1-x.share)+y.lost/(1-y.share);   // one spot for a stretch with a good bar or two inside
+  x.b=y.b;x.lost+=y.lost;x.share=1-x.lost/n}
+ spots.sort((x,y)=>y.lost-x.lost);
+ return {c,hit,acc,best,mean,dts,per,spots:spots.slice(0,3).sort((x,y)=>x.a-y.a)};
+}
+
+// ---- results ----
+let S,resAt=0,resPop=-9,resTier=0,resVal=0,graph='bars',hoverBar=-1,clock=0;
+function showRes(){
+ judgeRun(skill);S=stats();
+ resVal=Math.min(5,S.acc>=0.999?5:S.acc*4.4-0.4);resAt=clock;resTier=0;
+ $$('#counts>div').forEach(d=>d.classList.remove('on'));$('#run').classList.remove('on');$('#newbest').classList.remove('on');
+ $('#c-acc').innerHTML=Math.round(S.acc*100)+'<small>%</small>';
+ for(const k of['Perfect','Good','Messy'])$('#c-'+k.toLowerCase()).textContent=S.c[k];
+ $('#c-miss').textContent=S.c.miss;$('#c-streak').textContent=S.best;
+ $('#run-sum').textContent=S.hit+' of '+NOTES.length+' notes';
+ const ax=$('#axis');ax.replaceChildren();for(let i=0;i<=6;i++){const s=document.createElement('span');s.textContent=mmss(DUR*i/6);ax.append(s)}
+ const w=$('#weak');w.replaceChildren();
+ const head=document.createElement('span');head.className='caps';head.textContent=S.spots.length?'Where it slipped':'Nothing slipped';w.append(head);
+ if(!S.spots.length){const p=document.createElement('div');p.className='spot';p.textContent='Every bar at 75% or better';w.append(p)}
+ for(const sp of S.spots){const d=document.createElement('div');d.className='spot';
+  d.innerHTML=`<i class="dot"></i><span>${sp.a===sp.b?'Bar '+(sp.a+1):'Bars '+(sp.a+1)+'–'+(sp.b+1)}<em>${mmss(sp.a*BAR)} · ${Math.round(sp.share*100)}% clean</em></span>`;
+  const b=document.createElement('button');b.className='pill sm';b.textContent='Practise';d.append(b);
+  d.onmouseenter=()=>hoverSpot=sp;d.onmouseleave=()=>hoverSpot=null;w.append(d)}
+ $('#b-practise').style.display=S.spots.length?'':'none';
+ const ms=Math.round(S.mean*1000);
+ $('#tim-txt').innerHTML=Math.abs(ms)<8?'Right on the beat <em>· average '+(ms>0?'+':'')+ms+' ms</em>':
+  (ms<0?'A touch early':'A touch late')+' <em>· average '+(ms>0?'+':'−')+Math.abs(ms)+' ms</em>';
+}
+let hoverSpot=null;
+function drawRun(t,show){
+ const [g,w,h]=fit($('#run-cv')),bw=w/NB,k=Math.min(1,Math.max(0,(t-resAt-3.6)/1.4));   // draws in from the left once shown
+ const maxN=8,base=h-14,top=8;
+ // Encore phrases: a gold band along the top; big moments: a faint line
+ for(const b of BIG){g.fillStyle='rgba(255,255,255,.06)';g.fillRect(b*bw,top,1,base-top)}
+ for(const b of ENC){g.fillStyle='rgba(246,216,120,.5)';g.fillRect(b*bw+1,base+6,bw-2,2)}
+ for(const sp of S.spots){const on=hoverSpot===sp;g.fillStyle=on?'rgba(242,123,123,.16)':'rgba(242,123,123,.07)';g.fillRect(sp.a*bw-1,top-4,(sp.b-sp.a+1)*bw+2,base-top+8)}
+ const upto=NB*(show?k:0);
+ if(graph==='bars'){
+  for(let b=0;b<NB;b++){if(b>upto)break;const ks=NOTES.map((n,i)=>n.bar===b?i:-1).filter(i=>i>=0),hh=(base-top)*(ks.length/maxN);
+   let y=base;const order=['Perfect','Good','Messy','miss'];
+   for(const o of order){const n=ks.filter(i=>(RUN[i].res==='miss'?'miss':RUN[i].grade)===o).length;if(!n)continue;const sh=hh*n/ks.length;
+    g.fillStyle=COL[o];g.globalAlpha=hoverBar<0||hoverBar===b?0.9:0.45;g.fillRect(b*bw+1,y-sh,Math.max(1,bw-2),sh-0.5);y-=sh}
+   g.globalAlpha=1}
+ }else{   // ribbon: how clean each bar was, as a line, with misses as red ticks under it
+  g.beginPath();for(let b=0;b<NB&&b<=upto;b++){const p=S.per[b],v=p.n?p.ok/p.n:1,x=b*bw+bw/2,y=top+(base-top)*(1-v)*0.9+4;b?g.lineTo(x,y):g.moveTo(x,y)}
+  const q=g.createLinearGradient(0,top,0,base);q.addColorStop(0,'#f6d878');q.addColorStop(0.5,'#d9dee5');q.addColorStop(1,'#f27b7b');
+  g.strokeStyle=q;g.lineWidth=2;g.lineJoin='round';g.shadowColor='rgba(246,216,120,.5)';g.shadowBlur=8;g.stroke();g.shadowBlur=0;
+  g.lineTo(Math.min(upto,NB-1)*bw+bw/2,base);g.lineTo(bw/2,base);g.closePath();const f=g.createLinearGradient(0,top,0,base);f.addColorStop(0,'rgba(246,216,120,.16)');f.addColorStop(1,'rgba(246,216,120,0)');g.fillStyle=f;g.fill();
+  NOTES.forEach((n,i)=>{if(RUN[i].res!=='miss'||n.bar>upto)return;g.fillStyle=COL.miss;g.fillRect(n.t/DUR*w-0.5,base+1,1.2,4)});
+ }
+ g.fillStyle='rgba(255,255,255,.12)';g.fillRect(0,base,w,1);
+ if(hoverBar>=0){g.fillStyle='rgba(255,255,255,.7)';g.fillRect(hoverBar*bw+bw/2-0.5,top-4,1,base-top+4)}
+}
+function drawTiming(){   // where your hits landed against the beat: the Perfect window gold, a dot cloud, the average
+ const [g,w,h]=fit($('#tim-cv')),R=0.1,x=(dt)=>w/2+dt/R*(w/2),mid=h/2;
+ g.fillStyle='rgba(255,255,255,.1)';g.fillRect(0,mid,w,1);
+ g.fillStyle='rgba(246,216,120,.12)';g.fillRect(x(-0.04),4,x(0.04)-x(-0.04),h-8);
+ g.fillStyle='rgba(255,255,255,.5)';g.fillRect(w/2-0.5,2,1,h-4);
+ seed=3;for(const d of S.dts){const yy=mid+(rnd()-0.5)*(h-14);g.fillStyle=Math.abs(d)<0.04?'rgba(246,216,120,.55)':'rgba(217,222,229,.4)';g.beginPath();g.arc(x(Math.max(-R,Math.min(R,d))),yy,1.3,0,7);g.fill()}
+ g.fillStyle='#fff';g.shadowColor='#fff';g.shadowBlur=8;g.fillRect(x(S.mean)-1,1,2,h-2);g.shadowBlur=0;
+ g.font='600 9px '+FONT;g.fillStyle='rgba(245,245,247,.34)';g.textBaseline='bottom';g.textAlign='left';g.fillText('EARLY',0,h);g.textAlign='right';g.fillText('LATE',w,h);
+}
+$('#run-cv').addEventListener('mousemove',e=>{const r=e.currentTarget.getBoundingClientRect(),b=Math.floor((e.clientX-r.left)/r.width*NB);hoverBar=b;
+ const p=S.per[b],tip=$('#run-tip'),ms=NOTES.map((n,i)=>n.bar===b&&RUN[i].res==='miss'?1:0).reduce((a,c)=>a+c,0);
+ tip.innerHTML=`<b>Bar ${b+1}</b> · ${mmss(b*BAR)} · ${p.ok} of ${p.n} clean${ms?' · '+ms+' missed':''}${ENC.includes(b)?' · Encore phrase':''}`;
+ tip.style.opacity=1;tip.style.left=Math.min(innerWidth-tip.offsetWidth-12,e.clientX+14)+'px';tip.style.top=r.top-34+'px'});
+$('#run-cv').addEventListener('mouseleave',()=>{hoverBar=-1;$('#run-tip').style.opacity=0});
+function tickRes(t){
+ const k=Math.min(1,Math.max(0,(t-resAt-0.4)/2.4)),e=1-Math.pow(1-k,3),v=resVal*e,tr=tierOf(v);
+ if(tr>resTier){resTier=tr;resPop=t}
+ paintRec($('#res-rec'),t,v,resPop);
+ const final=Math.round(13320*resVal);
+ $('#res-score').textContent=Math.round(final*e).toLocaleString();
+ const rt=$('#res-tier');rt.textContent=S.c.miss===0&&k>=1?'FULL COMBO · '+tierName(v):tierName(v);rt.style.color=tierColor(v);
+ $('#newbest').classList.toggle('on',k>=1&&final>44960);
+ // after the score: the counts one by one, then the run draws in
+ $$('#counts>div').forEach((d,i)=>d.classList.toggle('on',t-resAt>2.9+i*0.12));
+ $('#run').classList.toggle('on',t-resAt>3.5);
+ drawRun(t,t-resAt>3.5);drawTiming();
+}
+
+// ---- in game: the board stand-in, judged as the cursor passes; the progress drawn where picked ----
+let pos='top',marks={encore:true,big:true,time:true},gameAt=0;
+const gcv=$('#game-cv');
+function gameT(t){return ((t-gameAt)*6)%DUR}   // 6x so the whole song goes by in ~33 s
+function progress(g,x0,y0,w,h,t,opts={}){   // the song as a line: played part coloured by how it went, Encore phrases ahead in gold
+ const px=(s)=>x0+s/DUR*w;
+ g.fillStyle='rgba(255,255,255,.12)';g.beginPath();g.roundRect(x0,y0,w,h,h/2);g.fill();
+ // played: a slice per bar in its result colour (clean = soft white, a miss in the bar = red, all Perfect = gold)
+ for(let b=0;b<NB;b++){const bs=b*BAR;if(bs>t)break;const be=Math.min(t,bs+BAR),ks=[];NOTES.forEach((n,i)=>{if(n.bar===b&&n.t<=t)ks.push(i)});
+  const miss=ks.some(i=>RUN[i].res==='miss'),gold=ks.length&&ks.every(i=>RUN[i].grade==='Perfect');
+  g.fillStyle=miss?'rgba(242,123,123,.85)':gold?'rgba(246,216,120,.9)':'rgba(245,245,247,.75)';g.fillRect(px(bs),y0,px(be)-px(bs)+0.5,h)}
+ if(marks.big)for(const b of BIG){g.fillStyle=b*BAR<t?'rgba(255,255,255,.0)':'rgba(255,255,255,.55)';g.fillRect(px(b*BAR)-0.5,y0-3,1,h+6)}
+ if(marks.encore)for(let i=0;i<ENC.length;i+=2){const a=ENC[i]*BAR,b=(ENC[i+1]+1)*BAR;if(b<t)continue;g.fillStyle='rgba(246,216,120,.85)';g.shadowColor='rgba(246,216,120,.8)';g.shadowBlur=6;g.fillRect(px(Math.max(a,t)),y0,px(b)-px(Math.max(a,t)),h);g.shadowBlur=0}
+ // the head: a small bright tick, like the board's cursor
+ g.fillStyle='#fff';g.shadowColor='rgba(var(--mood),1)';g.shadowColor='rgba(245,230,211,.95)';g.shadowBlur=10;g.fillRect(px(t)-1,y0-4,2,h+8);g.shadowBlur=0;
+ if(marks.time&&opts.time!==false){g.font='300 12px '+FONT;g.fillStyle='rgba(245,245,247,.6)';g.textBaseline='middle';
+  if(opts.timeSide==='right'){g.textAlign='left';g.fillText(mmss(t)+' / '+mmss(DUR),x0+w+12,y0+h/2)}
+  else{g.textAlign='right';g.fillText(mmss(t),x0-10,y0+h/2);g.textAlign='left';g.fillText(mmss(DUR),x0+w+10,y0+h/2)}}
+}
+function tickGame(t){
+ const [g,W,H]=fit(gcv),st=gameT(t);
+ if(st<0.1&&RUN.length!==NOTES.length)judgeRun(0.93);
+ // the board stand-in (strings, keycaps gliding, the still cursor); only for placing the progress
+ const L=W*0.05,R=W*0.95,top=H*0.36,th=Math.min(H*0.34,300),sp=th/4,cx=L+(R-L)*0.22,u=150,STR=['#6ee7a8','#f8a1a1','#f6d878','#8fb8fa'];
+ const pg=g.createLinearGradient(L,0,R,0);pg.addColorStop(0,'rgba(12,13,20,0)');pg.addColorStop(0.08,'rgba(12,13,20,.55)');pg.addColorStop(0.92,'rgba(12,13,20,.55)');pg.addColorStop(1,'rgba(12,13,20,0)');
+ g.fillStyle=pg;g.fillRect(L,top-14,R-L,th+28);
+ for(let s=0;s<4;s++){const y=top+sp*(3.5-s);g.strokeStyle=css(rgb(STR[s]),0.4);g.lineWidth=4.2-s*0.75;g.beginPath();g.moveTo(L,y);g.lineTo(R,y);g.stroke()}
+ const sz=Math.min(sp*0.66,40);g.font=`500 ${sz*0.58}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';
+ NOTES.forEach((n,i)=>{const x=cx+(n.t-st)*u;if(x<L-20||x>R+20)return;const y=top+sp*(3.5-n.s),passed=n.t<st,r=RUN[i];
+  g.globalAlpha=passed?Math.max(0,1-(cx-x)/(u*1.2)):1;
+  g.fillStyle=passed&&r.res==='miss'?'rgba(60,24,28,.9)':'rgba(16,17,24,.92)';g.beginPath();g.roundRect(x-sz/2,y-sz/2,sz,sz,sz*0.22);g.fill();
+  g.strokeStyle=passed?(r.res==='miss'?COL.miss:COL[r.grade]):css(rgb(STR[n.s]),0.8);g.lineWidth=1.4;g.stroke();g.fillStyle='#f5f5f7';g.fillText(n.f,x,y+0.5);g.globalAlpha=1});
+ g.strokeStyle='#fff';g.lineWidth=2;g.shadowColor='rgba(245,230,211,.9)';g.shadowBlur=14;g.beginPath();g.moveTo(cx,top-18);g.lineTo(cx,top+th+18);g.stroke();g.shadowBlur=0;
+ // the progress, where picked
+ if(pos==='top')progress(g,0,0,W,3,st,{time:false});
+ if(pos==='top'&&marks.time){g.font='300 12px '+FONT;g.fillStyle='rgba(245,245,247,.55)';g.textAlign='left';g.textBaseline='top';g.fillText(mmss(st)+' / '+mmss(DUR),48,62)}
+ if(pos==='under')progress(g,L+(R-L)*0.18,top+th+70,(R-L)*0.64,4,st);
+ const pc=$('#pg-plaque');pc.style.display=pos==='plaque'?'block':'none';
+ if(pos==='plaque'){pc.style.width='150px';pc.style.height='12px';const [pg2,pw]=fit(pc);progress(pg2,0,5,pw,3,st,{time:false})}
+ if(pos==='plaque'&&marks.time){g.font='300 12px '+FONT;g.fillStyle='rgba(245,245,247,.55)';g.textAlign='right';g.textBaseline='top';g.fillText(mmss(st)+' / '+mmss(DUR),W-48,140)}
+ // the plaque: score so far
+ let sc=0;NOTES.forEach((n,i)=>{if(n.t<=st&&RUN[i].res==='hit')sc+=RUN[i].grade==='Perfect'?120:RUN[i].grade==='Good'?90:40});
+ $('#pl-score').textContent=sc.toLocaleString();const v=Math.min(4.99,sc/13320);paintRec($('#pl-rec'),t,v);
+ const pt=$('#pl-tier');pt.textContent=tierName(v);pt.style.color=tierColor(v);
+}
+
+// ---- background: the Arcade colour mesh, warm, a gentle beat ----
+const cv=$('#bg'),bg=cv.getContext('2d'),MESH=Object.assign(document.createElement('canvas'),{width:48,height:30});
+let W=0,H=0,meshT=0,cols=[[245,230,211],[192,132,87],[218,181,149],[60,40,50]];
+function resize(){W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;bg.setTransform(DPR,0,0,DPR,0,0)}addEventListener('resize',resize);resize();
+let screen='res',skill=0.93;
+function frame(ms){
+ const dt=Math.min(0.05,ms/1000-clock);clock=ms/1000;
+ if(screen==='res'&&S){const tc=TIERS[tierOf(resVal)][1];const target=[rgb(tc[1]),rgb(tc[0]),ease(rgb(tc[1]),rgb(tc[0]),0.5),[30,25,45]];cols=cols.map((c,i)=>ease(c,target[i],Math.min(1,dt*1.5)))}
+ const beat=Math.exp(-((clock*2)%1)*6)*0.5,m=MESH.getContext('2d'),mw=MESH.width,mh=MESH.height;meshT+=dt*0.3;
+ m.fillStyle='#05060a';m.fillRect(0,0,mw,mh);m.globalCompositeOperation='lighter';
+ for(let i=0;i<4;i++){const x=mw*(0.5+0.38*Math.sin(meshT*(0.21+i*0.07)+i*1.9)),y=mh*(0.5+0.36*Math.cos(meshT*(0.17+i*0.05)+i*2.7)),r=mw*(0.42+0.08*Math.sin(meshT*0.3+i));
+  const a=(0.2+0.03*beat)*(i===3?0.6:1),q=m.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(cols[i],a));q.addColorStop(1,css(cols[i],0));m.fillStyle=q;m.fillRect(0,0,mw,mh)}
+ m.globalCompositeOperation='source-over';
+ bg.fillStyle='#06070b';bg.fillRect(0,0,W,H);bg.globalAlpha=0.75;bg.drawImage(MESH,0,0,W,H);bg.globalAlpha=1;
+ bg.fillStyle='rgba(5,6,10,.42)';bg.fillRect(0,0,W,H);
+ const vg=bg.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.95);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.5)');bg.fillStyle=vg;bg.fillRect(0,0,W,H);
+ if(screen==='res')tickRes(clock);else tickGame(clock);
+ requestAnimationFrame(frame);
+}
+
+// ---- controls ----
+function go(s){screen=s;$('#t-res').classList.toggle('on',s==='res');$('#t-game').classList.toggle('on',s==='game');
+ $$('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===s));$('#g-res').classList.toggle('off',s!=='res');$('#g-game').classList.toggle('off',s!=='game');
+ if(s==='res')showRes();else{judgeRun(0.93);gameAt=clock}}
+const pick=(attr,fn)=>$$('['+attr+']').forEach(b=>b.addEventListener('click',()=>{$$('['+attr+']').forEach(x=>x.classList.toggle('on',x===b));fn(b.getAttribute(attr))}));
+$$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+pick('data-lay',v=>{$('#res-wrap').classList.toggle('split',v==='split');showRes()});
+pick('data-graph',v=>{graph=v});
+pick('data-skill',v=>{skill=+v;showRes()});
+pick('data-pos',v=>{pos=v});
+$$('[data-mark]').forEach(b=>b.addEventListener('click',()=>{marks[b.dataset.mark]=!marks[b.dataset.mark];b.classList.toggle('on',marks[b.dataset.mark])}));
+$('#replay').onclick=showRes;
+const q=new URLSearchParams(location.search);
+requestAnimationFrame((ms)=>{clock=ms/1000;go(q.get('screen')==='game'?'game':'res');requestAnimationFrame(frame)});
+</script>

@@ -9,7 +9,7 @@
 <style>
 :root{color-scheme:dark}
 html,body{margin:0;height:100%;background:#06070b;color:#f5f5f7;font:500 14px -apple-system,"SF Pro Text",system-ui,sans-serif;overflow:hidden}
-canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#cv{position:fixed;inset:0;width:100%;height:100%;display:block}
 .bar{position:fixed;top:14px;left:18px;right:18px;z-index:2;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font:600 12.5px -apple-system,system-ui}
 .bar b{font:700 15px -apple-system,"SF Pro Display",system-ui;letter-spacing:.02em;margin-right:6px}
 .bar button{border:0;background:none;padding:3px 0;color:rgba(245,245,247,.45);font:inherit;cursor:pointer;border-bottom:1.5px solid transparent}
@@ -18,13 +18,79 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .bar label{display:flex;gap:8px;align-items:center;color:rgba(245,245,247,.6)}
 .bar input[type=range]{width:100px;accent-color:#e5e5ea}
 .note{position:fixed;left:18px;bottom:14px;z-index:2;color:rgba(245,245,247,.38);font-size:12px}
+/* Tidy view (user: "can we clean up the mockup view? Way too much going on"): the options live in a panel on the right that
+   stays closed; a small dock (bottom right) opens it (or O). Groups start on their own line (each .sep is a break), with
+   their label as a heading. */
+.bar{box-sizing:border-box;top:16px;left:auto;right:16px;bottom:72px;width:360px;overflow:auto;display:none;flex-wrap:wrap;gap:4px 4px;align-content:flex-start;
+ padding:14px 16px 18px;border-radius:16px;background:rgba(14,15,20,.84);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(14px);font:500 12px -apple-system,system-ui;z-index:5}
+body.opts .bar{display:flex}
+body.opts:not(.clean) #cv{width:calc(100% - 392px)}   /* the board moves over so the panel never covers it */
+.bar b{flex-basis:100%;font:600 13px -apple-system,system-ui;margin:0 0 4px}
+.bar .sep{flex-basis:100%;width:auto;height:1px;background:rgba(255,255,255,.07);margin:8px 0 4px}
+.bar>span[style*="color"],.bar span[style*="contents"]>span[style*="color"]{flex-basis:100%;font:600 10px -apple-system,system-ui;letter-spacing:.2em;text-transform:uppercase;margin-top:2px}
+.bar button{padding:4px 9px;border-radius:99px;border:0;color:rgba(245,245,247,.55);background:rgba(255,255,255,.04)}
+.bar button:hover{color:#fff}.bar button.on{color:#fff;background:rgba(255,255,255,.16);border:0}
+.bar #songs{flex-basis:100%;display:flex;flex-wrap:wrap;gap:4px}
+.bar label{flex-basis:100%;justify-content:space-between}.bar input[type=range]{flex:1}
+.note{display:none}body.opts .note{display:block;right:392px}
+.dock{position:fixed;right:16px;bottom:16px;z-index:6;display:flex;gap:2px;padding:5px;border-radius:99px;background:rgba(14,15,20,.72);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(14px);font:500 12px -apple-system,system-ui;transition:opacity .2s}
+.dock button{border:0;background:none;color:rgba(245,245,247,.6);font:inherit;padding:6px 12px;border-radius:99px;cursor:pointer}
+.dock button:hover{color:#fff}.dock button.on{color:#fff;background:rgba(255,255,255,.12)}
+/* stand-ins (the real screens are the game's; these only show the motion) */
+.stub{position:fixed;inset:0;z-index:3;visibility:hidden;pointer-events:none;font-family:-apple-system,"SF Pro Display",system-ui}
+.stub .glow{position:absolute;inset:0;background:radial-gradient(60% 70% at 30% 20%,rgba(90,24,48,.6),transparent),radial-gradient(50% 60% at 75% 30%,rgba(42,18,64,.6),transparent),#0a0709}
+.stub .art{background:radial-gradient(circle at 70% 25%,rgba(255,207,106,.8),transparent 45%),linear-gradient(135deg,#7a1f3a,#2b0f3f 55%,#0f1a3a)}
+.stub .cap{font:600 10.5px -apple-system,system-ui;letter-spacing:.24em;color:rgba(245,245,247,.38)}
+#stub-sel .hd{position:absolute;left:4vw;top:6vh;font:300 28px -apple-system,system-ui}
+#stub-sel .covs{position:absolute;left:0;right:0;top:16vh;height:28vh}
+#stub-sel .cv2{position:absolute;top:0;left:50%;width:28vh;height:28vh;margin-left:-14vh;border-radius:10px;box-shadow:0 30px 60px -20px #000}
+#stub-sel .cv2.side{background:linear-gradient(135deg,#22685a,#0a2420);transform:translateX(-34vh) scale(.8);opacity:.5}#stub-sel .cv2.r{background:linear-gradient(135deg,#a6452a,#2a0f0a);transform:translateX(34vh) scale(.8)}
+#stub-sel .info{position:absolute;left:4vw;bottom:20vh}#stub-sel .t{font:300 40px -apple-system,system-ui}#stub-sel .a{color:rgba(245,245,247,.6);margin-top:4px}
+#stub-sel .playb{position:absolute;right:4vw;bottom:12vh;padding:11px 30px;border-radius:99px;background:#f5f5f7;color:#111;font:600 11px -apple-system,system-ui;letter-spacing:.18em}
+#stub-load .row{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:40px}#stub-load .c{width:30vh;height:30vh;border-radius:10px}#stub-load .t{font:200 46px -apple-system,system-ui}
+#stub-load .ln{width:300px;height:1px;background:linear-gradient(90deg,transparent,#fff,transparent);margin-top:20px}
+#stub-card .in{position:absolute;left:var(--cx,50%);top:var(--cy,22%);transform:translate(-50%,-50%);display:flex;gap:14px;align-items:center}#stub-card .c{width:44px;height:44px;border-radius:6px}#stub-card .t{font:300 26px -apple-system,system-ui}#stub-card .a{font-size:12px;color:rgba(245,245,247,.6)}
+#stub-res .dim{position:absolute;inset:0;background:rgba(4,5,10,.45)}
+#stub-res .box{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(1000px,88%)}
+#stub-res .top{display:flex;gap:16px;align-items:center;margin-bottom:26px}#stub-res .top .c{width:56px;height:56px;border-radius:8px}#stub-res .top .t{font:300 30px -apple-system,system-ui}
+#stub-res .mid{display:grid;grid-template-columns:auto 1fr;gap:50px;align-items:center}#stub-res .sb{display:flex;gap:24px;align-items:center}#stub-res #resrec{width:150px;height:150px}
+#stub-res .score{font:200 74px -apple-system,system-ui;font-variant-numeric:tabular-nums;background:linear-gradient(#fff,#c3c9d2);-webkit-background-clip:text;color:transparent;line-height:1}
+#stub-res .tier{font:600 11px -apple-system,system-ui;letter-spacing:.26em;color:#f6d878;margin-top:8px}
+#stub-res .counts{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}#stub-res .counts div{border-top:1px solid rgba(255,255,255,.1);padding-top:10px}#stub-res .counts b{display:block;font:300 28px -apple-system,system-ui;font-variant-numeric:tabular-nums}
+#stub-res .run{position:relative;margin-top:30px;height:130px}#stub-res #runc{position:absolute;left:0;top:18px;width:100%;height:112px}
+#stub-res .btns{display:flex;gap:10px;justify-content:center;margin-top:28px}#stub-res .btns span{padding:9px 20px;border-radius:99px;border:1px solid rgba(255,255,255,.12);font:600 11px -apple-system,system-ui;letter-spacing:.16em}#stub-res .btns .w{background:#f5f5f7;color:#111}
+#stub-res .an{opacity:0;transform:translateY(10px);transition:opacity .45s,transform .45s}#stub-res .an.in{opacity:1;transform:none}
+body.opts:not(.clean) .stub{right:392px}
+body.clean .dock{opacity:0}body.clean .dock:hover{opacity:1}body.clean .bar,body.clean .note{display:none}
 </style>
 <canvas id="cv"></canvas>
 <div class="bar" id="bar">
  <b>Arcade</b>
  <span id="songs"></span><span class="sep"></span>
+ <span style="color:#86efac">New · moments</span><button data-scn="flow">Whole flow ▸</button><button data-scn="into">Into ▸</button><button data-scn="end">Ending ▸</button><button data-scn="back">Back ▸</button><button data-scn="play">Board</button>
+ <span style="color:#86efac">Into the song</span><button data-fin="into:now">Now</button><button data-fin="into:jump">Jump</button><button data-fin="into:dive">Dive</button>
+ <span style="color:#86efac">Ending</span><button data-fin="out:now">Now</button><button data-fin="out:stay">Stay in space (results over the galaxy)</button>
+ <span style="color:#86efac">Back to songs</span><button data-fin="back:now">Now</button><button data-fin="back:fold">Fold into the cover</button>
+ <span style="color:#86efac">Results</span><button data-fin="enter:now">Now</button><button data-fin="enter:pressed">Pressed in</button>
+ <span class="sep"></span><span style="color:#86efac">New · board &amp; HUD</span>
+ <span style="color:#86efac">Board</span><button data-fin="board:now">Now</button><button data-fin="board:glass">Glass slab</button><button data-fin="board:float">Floating</button>
+ <span style="color:#86efac">Keycaps</span><button data-fin="keys:now">Now</button><button data-fin="keys:lit">Lit</button>
+ <span style="color:#86efac">Multiplier</span><button data-fin="mult:now">Now</button><button data-fin="mult:badge">Badge by the score</button>
+ <span style="color:#86efac">Hit calls</span><button data-fin="calls:now">Now</button><button data-fin="calls:cursor">At the cursor</button><span class="sep"></span>
  <button data-fx="rings">Rings</button><button data-fx="sparks">Hit sparks</button><button data-fx="wave">String wave</button><span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Alive</span><button data-fx="live">Live strings</button><span id="live-bar" style="display:contents"><button data-lstyle="ripple">Ripple</button><button data-lstyle="hum">Hum</button><button data-lstyle="blur">Blur</button><button data-lstyle="shake">Shake</button></span><button data-mic>Use my bass</button><button data-fx="trail">Trail</button><button data-fx="pass">Light pass</button><span id="pass-bar" style="display:contents"><button data-pass="string">Along the string</button><button data-pass="next">To the next note</button><button data-pass="bounce">Bounce</button><span id="lead-bar" style="display:contents"><button data-lead="travel">With the notes</button><button data-lead="cursor">Lands on the cursor</button><button data-lead="ahead">Lands ahead</button><button data-lead="ride">Ride</button><span style="color:rgba(245,245,247,.4)">Path</span><button data-bpath="straight">Straight</button><button data-bpath="strings">Along the strings</button><button data-bpath="arc">Bounce</button><span style="color:rgba(245,245,247,.4)">Shape</span><button data-bshape="electric">Electric</button><button data-bshape="comet">Comet</button><button data-bshape="thread">Thread</button><button data-bshape="diamond">Diamond</button><button data-bshape="pick">Pick</button><button data-bshape="ring">Ring</button><button data-bshape="ball">Ball</button><button data-fx="behind">Behind the notes</button><button data-fx="press">Press keys</button><button data-fx="react">Hit / miss</button></span></span><button data-fx="misses">Some misses</button><span class="sep"></span>
+ <span style="color:#fcd34d">Big moment</span><button data-big="now">Now</button><button data-big="wave">Shockwave</button><button data-big="beams">Beams</button><button data-big="embers">Embers</button><button data-big="surge">Surge</button><button data-big="flare">Flare</button><button data-bigfire style="color:#fcd34d">Fire one ▸</button><span class="sep"></span>
+ <span style="color:#fcd34d">Big moment + (new)</span><button data-bigx="build">Build-up</button><button data-bigx="sky">Sky lights up</button><button data-bigx="drop">Hit fills the screen</button><button data-bigx="strings">Strings sing</button><button data-bigx="after">Afterglow</button><button data-bigx="all">All</button><span class="sep"></span>
+ <span style="color:#7dd3fc">x4 edge (new)</span><button data-edge="lightning">Lightning</button><button data-edge="stardust">Stardust</button><button data-edge="aurora">Aurora</button><button data-edge="orbit">Orbit</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Score over the aurora (new)</span><button data-hudb="now">Now</button><button data-hudb="halo">Halo</button><button data-hudb="plate">Glass plate</button><button data-hudb="corner">Top corner</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Score style (new)</span><button data-sstyle="now">Now</button><button data-sstyle="capsule">Capsule</button><button data-sstyle="orbit">Orbit</button><button data-sstyle="line">Line</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Orbit look (new)</span><button data-orbv="tilted">Tilted ring</button><button data-orbv="moon">Moon</button><button data-orbv="flat">Flat</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Score &amp; streak (new)</span><button data-slook="now">Now</button><button data-slook="rolling">Rolling</button><button data-slook="glow">Glow</button><button data-slook="split">Split</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Streak in the ring (new)</span><button data-sin="off">Off</button><button data-sin="tag">In the tag</button><button data-sin="label">On the record</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Score face (new)</span><button data-sface="now">Now</button><button data-sface="odo">Odometer</button><button data-sface="holo">Hologram</button><button data-sface="star">Starlight</button><button data-sface="bold">Bold</button><button data-sface="metal">Metal</button><button data-sface="rounded">Rounded</button><button data-sface="mono">Mono</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Record progress (new)</span><button data-rprog="now">Now</button><button data-rprog="ladder">Ladder</button><button data-rprog="segments">Segments</button><span class="sep"></span>
+ <span style="color:#7dd3fc">Visualizer</span><button data-viz="off">Off</button><button data-viz="mesh">Band mesh</button><button data-viz="curtain">Light curtain</button><button data-viz="silk">Silk lines</button><button data-viz="flow">Flow field</button><button data-viz="space">Space</button><button data-viz="cosmos">Cosmos</button><span id="cosmos-bar" style="display:contents"><span class="sep"></span><span style="color:#7dd3fc">Cosmos</span><button data-cosmos="deep">Deep field</button><button data-cosmos="planet">Planet</button><button data-cosmos="galaxy">Galaxy</button><button data-cosmos="warp">Hyperspace</button><button data-cosmos="spiral">Spiral (new)</button><button data-cosmos="voyage">Voyage (new)</button><span id="jump-bar" style="display:contents"><span class="sep"></span><span style="color:#7dd3fc">Jumps</span><button data-jumps="off">Off</button><button data-jumps="big">Big moments</button><button data-jumps="bigmult">Big moments + multiplier</button><button data-jumpnow style="color:#7dd3fc">Jump ▸</button></span></span><button data-viz="liquid">Liquid light</button><button data-viz="ridges">Ridges</button><button data-viz="warp">Warp rings</button><span id="space-bar" style="display:contents"><span class="sep"></span><span style="color:#7dd3fc">Space</span><button data-smode="warp">Warp</button><button data-smode="drift">Drift</button><button data-neb>Nebula</button></span><span class="sep"></span>
+ <span style="color:#fcd34d">More polish</span><button data-pol2="column">Light column</button><button data-pol2="bars">Bar glow</button><button data-pol2="lanes">Lanes</button><button data-pol2="rails">Rails</button><button data-pol2="all">All</button><span class="sep"></span>
  <span style="color:rgba(245,245,247,.4)">Polish</span><button data-pol="glass">Glass</button><button data-pol="keys">Keycaps</button><button data-pol="spot">Spotlight</button><button data-pol="strings">Real strings</button><button data-pol="float">Borderless</button><button data-pol="all">All</button><span class="sep"></span>
  <button data-fx="pools">Background</button><button data-bg="mesh">Mesh</button><button data-bg="studio">Studio</button><button data-bg="stage">Stage</button><button data-bg="aurora">Aurora</button><button data-bg="landscape">Landscape</button><button data-bg="pools">Pools</button><button data-fx="edges">Edge glow</button><button data-fx="dust">Dust</button><button data-fx="sweep">Milestone sweep</button><button data-fx="hud">Score</button><button data-fx="x4">x4 preview</button><button data-fx="outline">x4 outline</button><button data-fx="glint">x4 glint</button>
  <span class="sep"></span>
@@ -43,7 +109,27 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <label>Size <input type="range" id="size" min="0.5" max="1.5" step="0.05" value="0.75"><span id="sizev">0.75×</span></label>
  <button data-pause>Pause</button>
 </div>
-<div class="note">Space pauses · the streak builds as the passage plays (every note counts as hit) · x2 at 10, x3 at 20, x4 at 30 · Some misses: every 13th note missed (streak resets) · Use my bass: pluck to move the string</div>
+<div class="note">Space pauses · a big moment fires on bar 5 of each loop (or Fire one) · the streak builds as the passage plays (every note counts as hit) · x2 at 10, x3 at 20, x4 at 30 · Some misses: every 13th note missed (streak resets) · Use my bass: pluck to move the string</div>
+<div id="stub-sel" class="stub"><div class="glow"></div><div class="hd">Choose a song</div><div class="covs"><div class="cv2 side"></div><div class="cv2 pick art"></div><div class="cv2 side r"></div></div>
+ <div class="info"><div class="t">Flower Power Madness</div><div class="a">Royal Republic · Hard</div></div><div class="playb">PLAY</div></div>
+<div id="stub-load" class="stub"><div class="glow"></div><div class="row"><div class="c art"></div><div><div class="cap">NOW LOADING</div><div class="t">Flower Power Madness</div><div class="ln"></div></div></div></div>
+<div id="stub-card" class="stub"><div class="in"><div class="c art"></div><div><div class="t">Flower Power Madness</div><div class="a">Royal Republic · Hard</div></div></div></div>
+<div id="stub-res" class="stub"><div class="glow"></div><div class="dim"></div><div class="box">
+ <div class="top an"><div class="c art"></div><div><div class="t">Flower Power Madness</div><div class="cap">ROYAL REPUBLIC · HARD · FINISHED</div></div></div>
+ <div class="mid"><div class="sb"><canvas id="resrec" width="300" height="300"></canvas><div><div class="score" id="rscore">0</div><div class="tier" id="rtier">GOLD RECORD · NEW BEST</div></div></div>
+  <div class="counts"><div class="an"><span class="cap">ACCURACY</span><b>82%</b></div><div class="an"><span class="cap" style="color:#f6d878">PERFECT</span><b>332</b></div><div class="an"><span class="cap">GOOD</span><b>88</b></div><div class="an"><span class="cap" style="color:#c4a1ff">MESSY</span><b>15</b></div><div class="an"><span class="cap" style="color:#f27b7b">MISS</span><b>65</b></div><div class="an"><span class="cap">BEST STREAK</span><b>47</b></div></div></div>
+ <div class="run"><span class="cap">YOUR RUN</span><canvas id="runc"></canvas></div>
+ <div class="btns an"><span>SONGS</span><span>PRACTICE BARS 53–60</span><span class="w">PLAY AGAIN</span></div></div></div>
+<div class="dock"><button id="dock-pause">Pause</button><button id="dock-opts">Options</button><button id="dock-hide" title="Hide (H)">✕</button></div>
+<script>
+// the dock: Pause uses the bar's own button; Options / O opens the panel; ✕ / H hides everything but the board
+{const P=()=>document.querySelector('#bar [data-pause]'),sync=()=>{if(sync.w!==document.getElementById('cv').clientWidth){sync.w=document.getElementById('cv').clientWidth;dispatchEvent(new Event('resize'))}document.getElementById('dock-opts').classList.toggle('on',document.body.classList.contains('opts'));const p=P();if(p)document.getElementById('dock-pause').textContent=p.textContent};
+ document.getElementById('dock-pause').onclick=()=>{P()?.click();sync()};
+ document.getElementById('dock-opts').onclick=()=>{document.body.classList.remove('clean');document.body.classList.toggle('opts');sync()};
+ document.getElementById('dock-hide').onclick=()=>{document.body.classList.toggle('clean');sync()};
+ addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('input'))return;if(e.key==='o'||e.key==='O'){document.body.classList.remove('clean');document.body.classList.toggle('opts');sync()}else if(e.key==='h'||e.key==='H'){document.body.classList.toggle('clean');sync()}});
+ setInterval(sync,500)}
+</script>
 <script src="note-styles-data.js"></script>
 <script>
 const COL=['#6ee7a8','#f8a1a1','#f6d878','#8fb8fa'],NAMES=['E','A','D','G'];   // softer than the game's lane colours
@@ -54,7 +140,7 @@ const cv=document.getElementById('cv'),g=cv.getContext('2d');
 let W=0,H=0,clock=0,last=performance.now(),paused=false,spread=true,speedSet=0.7,size=0.75,   // smaller numbers by default (user: "it's easier to read when the numbers aren't huge")
  song=Object.keys(PASSAGES)[1];
 let notes,bars,warp,info,mood={c:[245,230,211],d:[192,132,87]},sweepAt=-9,lastMult=1;
-let holdStyle='glass',scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='row',stagger='stem',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
+let holdStyle='glass',scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recTier=0,recAt=-9,hudStyle='center',stagger='joined',x4k=0,songFit=1,bgStyle='mesh',dens=new Float32Array(1),repSize=0.7,repStyle='echoes',echo='diamond';
 // Alive (user: "I would like it to look more alive somehow", picked 1-3 of the ideas): Live strings (the played string
 // vibrates as long as the note rings, harder on a harder pluck; with "Use my bass" it follows the input's level; replaces
 // String wave while on), Trail (each hit note leaves a glow that slides off with the tab; a miss leaves none and goes
@@ -63,7 +149,249 @@ let holdStyle='glass',scoreLook='plaque',mileN=0,mileAt=-9,award2='records',recT
 // idea of something bouncing between the notes being hit"): string styles (Ripple / Hum / Blur / Shake) and Bounce
 // Polish (user: "I just feel like we could visually make it look overall better" -> "Yes, mock up"): each its own switch, off
 // to start so they can be compared: Glass, Keycaps, Spotlight, Real strings, Borderless
-const pol={glass:false,keys:false,spot:false,strings:false,float:false};
+const pol={glass:true,keys:true,spot:true,strings:true,float:true};   // (all on: the game has them since 2026-11-07)
+// Big moments (user, 2026-11-08: "can we improve the big moments animaton? Also, maybe improve the board look some more").
+// A big moment (in the game: lights.py's, a chorus or drop coming in) fires here on bar 5 of every loop, or with Fire one.
+// The board never moves (user, earlier: "I don't want the board to move at all during big moment, just the lighting").
+//  now     - the game's today: rim lit, a haze above and below, the panel tinted, a soft flash and band out from the cursor
+//  wave    - Shockwave: a bright front runs out both ways from the cursor, lighting each string as it passes, a ring opening
+//            round the board; a smaller one on each bar 1 while it lasts
+//  beams   - stage beams fanning open behind the board from above, swaying, pulsing on the beat
+//  embers  - a burst of sparks out of the cursor, then embers rising behind the board for as long as it lasts
+//  surge   - the electric trail's look: two arcs race from the cursor along the board's top and bottom edges, then
+//            crackle on the edges on the beats
+//  flare   - a lens flare: bright stars on the cursor's ends and long thin streaks along both edges, breathing on the beat
+const big={now:false,wave:false,beams:false,embers:true,surge:true,flare:true};   // the user's picks (in the game)
+let bigAt=-99,bigK=0,lastBigT=1e9;
+// Big moment + (user, 2026-11-08: "can we improve the big moments?"). Today's Embers / Surge / Flare read well as it hits, but
+// a second later little says you're still in one (it looks like any x4 stretch), nothing leads into it and it stops dead.
+// Each its own switch, off to compare:
+//  build   - Build-up: through the bar before (the game can know: lights.py's cues are made ahead) light gathers along both
+//            rails toward the cursor, the sky dims a little and a glow swells at the cursor; at the hit it all lets go
+//            (Fire one then waits a bar)
+//  sky     - Sky lights up: for as long as it lasts the galaxy band glows in the song's colour, the core brighter on the
+//            beat, a wave of light running along the band every bar
+//  drop    - The hit fills the screen: a ring of light opens from the cursor out past the screen's edges, with a brief bloom
+//  strings - Strings sing: the strings glow wider while it lasts, pulsing on the beat
+//  after   - Afterglow: as it ends, slow motes rise and fade over the board and the sky's glow lingers instead of stopping
+const bigX={build:false,sky:false,drop:false,strings:false,after:false};
+let fireAt=null,barLenNow=2,preK=0,afterK=0,x4At=-9;
+// x4 edge (user: "instead of lightning around the edges, could we make it look more spacey?"): what runs round the board at x4
+// (Surge's switch). All keep a faint blue rim on the outline.
+//  lightning - the bolts all the way round (as before)
+//  stardust  - a ring of fine dust flowing round the outline, glittering, a little thicker on the beat; when x4 arrives it
+//              sweeps out both ways from the cursor
+//  aurora    - soft curtains of light waving up from the top edge and down from the bottom, cyan into violet, taller on the beat
+//  orbit     - three comets circling the outline at different speeds, long fading tails
+let edgeX='stardust',AURORA_RAY=null,AURORA_BODY=null,AURORA_MID=null;
+// Score over the aurora (user, of a screenshot at x4 with Aurora: "the multiplier and score are hard to see now, I'm fine changing
+// it"): the cursor's 1x-4x tag was drawn before the edge glow, which washed over it; the score sat in the aurora's brightest part.
+//  now    - as it was
+//  halo   - the aurora parts round them: a soft dark glow behind the score and round the tag (drawn after the glow, on top)
+//  plate  - a dark glass plate behind the score; the tag on top of the glow with a brighter rim
+//  corner - the score moves to the top-left corner, clear of the aurora, on a faint halo; the tag on top with a brighter rim
+let hudBack='halo';const CORNER_Y=64;
+// Score style (user: "can we update score and multiplier into a potential new style thats more cohesive?"): record, score,
+// multiplier and streak as one piece instead of a plaque with a badge beside it.
+//  now     - the plaque and the badge
+//  capsule - one dark glass pill: the record, the score, the multiplier in a round end-cap with its ring filling toward the
+//            next one; under the score one line, "SILVER RECORD · 11 STREAK"
+//  orbit   - the record with the multiplier as a ring orbiting it, a small x4 tag riding the ring where it has filled to;
+//            the score beside it, "SILVER · 11 STREAK" under
+//  line    - the score large, a hairline under it, then the record's tier on the left and four pips on the right that
+//            light up to the multiplier (the next one filling), the streak after them
+let scoreStyle='orbit',orbitV='tilted',ringPrev=0,ringDrain={at:-9,n:0},recPlain=false;
+// Score & streak (user: "can we change how the score and streak looks?"), with the tilted ring:
+//  now     - silver score, the streak at the end of the record bar's row
+//  rolling - the score counts up quickly to each new total instead of jumping, a "+400" floats up beside it on each gain;
+//            the streak's number brighter than its label
+//  glow    - the score lit in the multiplier's colour from below with a soft glow; the streak its own chip beside the score
+//            (a four-point star and the number)
+//  split   - the score, a hairline, then the streak as its own counter (number over a STREAK label)
+let scoreLookX='rolling',dispScore=0,lastScoreSeen=0,gainAt=-9,gainN=0;
+// Streak in the ring (user: "can we incorperate the streak into the multiplier somehow?"); either way the streak is shown only there:
+//  tag   - the ring's tag reads "x4 | 63": the multiplier and the streak together, the ten segments already counting toward the next
+//  label - the streak on the record's label, like the print on a vinyl label (the record a little bigger)
+//  off   - the streak where Score & streak puts it
+let streakIn='label';
+// Score face (user: "can we change how the score looks?"): the score's type, with any Score & streak look
+//  now     - thin silver (SF 200)
+//  metal   - the score in the record's own metal (bronze, silver, gold, platinum, diamond), SF 300, a fine highlight on top
+//  rounded - SF Rounded 500, white, softer
+//  mono    - SF Mono 300, a scoreboard: seven digits with the leading zeros dim
+//  odo     - (user: "I feel like we could make is cool like the multiplier we just did") each digit in its own dark glass cell
+//            like the board's keycaps, rolling up to its new value like a mechanical counter; a sweep of light across the
+//            cells on each gain; the cells' rims take the multiplier's colour, glowing at x4
+// (user: "I'm still not huge on the score look") three more directions:
+//  holo    - thin outline digits in the multiplier's colour, glowing, a slight flicker, like a projection
+//  star    - light white digits with a soft bloom; on each gain a few sparks drift up off them and fade
+//  bold    - heavy, tight white digits (SF 700) with a fine underline in the record's metal
+let scoreFace='holo',odo=[],odoSweep=-9,lastScoreSeenOdo=0,sparks=[];
+// Record progress (user: "I like how it is now. How about the record progress?"), under the score:
+//  now      - the tier, a bar in the next tier's metal, the next tier's name
+//  ladder   - all five records as small discs, Bronze to Diamond: earned ones in their metal, the next one filling in like a
+//             pie, the rest dark; then "GOLD · 64%"; a flash and pop on the disc just earned
+//  segments - a small disc of this tier, ten glass segments filling in the next tier's metal (like the ring's ten), the next
+//             tier's disc, its name; the segments flash when a tier is reached
+let recProg='ladder';   // the user's pick: "I like in the record"
+// Tilted ring, worked on (user: "Tilted ring is cool, I feel like we could improve it"): a band like a planet's ring (dark glass,
+// a fine bright edge) instead of a line, bigger; ten segments, one per note toward the next multiplier, each hit lighting the
+// next (with a glowing head on the newest); the x4 sits still at the front of the ring, where it's always read; a level-up
+// flashes the whole ring before it empties for the next; a miss drains the lit segments in red; at x4 the full ring
+// shimmers, light running round it, dust circling.   // user: "I like some version of orbit, can we go with that but work more on it?"
+// Orbit looks (all: the record in the middle, the score beside it, the tier in its own metal, a pulse from the record when the
+// multiplier goes up, the multiplier larger):
+//  tilted - a tilted ring like a planet's: its back half passes behind the record, its front half in front; it fills from the
+//           left toward the next multiplier, the x4 tag riding the filling end; at x4 the whole ring is lit and dust circles it
+//  moon   - a small moon carrying the x4 circles the record steadily (faster at higher multipliers); a fine ring under it
+//           fills toward the next one
+//  flat   - the first Orbit, cleaned up: the ring round the record fills, the tag riding its end
+const EDGEDUST=Array.from({length:320},(_,i)=>({u:Math.random(),v:0.6+Math.random()*0.8,o:(Math.random()-0.35)*9,z:0.5+Math.random()*1.3,p:Math.random()*7}));   // x4At: when the streak reached x4 (Surge's lightning fires then)
+// Visualizer (user, 2026-11-08: "can we do more with the background to give it feel with the song?"; the first Song feel
+// row (kick pulse, snare lights, horizon, ribbons, rings, dust): "I dont like the look", "Too busy / cheap", "imagine like a
+// visualizer"). Quiet and soft, behind the board, from the music itself: in the game an analyser on the song's output (its
+// bands each frame); faked here from the passage (bass notes, kicks on 1 and 3, snares on 2 and 4, hi-hats on the eighths).
+//  mesh     - Band mesh: the background's colour clouds, each tied to a band (low, low-mid, mid, high): it swells and
+//             brightens with that band, so the background itself is the visualizer
+//  curtain  - Light curtain: a soft spectrum mirrored above and below the board, drawn tiny and stretched, so it reads as
+//             columns of haze rather than bars
+//  silk     - Silk lines: three fine, smooth lines flowing across behind the board, each moved by one band
+// More dynamic (user: "I was thinking something more dynamic"):
+//  flow     - Flow field: 700 fine particles streaming through a slowly turning current, faster with the music, each
+//             kick throwing them outward from the board
+//  liquid   - Liquid light: soft blobs of colour orbiting and merging, bulging with their bands, all leaping on a kick
+//  ridges   - Ridges: the spectrum's last few seconds as stacked lines going back to a horizon, above and below the
+//             board (each new line comes in nearest the board and moves away)
+//  warp     - Warp rings: a ring of light leaves the board on every kick and grows past the screen, its outline bent
+//             by the spectrum
+let viz='cosmos',spec=new Float32Array(32),bands=[0,0,0,0],kickPrev=0,kickAt=-9,rings=[],ridgeT=0;
+// The improved flow field (trails, around the board, with the tab, kick wave, depth, colour by sound) came out: "I liked it
+// better before. would be cool if it looks like space". Flow is back as it was, and Space added:
+//  space   - stars and a nebula. Warp: stars stream out toward you from behind the board, faster as the music gets busy,
+//            a surge on each kick and streaks in a big moment. Drift: still stars at three depths gliding left with the
+//            tab, twinkling, the near ones flaring on kicks. Nebula: slow clouds of the song's colours, the lows lighting them
+const PARTS=Array.from({length:700},(_,i)=>({x:Math.random(),y:Math.random(),vx:0,vy:0,z:0.3+Math.random()*0.7,c:i%3}));
+let spaceMode='warp',nebula=true,warpSpeed=0;
+// Cosmos (user, of the game's Space: "I think the stars look cheap and the background could use some work"): cinematic looks,
+// everything soft and photographic. Stars are soft sprites (a hot core in a coloured halo, a few sizes, warm to blue-white),
+// mostly faint and few bright, in three depths gliding left with the tab at different speeds (no streaks, no crosses); the
+// clouds are painted small once and blurred up, so they're smooth, not blotchy. Each reacts to the song (lows, kicks, big moments).
+//  deep    - Deep field: sparse stars and soft distant clouds; calm, lets the board stand out
+//  planet  - Planet: the dark curve of a huge planet along the bottom, its atmosphere glowing on the rim in the song's
+//            colour, breathing with the bass; stars above
+//  galaxy  - Galaxy: a soft band of the galaxy across the screen with a bright core behind the board, dark dust in front of it
+//  warp    - Hyperspace: the deep field, but stars stretch into fine tapered light on kicks and in big moments, then settle
+let cosmos='galaxy',cosmosC=null;
+// Procedural (user: "can we make the galaxy move? Like procedurally generated?"). Both are made from a seed (the song), so each
+// song has its own sky and the same song always gets the same one; both answer the music like Galaxy (lows, kicks, big moments).
+//  spiral - a spiral galaxy grown from the seed (2-4 arms, how tightly they wind, its colours): 2,600 stars that orbit,
+//           the inner ones faster than the outer (as in a real galaxy), over a soft glow of its arms that turns with them;
+//           faster with the music, a big moment spinning it up; tilted, behind the board
+//  voyage - flying forward through space made up as you go (see voyThing): nebulae, galaxies and clusters grow out of the
+//           distance and pass by, stars stream past; the colours drift from one thing to the next; speed from the music,
+//           a big moment surging forward and stretching the near stars
+const PROC={key:'',sp:null,rot:0,field:null,things:null,stars:null,n:0};
+const prng=seed=>{let x=seed>>>0||1;return()=>(x=(Math.imul(x,1664525)+1013904223)>>>0)/4294967296};
+const strHash=str=>{let h=2166136261;for(const c of str)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0};
+function procField(W,H,seed){                    // faint far stars, painted once per size
+ const c=document.createElement('canvas'),d=devicePixelRatio||1;c.width=W*d;c.height=H*d;const x=c.getContext('2d'),r=prng(seed^0x9e37);x.scale(d,d);   // full resolution: at screen size the stars went soft (user: "blurry and blocky in the back")
+ x.fillStyle='#04050a';x.fillRect(0,0,W,H);for(let i=0;i<1800;i++){const a=r()*r()*0.75,z=r()<0.04?1.4:0.8;x.fillStyle=`rgba(${215+r()*40|0},${222+r()*33|0},255,${a})`;x.fillRect(r()*W,r()*H,z,z)}
+ return c}
+function makeSpiral(seed){
+ const r=prng(seed),arms=2+Math.floor(r()*3),twist=4+r()*5,hue=200+r()*90,warm=20+r()*30,stars=[];
+ const gauss=()=>(r()+r()+r()-1.5)/1.5;
+ for(let i=0;i<2600;i++){const arm=i%arms,d=Math.pow(r(),0.75),spread=(0.5*(1-d)+0.12)*gauss(),a=arm*2*Math.PI/arms+d*twist+spread;
+  const core=d<0.18,band=core?0:d<0.6?1:2;stars.push({a,d:d*(1+0.08*gauss()),b:band,s:0.5+r()*(core?1.4:1.1),tw:r()*7})}
+ // the arms' glow: soft blobs along the arms at low resolution, blurred
+ const G=document.createElement('canvas');G.width=G.height=1024;const x=G.getContext('2d');x.translate(512,512);x.scale(512/160,512/160);   // painted large and smooth (stretched from 320 it looked blocky)
+ for(let i=0;i<700;i++){const arm=i%arms,d=Math.pow(r(),0.7),a=arm*2*Math.PI/arms+d*twist+(0.45*(1-d)+0.1)*gauss(),px=Math.cos(a)*d*150,py=Math.sin(a)*d*150,rad=8+18*(1-d)+r()*10;
+  const h=d<0.25?warm:hue+(r()-0.5)*40,q=x.createRadialGradient(px,py,0,px,py,rad);q.addColorStop(0,`hsla(${h},75%,${d<0.25?72:60}%,${0.09+0.07*(1-d)})`);q.addColorStop(1,`hsla(${h},70%,50%,0)`);x.fillStyle=q;x.fillRect(px-rad,py-rad,rad*2,rad*2)}
+ x.globalCompositeOperation='multiply';for(let i=0;i<160;i++){const arm=i%arms,d=0.2+r()*0.7,a=arm*2*Math.PI/arms+d*twist+0.18,px=Math.cos(a)*d*150,py=Math.sin(a)*d*150,rd=4+r()*6,q=x.createRadialGradient(px,py,0,px,py,rd);q.addColorStop(0,'rgba(30,20,40,.3)');q.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=q;x.fillRect(px-rd,py-rd,rd*2,rd*2)}   // dust lanes on the arms' inner edges
+ const B=document.createElement('canvas');B.width=B.height=1024;const y=B.getContext('2d');y.filter='blur(14px)';y.drawImage(G,0,0);
+ const core=document.createElement('canvas');core.width=core.height=128;const z=core.getContext('2d'),cq=z.createRadialGradient(64,64,0,64,64,64);cq.addColorStop(0,`hsla(${warm},90%,92%,1)`);cq.addColorStop(0.25,`hsla(${warm},80%,70%,.5)`);cq.addColorStop(1,`hsla(${warm},80%,50%,0)`);z.fillStyle=cq;z.fillRect(0,0,128,128);
+ return{stars,glow:B,core,hue,warm,arms}}
+// Voyage, flying forward (user: "it would be better if these things smoothly transitioned, like you traveling and they move
+// into it"; it slid sideways past screen-wide chunks): everything sits in depth ahead of you. Nebulae, galaxies and clusters
+// start as faint specks near the vanishing point (behind the board's middle), grow as you close in and slide out past the
+// edges; each fades in far away and out before it gets huge, and a new one is made far ahead in its place (from the seed, in
+// order, so the same song flies past the same things). Stars stream out the same way, stretching with the speed.
+const VZ={far:9,near:0.35,F:0.5};                // depths (screen widths) and the lens
+function voyThing(seed,n){                       // the nth thing met on the way
+ const r=prng(seed^Math.imul(n+101,2654435761)),kind=r()<0.6?'nebula':r()<0.7?'galaxy':'cluster',hue=215+70*Math.sin(n*0.35+(seed%100)/16)+(r()-0.5)*40;
+ const ang=(r()<0.5?-1:1)*(Math.PI/2+(r()-0.5)*1.9),rad=0.7+r()*1.1;   // well off the line of flight, mostly above or below the board, so it's seen passing by
+ const SZ=256,spr=document.createElement('canvas');spr.width=spr.height=SZ;const x=spr.getContext('2d');x.scale(SZ/96,SZ/96);   // painted at 256 (a 32 px nebula stretched up looked blocky)
+ if(kind==='nebula'){x.globalCompositeOperation='lighter';
+  for(let k=0;k<14;k++){const px=26+r()*44,py=26+r()*44,rr=14+r()*22,hh=hue+(r()-0.5)*50,q=x.createRadialGradient(px,py,0,px,py,rr);q.addColorStop(0,`hsla(${hh},70%,${52+r()*20}%,${0.16+r()*0.14})`);q.addColorStop(0.5,`hsla(${hh},70%,50%,${0.06+r()*0.05})`);q.addColorStop(1,`hsla(${hh},65%,45%,0)`);x.fillStyle=q;x.fillRect(0,0,96,96)}
+  x.globalCompositeOperation='source-over'}
+ else if(kind==='galaxy'){x.translate(48,48);x.rotate(r()*Math.PI);x.scale(1,0.3+r()*0.4);const q=x.createRadialGradient(0,0,0,0,0,46);q.addColorStop(0,'rgba(255,240,220,.9)');q.addColorStop(0.25,`hsla(${hue},60%,72%,.4)`);q.addColorStop(1,`hsla(${hue},60%,60%,0)`);x.fillStyle=q;x.fillRect(-48,-48,96,96)}
+ else for(let k=0;k<90;k++){const a2=r()*7,d=Math.pow(r(),1.8)*40;x.fillStyle=`rgba(230,236,255,${0.4+r()*0.6})`;x.beginPath();x.arc(48+Math.cos(a2)*d,48+Math.sin(a2)*d,0.3+r()*0.35,0,7);x.fill()}   // round points, not squares
+ return{x:Math.cos(ang)*rad*1.3,y:Math.sin(ang)*rad*0.75,z:VZ.far,size:kind==='nebula'?1.2+r()*1.6:kind==='galaxy'?0.35+r()*0.35:0.25+r()*0.2,spr,kind}}
+function drawProc(dt,t,heat,kk,busy){                 // called in place of the Galaxy (viz cosmos, look spiral / voyage)
+ const seed=strHash(song+'|'+cosmos),key=W+'x'+H+'|'+seed;
+ if(PROC.key!==key){PROC.key=key;PROC.field=procField(W,H,seed);PROC.sp=cosmos==='spiral'?makeSpiral(seed):null;PROC.things=null}
+ g.drawImage(PROC.field,0,0,W,H);
+ const lows=Math.min(1,bands[0]*0.9),want=0.35+0.5*busy+0.4*heat+2.2*bigK;   // how fast to go: how busy the music is, the streak, a big moment
+ PROC.go=PROC.go==null?want:PROC.go+(want-PROC.go)*Math.min(1,dt/(want>PROC.go?0.9:1.6));const go=PROC.go;   // eased over 1-2 s (user: "it keeps skipping in the background from slow to fast": it followed each kick and the bass level)
+ g.save();
+ if(cosmos==='spiral'){const S=PROC.sp,cx=W*0.58,cy=H*0.5,R=Math.min(W*0.62,H*1.25),tilt=0.5,ori=-0.32;   // big enough that its arms reach out above and below the board
+  PROC.rot+=dt*0.035*go;
+  g.save();g.translate(cx,cy);g.rotate(ori);g.scale(1,tilt);g.rotate(PROC.rot*0.6);g.globalAlpha=Math.min(1,0.8+0.2*lows+0.2*bigK);g.drawImage(S.glow,-R,-R,R*2,R*2);g.restore();g.globalAlpha=1;g.globalCompositeOperation='lighter';   // the glow drawn plainly (added light over the whole screen cost ~12 ms a frame)
+  const co=Math.cos(ori),si=Math.sin(ori),paths=[new Path2D(),new Path2D(),new Path2D()];
+  for(const st of S.stars){const a=st.a+PROC.rot*(1.1/(0.22+st.d)),dx=Math.cos(a)*st.d*R,dy=Math.sin(a)*st.d*R*tilt,x=cx+dx*co-dy*si,y=cy+dx*si+dy*co,z=st.s*(st.b===0?1:0.9);
+   if(x<-4||x>W+4||y<-4||y>H+4)continue;paths[st.b].rect(x,y,z,z)}
+  const cols=[`hsla(${S.warm},90%,88%,${0.85})`,`hsla(${S.hue},60%,88%,${0.55+0.25*lows})`,`hsla(${S.hue+25},70%,80%,${0.4+0.2*lows})`];paths.forEach((pp,i)=>{g.fillStyle=cols[i];g.fill(pp)});
+  const cr=R*(0.32+0.06*lows+0.08*kk+0.1*bigK);g.globalAlpha=0.55+0.25*lows;g.drawImage(S.core,cx-cr,cy-cr*0.8,cr*2,cr*1.6);g.globalAlpha=1;
+  const tq=g.createRadialGradient(cx,cy,0,cx,cy,R);tq.addColorStop(0,css(mood.c,0.05+0.07*heat));tq.addColorStop(1,css(mood.c,0));g.globalCompositeOperation='source-over';g.fillStyle=tq;g.fillRect(0,0,W,H)}   // (only the screen, drawn plainly: cheaper)   // tinted by the streak, like Galaxy
+ else{const V=PROC,cx=W*0.55,cy=H*0.5,sp=dt*(0.25+0.35*go),F=W*VZ.F;   // Voyage: fly forward
+  if(!V.things){V.n=0;V.things=[];for(let k=0;k<11;k++){const th=voyThing(seed,V.n++);th.z=VZ.near+(VZ.far-VZ.near)*(k+0.5)/11;V.things.push(th)}
+   V.stars=Array.from({length:420},(_,k)=>{const r=prng(seed+k*7);return{x:(r()-0.5)*3,y:(r()-0.5)*2,z:VZ.near+r()*(VZ.far-VZ.near)}})}
+  V.things.sort((p,q)=>q.z-p.z);                 // far ones first
+  for(let k=0;k<V.things.length;k++){const th=V.things[k];th.z-=sp;
+   if(th.z<VZ.near){V.things[k]=voyThing(seed,V.n++);continue}
+   const sc=F/th.z,x=cx+th.x*sc,y=cy+th.y*sc,size=th.size*sc,fin=Math.min(1,(VZ.far-th.z)/2.5),fout=Math.min(1,(th.z-VZ.near)/1.2),a=fin*fout*(th.kind==='nebula'?0.75+0.25*lows+0.2*bigK:0.9);
+   if(a<0.01||x+size<0||x-size>W||y+size<0||y-size>H||size>W*1.6)continue;
+   g.globalCompositeOperation='lighter';g.globalAlpha=a;g.drawImage(th.spr,x-size/2,y-size/2,size,size)}
+  g.globalAlpha=1;g.globalCompositeOperation='lighter';
+  const pth=new Path2D(),strk=new Path2D(),sl=bigK*3+Math.max(0,go-1.6);   // stars only stretch when it surges (a big moment, very busy music)
+  for(const st of V.stars){st.z-=sp*1.6;if(st.z<VZ.near){st.z=VZ.far;st.x=(Math.random()-0.5)*3;st.y=(Math.random()-0.5)*2}
+   const sc=F/st.z,x=cx+st.x*sc,y=cy+st.y*sc;if(x<0||x>W||y<0||y>H)continue;const near=1-st.z/VZ.far,z=0.5+1.6*near*near;
+   if(near>0.5&&sl>0.15){const k2=sl*near*0.05;strk.moveTo(x,y);strk.lineTo(x+(x-cx)*k2,y+(y-cy)*k2)}else pth.rect(x,y,z,z)}
+  g.fillStyle=`rgba(228,236,255,${0.6+0.25*lows+0.3*kk})`;g.fill(pth);g.strokeStyle='rgba(228,236,255,.7)';g.lineWidth=1.2;g.stroke(strk);
+  const tq=g.createRadialGradient(cx,cy,0,cx,cy,W*0.7);tq.addColorStop(0,css(mood.c,0.04+0.06*heat));tq.addColorStop(1,css(mood.c,0));g.globalCompositeOperation='source-over';g.fillStyle=tq;g.fillRect(0,0,W,H)}
+ g.restore()}
+// Galaxy, alive (user: "I like galaxy but would like it to be more dynamic instead of static. Also like the hyperspeed, maybe do it
+// only at certain points"): the band sways slowly about its core; light runs out along it from the core on the kicks; it takes
+// on the multiplier's colour as the streak builds; the core breathes with the lows. Jumps: a hyperspace jump (stars stretch
+// out from the core, the sky pushes in, a flash) only at the moments picked: Big moments, or those and each multiplier going up.
+let jumps='bigmult',jumpAt=-9,galPulses=[],lastKickSeen=-9;
+const STARS=Array.from({length:520},()=>({x:(Math.random()*2-1)*1.6,y:(Math.random()*2-1)*1.2,z:Math.random(),t:Math.random()*7,c:Math.random()}));
+const DRIFT=Array.from({length:380},(_,i)=>({x:Math.random(),y:Math.random(),d:[0.15,0.4,1][i%3],t:Math.random()*7,r:[0.6,0.9,1.4][i%3]*(0.7+Math.random()*0.6),c:Math.random()}));
+const NEB=Object.assign(document.createElement('canvas'),{width:64,height:40});
+let snrAt=-9,snrPrev=0;
+const RIDGE=Array.from({length:22},()=>new Float32Array(32));
+const VIZC=Object.assign(document.createElement('canvas'),{width:64,height:36});
+// More polish: Light column (the cursor a beam of light, catching each string where it crosses), Bar glow (bar lines
+// light up as they reach the cursor), Lanes (a faint band per string), Rails (fine light lines along the board's edges)
+const pol2={column:true,bars:true,lanes:true,rails:true};
+// New (user, 2026-11-08: "lets make the game look better still", then "I like it how it is now, I want to improve on that";
+// picked Smoother transitions, Board & HUD finish, Results screen; "lets keep working off arcade.html"). Every row's Now is
+// the game today; the song select, loading screen and results are stand-ins drawn over the board, only to show the motion.
+//  into   - now: song select fades, the loading screen, then the intro card and the board opening from the cursor (the game);
+//           jump: the picked cover shrinks into a star and you jump into the galaxy; dive: the cover fills the screen,
+//           blurs and becomes the sky. Both end in the game's intro card and opening
+//  out    - now: the cursor glides to the middle, the sides close on it, black, results open out of the line over the
+//           cover's glow (the game); stay: the same close, but the galaxy stays behind the results, dimmed, a small jump
+//  back   - now: results go, song select comes; fold: results close into the line, the picked cover rises out of it
+//  enter  - results: count up (now) / pressed in: the record drops
+//           in spinning and lands with a ring, counts cascade, the run's columns rise behind a sweep of light
+//  board  - now / glass: a lit rim brightest at the cursor, a sheen along the top, a faint reflection under the board /
+//           float: a much lighter panel, a soft shadow under the strings and light pooling round the cursor
+//  keys   - now / lit: keycaps tinted by their string, the rim and a glow brightening as they near the cursor
+//  mult   - now: the badge on the cursor / badge: a ring beside the score, filling toward the next multiplier, the streak under it
+//  calls  - now: the game's tags scrolling under the board / cursor: the word rising beside the string you hit
+const fin={into:'now',out:'now',back:'now',enter:'now',board:'now',keys:'now',mult:'badge',calls:'now'};   // mult: the user's pick, "the multiplier next to the score at the top"
+let scn={k:'play',at:0,flow:false},scnS={open:1,hud:1,black:0,glide:0,dim:0};
+const gradeOf=i=>{const h=(i*2654435761>>>0)%100;return h<68?'Perfect':h<90?'Good':'Messy'};   // made up: the passage has no judging
 let bPath='straight',bShape='electric',passStyle='next',liveStyle='ripple',bounceLead='travel',   // user: "it would look cooler if it was traveling with the notes and maybe be a bit less distracting"
 missed=new Set(),mic=null,tNow=0;
 const fx={behind:true,press:true,react:true,live:true,trail:true,pass:true,misses:false,x4:false,outline:true,glint:false,rings:true,sparks:true,wave:true,pools:true,edges:false,dust:false,sweep:true,hud:true};   // rings / sparks / wave: the arcade feel back (user: "I also liked the more arcade feel it had before when playing")
@@ -100,7 +428,7 @@ function load(){
   for(const n of notes){const I=info.get(n);if(!I.rep&&I.prev>-Infinity)gaps.push((warp(n[0])-warp(I.prev))*ux)}
   gaps.sort((a,b)=>a-b);const p20=gaps.length?gaps[Math.floor(gaps.length*0.2)]:1e9;songFit=Math.max(0.8,Math.min(1,(p20-8)/(fs0*1.15)))}   // 80% of gaps, not below 80% (at 90% / 60% Flower Power Madness came out tiny)
 }
-function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;g.setTransform(d,0,0,d,0,0)}
+function resize(){const d=devicePixelRatio||1;W=cv.clientWidth||innerWidth;H=cv.clientHeight||innerHeight;/* the canvas narrows while the options panel is open */cv.width=W*d;cv.height=H*d;g.setTransform(d,0,0,d,0,0)}
 addEventListener('resize',()=>{resize();if(notes)load()});resize();
 const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),css=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
 const missedColor=(n,c)=>missed.has(n)&&tNow-n[0]>0.12?[110,112,120]:c;   // a missed note greys out once it's past
@@ -115,6 +443,33 @@ const BOKEH=Array.from({length:14},(_,i)=>({x:((i*0.618+0.1)%1),y:0.06+((i*0.437
 const GRAIN=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),d=x.createImageData(128,128);for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255}x.putImageData(d,0,0);return g.createPattern(c,'repeat')})();
 const DUST=Array.from({length:70},(_,i)=>({x:(i*0.618)%1,y:((i*0.371)%1),z:0.3+((i*0.53)%1)*0.7,r:0.6+((i*0.29)%1)*1.4}));
 
+// Cosmos, painted once per size and look: the sky (clouds / galaxy band, painted at a sixth of the size and blurred up, so
+// smooth), and star sprites
+function makeCosmos(W,H,look){
+ const R=(a=>()=>(a=(a*16807)%2147483647)/2147483647)(1234567),sky=document.createElement('canvas');sky.width=W;sky.height=H;const x=sky.getContext('2d');
+ const sm=document.createElement('canvas'),sw=Math.ceil(W/6),sh=Math.ceil(H/6);sm.width=sw;sm.height=sh;const s=sm.getContext('2d');
+ const blob=(cx,cy,r,c,a)=>{const q=s.createRadialGradient(cx,cy,0,cx,cy,r);q.addColorStop(0,css(c,a));q.addColorStop(1,css(c,0));s.fillStyle=q;s.fillRect(0,0,sw,sh)};
+ s.globalCompositeOperation='lighter';
+ const deep=[24,34,90],vio=[90,50,150],teal=[30,90,120],warm=[150,80,70];
+ if(look==='galaxy'){s.save();s.translate(sw*0.55,sh*0.5);s.rotate(-0.32);   // the band: many soft blobs along a line, a warm core
+  for(let i=0;i<160;i++){const u=(R()*2-1),xx=u*sw*0.8,yy=(R()+R()+R()-1.5)*sh*0.09*(1.2-Math.abs(u)*0.6),r=sw*(0.03+R()*0.06);const c=Math.abs(u)<0.2?warm:R()<0.5?vio:deep;
+   const q=s.createRadialGradient(xx,yy,0,xx,yy,r);q.addColorStop(0,css(c,0.16+0.12*(1-Math.abs(u))));q.addColorStop(1,css(c,0));s.fillStyle=q;s.fillRect(-sw,-sh,sw*2,sh*2)}
+  s.restore();s.globalCompositeOperation='source-over';s.save();s.translate(sw*0.55,sh*0.5);s.rotate(-0.32);
+  for(let i=0;i<40;i++){const xx=(R()*2-1)*sw*0.7,yy=(R()-0.5)*sh*0.05,r=sw*(0.015+R()*0.03),q=s.createRadialGradient(xx,yy,0,xx,yy,r);q.addColorStop(0,'rgba(2,3,7,.55)');q.addColorStop(1,'rgba(2,3,7,0)');s.fillStyle=q;s.fillRect(-sw,-sh,sw*2,sh*2)}   // dust lanes
+  s.restore()}
+ else{const n=look==='planet'?7:10;for(let i=0;i<n;i++)blob(R()*sw,R()*sh*(look==='planet'?0.6:1),sw*(0.12+R()*0.25),[deep,vio,teal,deep][i%4],0.18+R()*0.12);   // distant clouds
+  s.globalCompositeOperation='source-over';for(let i=0;i<6;i++){const cx=R()*sw,cy=R()*sh,r=sw*(0.08+R()*0.12),q=s.createRadialGradient(cx,cy,0,cx,cy,r);q.addColorStop(0,'rgba(2,3,7,.5)');q.addColorStop(1,'rgba(2,3,7,0)');s.fillStyle=q;s.fillRect(0,0,sw,sh)}}
+ x.fillStyle='#020307';x.fillRect(0,0,W,H);x.filter='blur(14px)';x.drawImage(sm,-30,-30,W+60,H+60);x.filter='none';   // blurred up: smooth
+ // a fine dust of very faint stars, painted in (crisp, no animation)
+ for(let i=0;i<(look==='galaxy'?2600:1200);i++){let px,py;if(look==='galaxy'&&i<1600){const u=(R()*2-1)*W*0.8,v=(R()+R()+R()-1.5)*H*0.08,c=Math.cos(-0.32),sn=Math.sin(-0.32);px=W*0.55+u*c-v*sn;py=H*0.5+u*sn+v*c}else{px=R()*W;py=R()*H}
+  x.fillStyle=`rgba(${R()<0.2?'255,225,200':R()<0.4?'200,215,255':'235,238,250'},${0.06+R()*0.22})`;x.beginPath();x.arc(px,py,0.35+R()*0.45,0,7);x.fill()}
+ // star sprites: hot core, coloured halo
+ const spr=[[255,236,214],[236,240,255],[190,210,255]].map(c=>{const k=document.createElement('canvas');k.width=k.height=64;const q=k.getContext('2d'),gq=q.createRadialGradient(32,32,0,32,32,32);
+  gq.addColorStop(0,'rgba(255,255,255,1)');gq.addColorStop(0.06,css(c,0.95));gq.addColorStop(0.18,css(c,0.28));gq.addColorStop(0.45,css(c,0.06));gq.addColorStop(1,css(c,0));q.fillStyle=gq;q.fillRect(0,0,64,64);return k});
+ const stars=[];for(let i=0;i<150;i++){const d=i<90?0:i<135?1:2,b=Math.pow(R(),2.2);   // mostly faint, a few bright
+  stars.push({x:R()*W,y:look==='planet'?R()*H*0.8:R()*H,d,r:[2.2,3.2,4.6][d]*(0.6+b*1.6),b:0.25+0.75*b,c:R()<0.2?0:R()<0.7?1:2,tw:R()<0.3,f:0.5+R()*1.5,p:R()*7})}
+ return {key:W+'x'+H+look,sky,spr,stars};
+}
 function frame(ms){
  const dt=Math.min(0.05,(ms-last)/1000);if(!paused)clock+=(ms-last)/1000;last=ms;
  const t=clock%24;
@@ -124,7 +479,7 @@ function frame(ms){
  const streak=k-lm,score=k>=0?info.get(notes[k]).score:0;let mult=Math.min(4,1+Math.floor(streak/10));
  if(fx.x4)mult=4;                                  // the x4 preview
  x4k+=((mult===4?1:0)-x4k)*Math.min(1,dt/0.5*3);  // x4 fades in and out over about half a second
- if(mult>lastMult&&fx.sweep)sweepAt=clock;lastMult=mult;
+ if(mult===4&&lastMult<4)x4At=clock;if(mult>lastMult&&fx.sweep)sweepAt=clock;lastMult=mult;
  const [mc,md]=MOOD[mult].map(rgb);mood.c=ease(mood.c,mc,0.04);mood.d=ease(mood.d,md,0.04);
  const heat=fx.x4?1:Math.min(1,streak/30);                // 0 calm -> 1 at x4
  const ed=[...bars];if(ed[0]>0.05)ed.unshift(ed[0]-(ed[1]-ed[0]));
@@ -132,10 +487,23 @@ function frame(ms){
  const beat=Math.exp(-Math.max(0,ph)*6)*(beatN===0?1:0.5);
  // how busy the music is right now (notes in the last second): the surroundings breathe with it
  let busy=0;for(const n of notes)if(n[0]<=t&&n[0]>t-1)busy++;busy=Math.min(1,busy/8);
+ const bigT=ed[Math.min(4,ed.length-1)];if(lastBigT<bigT&&t>=bigT)bigAt=clock;lastBigT=t;   // a big moment on bar 5 of each loop
+ barLenNow=barLen;if(fireAt!=null&&clock>=fireAt){bigAt=clock;fireAt=null}
+ const bigAge=clock-bigAt,bigOn=bigAge>=0&&bigAge<7;bigK+=((bigOn?1:0)-bigK)*Math.min(1,dt*(bigOn?6:1.5));
+ preK=bigX.build?Math.max(t<bigT&&t>=bigT-barLen?(t-(bigT-barLen))/barLen:0,fireAt!=null?1-(fireAt-clock)/barLen:0):0;
+ afterK=bigX.after&&bigAge>=7&&bigAge<11?1-(bigAge-7)/4:0;
+ const eout=x=>1-(1-Math.max(0,Math.min(1,x)))**3,barAge=((t-ed[0])%barLen+barLen)%barLen;
+ {// the faked spectrum: bass from the notes, kicks on 1 and 3, snares on 2 and 4, hi-hats on the eighths; eased like an analyser
+  const bt=(t-ed[0])/beatLen,bI=Math.floor(bt),f=bt-bI,kick=(bI%2===0?Math.exp(-f*beatLen*9):0),snr=(bI%2===1?Math.exp(-f*beatLen*10):0),hat=Math.exp(-((bt*2)%1)*beatLen*0.5*14);
+  let bass=0,pitch=0;for(const n of notes){if(n[0]>t)break;const age=t-n[0];if(age<1.2){const e=Math.exp(-age*3);if(e>bass){bass=e;pitch=(n[2]*5+n[3])/30}}}
+  for(let i=0;i<32;i++){const u=i/31,want=Math.min(1,kick*Math.exp(-u*14)*1.1+bass*0.8*Math.exp(-(((u-0.04-pitch*0.12)/0.06)**2))+snr*0.7*Math.exp(-(((u-0.45)/0.18)**2))+hat*0.35*Math.exp(-(((u-0.8)/0.15)**2))+busy*0.25*(1-u)*(0.6+0.4*Math.sin(clock*1.3+i*0.7)));
+   spec[i]+=(want-spec[i])*Math.min(1,dt*(want>spec[i]?28:6))}
+  const avg=(a,b)=>{let x=0;for(let i=a;i<b;i++)x+=spec[i];return x/(b-a)};bands=[avg(0,4),avg(4,10),avg(10,20),avg(20,32)];
+  if(kick>0.85&&kickPrev<=0.85){kickAt=clock;rings.push(clock)}kickPrev=kick;if(snr>0.85&&snrPrev<=0.85)snrAt=clock;snrPrev=snr;rings=rings.filter(r=>clock-r<2.4)}
 
  // ---- around the track ----
  const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#05060a');bg.addColorStop(1,'#0a0b12');g.fillStyle=bg;g.fillRect(0,0,W,H);
- const trackT=H*0.36,trackH=Math.min(H*0.3,250),trackB=trackT+trackH,L=Math.max(W*0.09,96),R=W*0.97,curX=L+(R-L)*0.2;
+ const trackT=H*0.36,trackH=Math.min(H*0.3,250),trackB=trackT+trackH,L=Math.max(W*0.09,96),R=W*0.97,curX=L+(R-L)*(0.2+0.3*scnS.glide);
  // Backgrounds (user: "how could we make the background better?"; the song's cover behind and cone-shaped beams were
  // turned down for the 3D board): Pools, Stage (rows of out-of-focus lights at three depths, flashing in turn on the beats,
  // a wave chasing across at each bar), Aurora (slow ribbons of light), Landscape (a silhouette of how busy the song is,
@@ -153,8 +521,8 @@ function frame(ms){
   const cols=[mood.c,mood.d,ease(mood.c,mood.d,0.5),ease(mood.d,[20,20,40],0.4)];
   m.fillStyle='#05060a';m.fillRect(0,0,mw,mh);m.globalCompositeOperation='lighter';
   for(let i=0;i<4;i++){const ci=(i+phrase)%4,cn=(i+phrase+1)%4,c3=ease(cols[ci],cols[cn],1-pk);
-   const x=mw*(0.5+0.38*Math.sin(meshT*(0.21+i*0.07)+i*1.9)),y=mh*(0.5+0.36*Math.cos(meshT*(0.17+i*0.05)+i*2.7)),r=mw*(0.42+0.08*Math.sin(meshT*0.3+i));
-   const a=Math.min(1,0.16+0.16*busy+0.05*beat+0.14*swell+0.06*heat)*(i===3?0.6:1);   // calmer (user: "a bit too flashy")
+   const bk=viz==='mesh'?bands[i]:0,x=mw*(0.5+0.38*Math.sin(meshT*(0.21+i*0.07)+i*1.9)),y=mh*(0.5+0.36*Math.cos(meshT*(0.17+i*0.05)+i*2.7)),r=mw*(0.42+0.08*Math.sin(meshT*0.3+i))*(1+0.35*bk);   // Band mesh: each cloud swells with its band
+   const a=Math.min(1,0.16+0.16*busy+(viz==='mesh'?0:0.05*beat)+0.14*swell+0.06*heat+0.12*bigK+0.3*bk)*(i===3?0.6:1);   // calmer (user: "a bit too flashy")
    const q=m.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(c3,a));q.addColorStop(1,css(c3,0));m.fillStyle=q;m.fillRect(0,0,mw,mh)}
   m.globalCompositeOperation='source-over';
   g.save();g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.globalAlpha=0.7;g.drawImage(MESH,0,0,W,H);g.restore();
@@ -203,35 +571,140 @@ function frame(ms){
   g.strokeStyle=css(mood.c,0.35);g.lineWidth=1.2;g.stroke();
   soft(W*0.5,trackT,H*0.7,mood.d,lift*0.5);
  }
- if(fx.pools)soft(curX,(trackT+trackB)/2,H*0.45,mood.c,0.04+0.08*beat*(0.4+heat));   // a glow behind where you play
-  // always: a soft vignette and fine film grain (what keeps flat gradients from looking cheap)
- {const q=g.createRadialGradient(W*0.5,H*0.48,Math.min(W,H)*0.35,W*0.5,H*0.48,Math.max(W,H)*0.8);q.addColorStop(0,'rgba(0,0,0,0)');q.addColorStop(1,'rgba(0,0,0,.55)');g.fillStyle=q;g.fillRect(0,0,W,H);
-  g.save();g.globalAlpha=0.035;g.translate(-((clock*997)%128),-((clock*577)%128));g.fillStyle=GRAIN;g.fillRect(0,0,W+128,H+128);g.restore()}
- if(fx.dust){                                      // dust drifting left at their depth's pace: the sense of motion, behind the tab
-  const speedPx=(R-L)/(1.25*VIS)*(VIS/(3.4/speedSet))/VIS*0.35;
-  for(const d of DUST){const x=((d.x*W*1.3-clock*speedPx*W*0.0008*d.z*60)%(W*1.3)+W*1.3)%(W*1.3)-W*0.15,y=d.y*H;
-   g.globalAlpha=(0.08+0.22*d.z)*(0.5+0.5*heat);g.fillStyle=css(mood.c,1);g.beginPath();g.arc(x,y,d.r*d.z*(1+0.3*beat),0,7);g.fill()}
+ if(fx.pools)soft(curX,(trackT+trackB)/2,H*0.45,mood.c,0.04+0.08*beat*(0.4+heat));
+ if(viz==='curtain'){const m=VIZC.getContext('2d'),mw=VIZC.width,mh=VIZC.height,my=((trackT+trackB)/2)/H*mh;m.clearRect(0,0,mw,mh);m.globalCompositeOperation='lighter';   // tiny, then stretched: columns of haze
+  for(let i=0;i<32;i++){const v=spec[i],u=Math.abs(i-15.5)/15.5,x=mw/2+(i<16?-1:1)*(u*mw/2),hh=mh*0.5*v,c3=ease(mood.c,mood.d,u);   // low in the middle, high to the sides
+   const q=m.createLinearGradient(0,my-hh,0,my+hh);q.addColorStop(0,css(c3,0));q.addColorStop(0.5,css(c3,0.55*v+0.05));q.addColorStop(1,css(c3,0));m.fillStyle=q;m.fillRect(x-1.2,my-hh,2.4,hh*2)}
+  g.save();g.globalAlpha=0.55;g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.globalCompositeOperation='lighter';g.drawImage(VIZC,0,0,W,H);g.restore()}
+ if(viz==='flow'){const my=(trackT+trackB)/2,mx=W*0.5,sp0=0.4+1.8*(bands[1]+bands[2])+1.2*busy,kk=Math.exp(-(clock-kickAt)*5)*(0.5+bands[0]);
+  g.save();g.globalCompositeOperation='lighter';g.lineCap='round';const paths=[new Path2D(),new Path2D(),new Path2D()];
+  for(const p of PARTS){const X=p.x*W,Y=p.y*H,ang=Math.sin(p.x*3.1+clock*0.13)*2.2+Math.cos(p.y*4.3-clock*0.11)*2.2+Math.sin((p.x+p.y)*7+clock*0.3)*0.6;
+   let ax=Math.cos(ang)*sp0,ay=Math.sin(ang)*sp0*0.6;const dx=X-mx,dy=(Y-my)*1.8,dd=Math.hypot(dx,dy)||1;ax+=dx/dd*kk*9;ay+=dy/dd*kk*5;   // the current, and the kick's push
+   p.vx+=(ax-p.vx)*0.12;p.vy+=(ay-p.vy)*0.12;const ox=X,oy=Y;p.x+=p.vx*p.z*dt*0.06;p.y+=p.vy*p.z*dt*0.1;
+   if(p.x<0||p.x>1||p.y<0||p.y>1){p.x=Math.random();p.y=Math.random();p.vx=p.vy=0;continue}
+   paths[p.c].moveTo(ox,oy);paths[p.c].lineTo(p.x*W-p.vx*p.z*2.2,p.y*H-p.vy*p.z*2.2)}
+  [mood.c,mood.d,ease(mood.c,[255,255,255],0.5)].forEach((c3,k)=>{g.strokeStyle=css(c3,0.22+0.35*(bands[k]||bands[3])+0.2*kk);g.lineWidth=1.3;g.stroke(paths[k])});
+  g.restore()}
+ if(viz==='cosmos'&&(cosmos==='spiral'||cosmos==='voyage'))drawProc(dt,t,heat,Math.exp(-(clock-kickAt)*4)*(0.4+bands[0]),busy);
+ if(viz==='cosmos'&&cosmos!=='spiral'&&cosmos!=='voyage'){const my=(trackT+trackB)/2,kk=Math.exp(-(clock-kickAt)*4)*(0.4+bands[0]),key=W+'x'+H+cosmos;
+  if(!cosmosC||cosmosC.key!==key)cosmosC=makeCosmos(W,H,cosmos);const C=cosmosC,sec=clock,gal=cosmos==='galaxy';
+  // the jump: big moments (and the multiplier going up); 0.15 s in, then out over 1.4 s
+  if(jumps!=='off'&&bigAt>jumpAt&&clock-bigAt<0.1)jumpAt=bigAt;if(jumps==='bigmult'&&sweepAt>jumpAt&&clock-sweepAt<0.1)jumpAt=sweepAt;
+  const ja=clock-jumpAt,J=cosmos==='warp'?Math.min(1,kk*1.2+bigK*0.8):gal&&ja>=0&&ja<1.6?(ja<0.15?ja/0.15:Math.pow(1-(ja-0.15)/1.45,2)):0;
+  const gcx=W*0.55,gcy=H*0.5,ang=gal?0.06*Math.sin(sec*0.05)+0.02*Math.sin(sec*0.13):0,zoom=1+0.06*J;
+  g.save();g.fillStyle='#020307';g.fillRect(0,0,W,H);
+  g.save();g.translate(gcx,gcy);g.rotate(ang);g.scale(zoom*(gal?1.18:1),zoom*(gal?1.18:1));g.translate(-gcx,-gcy);   // the band sways about its core (drawn larger so no edge shows)
+  g.globalAlpha=0.75+0.25*Math.min(1,bands[0]*0.8+bigK*0.5);g.drawImage(C.sky,gal?0:-W*0.02*(1+Math.sin(sec*0.02)),0,gal?W:W*1.04,H);g.globalAlpha=1;
+  if(gal){g.globalCompositeOperation='lighter';g.translate(gcx,gcy);g.rotate(-0.32);
+   g.save();g.scale(W*0.8/(H*0.18),1);const tq=g.createRadialGradient(0,0,0,0,0,H*0.18);tq.addColorStop(0,css(mood.c,0.05+0.09*heat+0.06*bigK));tq.addColorStop(0.5,css(mood.d,0.025+0.04*heat));tq.addColorStop(1,css(mood.d,0));g.fillStyle=tq;g.fillRect(-H*0.18,-H*0.18,H*0.36,H*0.36);g.restore();   // the multiplier's colour along the band: a soft oval (a rectangle showed as a bar across the screen)
+   if(kickAt>lastKickSeen&&bands[0]>0.25){galPulses.push({at:kickAt,s:0.6+bands[0]});lastKickSeen=kickAt}galPulses=galPulses.filter(q=>clock-q.at<2.2);
+   for(const q of galPulses){const a=(clock-q.at)/2.2,d=W*0.75*(1-(1-a)**2),al=0.14*q.s*(1-a)**1.5;   // light running out along the band from the core
+    for(const sx of[-1,1]){g.save();g.translate(sx*d,0);g.scale(3.2,1);const pq=g.createRadialGradient(0,0,0,0,0,H*0.07);pq.addColorStop(0,css(ease(mood.c,[255,255,255],0.4),al));pq.addColorStop(1,css(mood.c,0));g.fillStyle=pq;g.fillRect(-H*0.07,-H*0.07,H*0.14,H*0.14);g.restore()}}}
+  g.restore();
+  g.globalCompositeOperation='lighter';
+  const tabPx=(warp(t+0.1)-warp(t))/0.1*(R-L)/(VIS*1.25);
+  for(const st of C.stars){st.x-=tabPx*[0.004,0.012,0.03][st.d]*dt;if(st.x<-20)st.x+=W+40;
+   const tw=st.tw?0.75+0.25*Math.sin(sec*st.f+st.p):1,a=st.b*tw*(1+0.4*kk*(st.d===2?1:0)),sz=st.r*(1+0.25*kk*(st.d===2?1:0)),spr=C.spr[st.c];
+   if(J>0.02&&st.d>0){const dx=st.x-gcx,dy=st.y-gcy,dd=Math.hypot(dx,dy)||1,l=sz*(3+(cosmos==='warp'?30:60)*J*st.d)*(0.4+dd/W);   // stretched out from the core
+    g.save();g.translate(st.x,st.y);g.rotate(Math.atan2(dy,dx));g.globalAlpha=Math.min(1,a*(0.6+0.6*J));g.drawImage(spr,-l*0.15,-sz*0.5,l,sz);g.restore()}
+   g.globalAlpha=Math.min(1,a);g.drawImage(spr,st.x-sz,st.y-sz,sz*2,sz*2)}
   g.globalAlpha=1;
- }
- if(fx.edges){                                     // the top and bottom edges glow in the mood colour, swelling on beat 1
-  const a=0.06+0.16*heat+0.08*beat;
-  let q=g.createLinearGradient(0,0,0,H*0.22);q.addColorStop(0,css(mood.d,a));q.addColorStop(1,css(mood.d,0));g.fillStyle=q;g.fillRect(0,0,W,H*0.22);
-  q=g.createLinearGradient(0,H,0,H*0.78);q.addColorStop(0,css(mood.d,a));q.addColorStop(1,css(mood.d,0));g.fillStyle=q;g.fillRect(0,H*0.78,W,H*0.22);
- }
+  if(J>0.02&&gal){const fq=g.createRadialGradient(gcx,gcy,0,gcx,gcy,W*0.6);fq.addColorStop(0,`rgba(235,240,255,${0.12*J})`);fq.addColorStop(1,'rgba(235,240,255,0)');g.fillStyle=fq;g.fillRect(0,0,W,H)}   // the jump's flash
+  if(cosmos==='planet'){const pr=H*1.15,pcx=W*0.5,pcy=H+pr*0.72,glow=0.55+0.45*Math.min(1,bands[0]*0.9+kk*0.5+bigK*0.6);
+   g.globalCompositeOperation='source-over';const body=g.createRadialGradient(pcx,pcy-pr*0.3,pr*0.2,pcx,pcy,pr);body.addColorStop(0,'#05060b');body.addColorStop(0.92,'#07080f');body.addColorStop(1,'#0b0d18');
+   g.fillStyle=body;g.beginPath();g.arc(pcx,pcy,pr,0,7);g.fill();
+   g.globalCompositeOperation='lighter';
+   const atm=g.createRadialGradient(pcx,pcy,pr*0.985,pcx,pcy,pr*1.09);atm.addColorStop(0,css(mood.c,0));atm.addColorStop(0.12,css(ease(mood.c,[255,255,255],0.4),0.55*glow));atm.addColorStop(0.3,css(mood.d,0.22*glow));atm.addColorStop(1,css(mood.d,0));
+   g.fillStyle=atm;g.beginPath();g.arc(pcx,pcy,pr*1.09,0,7);g.fill();
+   const sun=g.createRadialGradient(pcx+pr*0.25,pcy-pr*0.98,0,pcx+pr*0.25,pcy-pr*0.98,W*0.35);sun.addColorStop(0,`rgba(255,250,240,${0.12*glow})`);sun.addColorStop(1,'rgba(255,250,240,0)');g.fillStyle=sun;g.fillRect(0,0,W,H)}
+  if(gal){const core=g.createRadialGradient(gcx,my,0,gcx,my,H*0.55);const gk=0.6+0.4*Math.min(1,bands[0]+bigK*0.6);core.addColorStop(0,css(ease(mood.c,[255,240,220],0.6),0.22*gk));core.addColorStop(0.4,css(mood.d,0.08*gk));core.addColorStop(1,css(mood.d,0));g.fillStyle=core;g.fillRect(0,0,W,H)}
+  g.restore()}
+ if(viz==='space'){const my=(trackT+trackB)/2,cx=W*0.5,kk=Math.exp(-(clock-kickAt)*4)*(0.4+bands[0]),sAge=clock-snrAt;
+  g.save();g.globalCompositeOperation='source-over';g.fillStyle='rgba(2,3,8,.55)';g.fillRect(0,0,W,H);g.globalCompositeOperation='lighter';   // deeper than the mesh: space is dark
+  if(nebula){const m=NEB.getContext('2d'),mw=NEB.width,mh=NEB.height;m.globalCompositeOperation='source-over';m.clearRect(0,0,mw,mh);m.globalCompositeOperation='lighter';
+   const T=clock*0.03;
+   for(let i=0;i<5;i++){const c3=[mood.d,mood.c,ease(mood.d,[90,40,160],0.5),ease(mood.c,[40,120,200],0.5),mood.d][i],x=mw*(0.5+0.42*Math.sin(T*(1+i*0.3)+i*2.3)),y=mh*(0.5+0.38*Math.cos(T*(0.8+i*0.2)+i*1.7)),r=mw*(0.22+0.1*Math.sin(T*2+i));
+    const a=(0.1+0.22*bands[i%4]+0.08*bigK)*(i===4?0.6:1),q=m.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(c3,a));q.addColorStop(0.6,css(c3,a*0.4));q.addColorStop(1,css(c3,0));m.fillStyle=q;m.fillRect(0,0,mw,mh)}
+   m.globalCompositeOperation='destination-out';for(let i=0;i<4;i++){const x=mw*(0.5+0.45*Math.sin(T*1.3+i*4.1)),y=mh*(0.5+0.4*Math.cos(T*1.1+i*2.9)),r=mw*0.12;const q=m.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,'rgba(0,0,0,.5)');q.addColorStop(1,'rgba(0,0,0,0)');m.fillStyle=q;m.fillRect(0,0,mw,mh)}   // dark dust lanes through it
+   g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.globalAlpha=0.9;g.drawImage(NEB,0,0,W,H);g.globalAlpha=1}
+  if(spaceMode==='warp'){const want=0.05+0.22*(bands[1]+bands[2])+0.15*busy+0.45*kk+0.6*bigK;warpSpeed+=(want-warpSpeed)*Math.min(1,dt*4);
+   const fx=W*0.55,fy=H*0.62,paths=[new Path2D(),new Path2D()];
+   for(const st of STARS){const z0=st.z;st.z-=warpSpeed*dt*0.6;if(st.z<0.04){st.x=(Math.random()*2-1)*1.6;st.y=(Math.random()*2-1)*1.2;st.z=1;continue}
+    const px=cx+st.x/st.z*fx,py=my+st.y/st.z*fy,qx=cx+st.x/z0*fx,qy=my+st.y/z0*fy;if(px<-20||px>W+20||py<-20||py>H+20){st.z=1;st.x=(Math.random()*2-1)*1.6;st.y=(Math.random()*2-1)*1.2;continue}
+    const near=1-st.z,len=Math.min(1,warpSpeed*3),k=st.c<0.25?1:0;
+    const path=paths[k];path.moveTo(qx+(qx-px)*len*1.6,qy+(qy-py)*len*1.6);path.lineTo(px,py);
+    if(near>0.7){g.fillStyle=css(st.c<0.25?ease(mood.c,[255,255,255],0.4):[230,238,255],(near-0.7)*2.5);g.beginPath();g.arc(px,py,0.6+1.6*near,0,7);g.fill()}}
+   g.lineCap='round';g.strokeStyle=css([225,235,255],0.22+0.3*Math.min(1,warpSpeed*2));g.lineWidth=0.9;g.stroke(paths[0]);g.strokeStyle=css(ease(mood.c,[255,255,255],0.3),0.26+0.3*Math.min(1,warpSpeed*2));g.stroke(paths[1])}
+  else{const tabPx=(warp(t+0.1)-warp(t))/0.1*(R-L)/(VIS*1.25);
+   for(const st of DRIFT){st.x-=tabPx*0.12*st.d*dt/W;if(st.x<-0.02)st.x+=1.04;const x=st.x*W,y=st.y*H,tw=0.65+0.35*Math.sin(clock*(1.5+st.t)+st.t*3),fl=st.d===1&&st.c<0.5?kk*0.8:0,sp=st.c<0.1&&sAge<0.3?(1-sAge/0.3):0;
+    const a=Math.min(1,(0.25+0.6*st.d)*tw+fl+sp),c3=st.c<0.2?ease(mood.c,[255,255,255],0.5):[230,238,255];
+    if(st.d===1&&(fl>0.1||sp>0))soft(x,y,4+5*(fl+sp),c3,0.18*(fl+sp));g.fillStyle=css(c3,a);g.beginPath();g.arc(x,y,st.r*(1+0.6*fl),0,7);g.fill()}}
+  g.restore()}
+ if(viz==='liquid'){const m=VIZC.getContext('2d'),mw=VIZC.width,mh=VIZC.height,kk=Math.exp(-(clock-kickAt)*4);m.globalCompositeOperation='source-over';m.clearRect(0,0,mw,mh);m.globalCompositeOperation='lighter';
+  for(let i=0;i<6;i++){const b=bands[i%4],T=clock*(0.25+0.35*busy)+i*1.7,orb=0.28+0.12*kk+0.06*Math.sin(T*0.7),x=mw*(0.5+orb*Math.cos(T*(0.5+i*0.08)+i)),y=mh*(0.5+orb*1.2*Math.sin(T*(0.6+i*0.05)+i*2.1)),r=mw*(0.13+0.2*b+0.06*kk),c3=[mood.c,mood.d,ease(mood.c,mood.d,0.5)][i%3];
+   const q=m.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(c3,0.5+0.4*b));q.addColorStop(0.55,css(c3,0.25+0.25*b));q.addColorStop(1,css(c3,0));m.fillStyle=q;m.fillRect(0,0,mw,mh)}
+  g.save();g.globalAlpha=0.5;g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.globalCompositeOperation='lighter';g.drawImage(VIZC,0,0,W,H);g.restore()}
+ if(viz==='ridges'){ridgeT+=dt;if(ridgeT>0.09){ridgeT=0;RIDGE.unshift(RIDGE.pop().map((_,i)=>spec[i]))}
+  g.save();const rows=RIDGE.length;
+  for(const dir of[-1,1]){const base=dir<0?trackT-26:trackB+26,room=dir<0?trackT-40:H-trackB-40;
+   for(let k=rows-1;k>=0;k--){const f=k/(rows-1),y0=base+dir*room*(1-(1-f)**1.6),wd=W*(0.9-0.45*f),x0=(W-wd)/2,amp=room*0.22*(1-f*0.6),row=RIDGE[k];
+    g.beginPath();g.moveTo(x0,y0);for(let j=0;j<=48;j++){const u=j/48,bin=Math.abs(u-0.5)*2*31,i0=Math.floor(bin),v=row[i0]+(row[Math.min(31,i0+1)]-row[i0])*(bin-i0),env=Math.sin(Math.PI*u)**1.5;g.lineTo(x0+wd*u,y0-v*amp*env)}
+    g.lineTo(x0+wd,y0);g.closePath();g.fillStyle='rgba(5,6,10,.92)';g.fill();   // each line hides the ones behind it
+    g.strokeStyle=css(ease(mood.c,mood.d,f),(0.55-0.45*f)*(0.5+0.5*Math.min(1,busy+bands[0])));g.lineWidth=k===0?1.6:1;g.stroke()}}
+  g.restore()}
+ if(viz==='warp'){const my=(trackT+trackB)/2,mx=W*0.5;g.save();g.globalCompositeOperation='lighter';
+  for(const r0 of rings){const a=(clock-r0)/2.4,R0=W*0.12+W*0.75*(a**0.8),fade=(1-a)**1.6;g.beginPath();
+   for(let j=0;j<=96;j++){const th=j/96*Math.PI*2,bin=Math.round(Math.abs(Math.cos(th))*31),rr=R0*(1+0.16*spec[bin]*(1-a*0.5));const x=mx+Math.cos(th)*rr,y=my+Math.sin(th)*rr*0.5;j?g.lineTo(x,y):g.moveTo(x,y)}
+   g.strokeStyle=css(mood.c,0.12*fade);g.lineWidth=9;g.stroke();g.strokeStyle=css(ease(mood.c,[255,255,255],0.35),0.55*fade);g.lineWidth=1.4;g.stroke()}
+  soft(mx,my,W*0.35,mood.d,0.05+0.1*bands[0]);g.restore()}
+ if(viz==='silk'){g.save();g.globalCompositeOperation='lighter';g.lineCap='round';const mys=[trackT*0.55,trackB+(H-trackB)*0.45];   // three fine lines, one per band, in the open space above and below the board (mirrored)
+  [[bands[0],0.6,H*0.2,mood.d],[bands[1]*0.8+bands[2]*0.2,1.1,H*0.16,mood.c],[bands[3],1.9,H*0.1,ease(mood.c,[255,255,255],0.4)]].forEach(([v,fq,amp,c3],k)=>{
+   for(const[my,dir]of[[mys[0],1],[mys[1],-1]]){g.beginPath();for(let x=-10;x<=W+10;x+=8){const u=x/W,env=Math.sin(Math.PI*u),y=my+dir*(Math.sin(u*Math.PI*2*fq*2+clock*(0.4+k*0.25)+k*2)*0.7+Math.sin(u*Math.PI*2*fq*5.3-clock*(0.7+k*0.2))*0.3)*amp*0.6*(0.25+v)*env;x<0?g.moveTo(x,y):g.lineTo(x,y)}
+   g.strokeStyle=css(c3,0.05+0.08*v);g.lineWidth=10;g.stroke();g.strokeStyle=css(c3,0.25+0.45*v);g.lineWidth=1.1;g.stroke()}});
+  g.restore()}
+ if(big.embers&&bigK>0.01){g.save();g.globalCompositeOperation='lighter';
+  for(let i=0;i<70;i++){const P=2.6+(i%5)*0.5,ph0=((clock/P+i*0.137)%1),x=((i*0.618)%1)*W+Math.sin(clock*0.8+i)*18,y=H*1.02-ph0*H*1.05,r=0.8+((i*0.29)%1)*1.8,a=Math.sin(Math.PI*ph0)*bigK*(0.35+0.45*((i*0.71)%1));
+   soft(x,y,r*5,i%3?mood.c:[255,240,220],a*0.35);g.fillStyle=css([255,245,230],a);g.beginPath();g.arc(x,y,r*0.7,0,7);g.fill()}
+  g.restore()}
 
+ {const sk=bigX.sky?Math.max(bigK,afterK*0.7):0;      // Big moment +: the sky lights up / the build-up dims it / the hit's bloom
+  if(sk>0.01){g.save();g.globalCompositeOperation='lighter';g.translate(W*0.55,H*0.5);g.rotate(-0.32);
+   g.save();g.scale(W*0.9/(H*0.22),1);const q1=g.createRadialGradient(0,0,0,0,0,H*0.22);q1.addColorStop(0,css(mood.c,0.16*sk));q1.addColorStop(0.5,css(mood.d,0.08*sk));q1.addColorStop(1,css(mood.d,0));g.fillStyle=q1;g.fillRect(-H*0.22,-H*0.22,H*0.44,H*0.44);g.restore();
+   const q2=g.createRadialGradient(0,0,0,0,0,H*0.3);q2.addColorStop(0,`rgba(255,236,210,${0.2*sk*(0.7+0.3*beat)})`);q2.addColorStop(1,'rgba(255,236,210,0)');g.fillStyle=q2;g.fillRect(-H*0.3,-H*0.3,H*0.6,H*0.6);
+   const wa=barAge/barLen;g.save();g.translate((wa*2-1)*W*0.8,0);g.scale(3,1);const q3=g.createRadialGradient(0,0,0,0,0,H*0.12);q3.addColorStop(0,css(mood.c,0.16*sk*(1-wa)));q3.addColorStop(1,css(mood.c,0));g.fillStyle=q3;g.fillRect(-H*0.12,-H*0.12,H*0.24,H*0.24);g.restore();
+   g.restore()}
+  if(preK>0){g.fillStyle=`rgba(2,3,8,${0.32*preK})`;g.fillRect(0,0,W,H)}
+  if(bigX.drop&&bigAge>=0&&bigAge<0.5){g.fillStyle=`rgba(235,240,255,${0.16*(1-bigAge/0.5)**2})`;g.fillRect(0,0,W,H)}}
+ if(scnS.black>0){g.fillStyle=`rgba(0,0,0,${scnS.black})`;g.fillRect(0,0,W,H)}
+ if(scnS.dim>0){g.fillStyle=`rgba(4,5,10,${scnS.dim})`;g.fillRect(0,0,W,H)}
+ g.save();                                        // New: the board opens from / closes on the cursor
+ if(scnS.open<1){const lo=L-80,hi=R+40,cl=curX-(curX-lo)*scnS.open,cr=curX+(hi-curX)*scnS.open;g.beginPath();g.rect(cl,0,Math.max(0,cr-cl),H);g.clip()}   // only while opening / closing: left on, it cut the x4 edge glow off in a straight line (user's screenshot)
  // ---- the track: a dark glass panel ----
  g.save();
  const pad=18;g.beginPath();g.roundRect(L-56,trackT-pad,R-L+56+pad,trackH+pad*2,18);
  let q;
  if(pol.float){                                   // Borderless: no box, no shadow; the panel fades out at both ends
-  q=g.createLinearGradient(L-56,0,R+pad,0);q.addColorStop(0,'rgba(10,11,17,0)');q.addColorStop(0.12,'rgba(10,11,17,.78)');q.addColorStop(0.88,'rgba(10,11,17,.78)');q.addColorStop(1,'rgba(10,11,17,0)');g.fillStyle=q;g.fill()}
+  q=g.createLinearGradient(L-56,0,R+pad,0);q.addColorStop(0,'rgba(10,11,17,0)');const pA=fin.board==='float'?0.3:0.78;q.addColorStop(0.12,`rgba(10,11,17,${pA})`);q.addColorStop(0.88,`rgba(10,11,17,${pA})`);   // New, Floating: a much lighter panel
+ q.addColorStop(1,'rgba(10,11,17,0)');g.fillStyle=q;g.fill()}
  else{g.shadowColor='rgba(0,0,0,.6)';g.shadowBlur=40;g.fillStyle='rgba(10,11,17,.82)';g.fill();g.shadowBlur=0;
   q=g.createLinearGradient(0,trackT-pad,0,trackB+pad);q.addColorStop(0,'rgba(255,255,255,.05)');q.addColorStop(1,'rgba(255,255,255,.012)');g.fillStyle=q;g.fill()}
  if(x4k>0.01){                                    // x4: the board turns blue (user: "I liked when the board turned blue before"), strongest at the cursor
   const wq=g.createLinearGradient(L-56,0,R+pad,0),cp=Math.max(0,Math.min(0.65,(curX-(L-56))/(R+pad-(L-56))));   // kept in range (a very narrow window put it below 0 and the frame threw)
   wq.addColorStop(0,`rgba(21,87,192,${0.18*x4k})`);wq.addColorStop(cp,`rgba(30,110,230,${(0.5+0.06*beat)*x4k})`);wq.addColorStop(Math.min(1,cp+0.35),`rgba(21,87,192,${0.22*x4k})`);wq.addColorStop(1,`rgba(21,87,192,${0.1*x4k})`);
   g.fillStyle=wq;g.fill()}
+ if(fin.board==='glass'){                         // New, Glass slab: a sheen along the top, the rim lit brightest at the cursor, a faint reflection under it
+  const shq=g.createLinearGradient(0,trackT-pad,0,trackT+pad*1.5);shq.addColorStop(0,'rgba(255,255,255,.08)');shq.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=shq;g.fill();
+  const cpos=Math.max(0.02,Math.min(0.98,(curX-(L-56))/(R+pad-(L-56)))),rq2=g.createLinearGradient(L-56,0,R+pad,0);
+  rq2.addColorStop(0,'rgba(220,228,255,0)');rq2.addColorStop(cpos,x4k>0.5?'rgba(125,190,255,.75)':'rgba(220,228,255,.5)');rq2.addColorStop(1,'rgba(220,228,255,0)');
+  g.save();g.strokeStyle=rq2;g.lineWidth=1;g.stroke();g.restore();
+  g.save();g.translate((L-56+R+pad)/2,trackB+pad+4);g.scale((R-L)/80,1);const rfq=g.createRadialGradient(0,0,0,0,0,40);rfq.addColorStop(0,css(mood.c,0.09));rfq.addColorStop(1,css(mood.c,0));g.fillStyle=rfq;g.fillRect(-40,0,80,40);g.restore()}   // an oval, so no edges
  if(!pol.float){g.strokeStyle=`rgba(${125*x4k+255*(1-x4k)|0},${211*x4k+255*(1-x4k)|0},255,${0.07+0.25*x4k})`;g.lineWidth=1;g.stroke()}
+ if(big.now&&bigK>0.01){g.fillStyle=css(mood.d,0.07*bigK);g.fill();
+  g.save();const rq=g.createLinearGradient(L-56,0,R+pad,0);rq.addColorStop(0,css(mood.c,0));rq.addColorStop(0.15,css(mood.c,0.4*bigK));rq.addColorStop(0.85,css(mood.c,0.4*bigK));rq.addColorStop(1,css(mood.c,0));
+  g.strokeStyle=rq;g.lineWidth=1.4;g.shadowColor=css(mood.c,1);g.shadowBlur=26*bigK;g.stroke();g.restore()}   // its rim lit
+ if(fin.board==='float'){                         // Floating: a soft shadow under the strings, light pooling round the cursor
+  const fq=g.createLinearGradient(0,trackT,0,trackB);fq.addColorStop(0,'rgba(2,3,8,0)');fq.addColorStop(0.5,'rgba(2,3,8,.35)');fq.addColorStop(1,'rgba(2,3,8,0)');g.fillStyle=fq;g.fillRect(L-56,trackT,R-L+56+pad,trackH);
+  soft(curX,trackT+trackH/2,trackH*0.9,mood.c,0.09+0.05*beat)}
  g.clip();
  const sp=trackH/4,sy=s=>trackT+(3-s)*sp+sp/2,fa=VIS*0.25,fb=VIS,wt=warp(t),X=tt=>L+(warp(tt)-wt+fa)/(fa+fb)*(R-L);
  // the played side a shade darker
@@ -251,6 +724,12 @@ function frame(ms){
   for(let j=0;j<4;j++){const x=X(tb+j*beatLen);if(x<L-10||x>R+10)continue;
    if(j===0){g.strokeStyle='rgba(255,255,255,.09)';g.lineWidth=1;g.beginPath();g.moveTo(x,trackT-6);g.lineTo(x,trackB+6);g.stroke()}
    g.fillStyle=j===0?'rgba(255,255,255,.35)':'rgba(255,255,255,.14)';g.fillRect(x-0.5,trackB+pad-7,1,j===0?6:4)}}
+ if(pol2.lanes)for(let s=0;s<4;s++){const c3=rgb(COL[s]),lq=g.createLinearGradient(L-56,0,R+pad,0),a=s%2?0.03:0.014;   // Lanes: a faint band per string, fading at the ends
+  lq.addColorStop(0,css(c3,0));lq.addColorStop(0.12,css(c3,a));lq.addColorStop(0.88,css(c3,a));lq.addColorStop(1,css(c3,0));g.fillStyle=lq;g.fillRect(L-56,sy(s)-sp*0.42,R-L+56+pad,sp*0.84)}
+ if(pol2.bars)for(let i=0;i<ed.length+4;i++){const tb=i<ed.length?ed[i]:ed[ed.length-1]+(i-ed.length+1)*barLen;   // Bar glow: a bar line lights up reaching the cursor and fades behind it
+  for(let j=0;j<4;j++){const x=X(tb+j*beatLen),d=curX-x;if(d<-60||d>220)continue;const k=d<0?(1+d/60)**2*0.4:Math.exp(-d/70),a=(j===0?0.42:0.14)*k;
+   const vq=g.createLinearGradient(0,trackT-pad,0,trackB+pad);vq.addColorStop(0,css(mood.c,0));vq.addColorStop(0.5,css(mood.c,a));vq.addColorStop(1,css(mood.c,0));g.fillStyle=vq;g.fillRect(x-(j===0?1:0.5),trackT-pad,j===0?2:1,trackH+pad*2);
+   if(j===0&&d>=0)soft(x,trackB+pad-4,10,mood.c,0.5*k)}}
  // strings: thin, soft colour, a little brighter for a moment when played
  const lastOn=[-9,-9,-9,-9],lastN=[null,null,null,null];for(const n of notes)if(n[0]<=t&&!missed.has(n)){lastOn[n[2]]=n[0];lastN[n[2]]=n}
  // Live strings: how far each string swings now. Simulated: a pluck strength per note (beat 1 harder), ringing while the
@@ -571,7 +1050,9 @@ function frame(ms){
    if(!isNext&&!pr){g.shadowColor='rgba(0,0,0,.65)';g.shadowBlur=8;g.shadowOffsetY=3}}
   else g.fillStyle=hit?css(c,0.9*hit+0.1):'rgba(9,10,15,.92)';
   g.fill();g.shadowBlur=0;g.shadowOffsetY=0;if(pr&&!hit)glowIn(x,y,cw,c,pr);
-  g.strokeStyle=css(ease(missedColor(n,c),[125,211,252],0.6*x4k),I.rep?0.25:0.35+0.6*Math.max(near,isNext?0.6:0)+0.2*x4k);g.lineWidth=1.2;g.stroke();   // open strings like any other number (user: "can we make zero like the other numbers?")
+  const litN=fin.keys==='lit'&&!hit?Math.max(0,Math.min(1,1-(x-curX)/240)):-1;   // New, Lit: tinted by the string, brighter as it nears the cursor
+  if(litN>=0){g.fillStyle=css(c,0.07+0.13*litN);g.fill();if(litN>0.3){g.save();g.globalCompositeOperation='lighter';soft(x,y,cw*1.15,c,(litN-0.3)*0.32);g.restore()}}
+  g.strokeStyle=css(ease(missedColor(n,c),[125,211,252],0.6*x4k),I.rep?0.25:0.35+0.6*Math.max(near,isNext?0.6:0)+0.2*x4k+(litN>0?0.35*litN:0));g.lineWidth=1.2;g.stroke();   // open strings like any other number (user: "can we make zero like the other numbers?")
   if(pol.keys&&!hit){g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=1;g.beginPath();g.moveTo(x-cw/2+ch*0.3,y-ch/2+1.4);g.lineTo(x+cw/2-ch*0.3,y-ch/2+1.4);g.stroke()}   // its top edge catching the light
   g.textAlign='center';g.textBaseline='middle';g.fillStyle=hit>0.4?'#0a0b10':'#f5f5f7';g.fillText(String(n[3]),x,y+fs*0.04);
   g.globalAlpha=1;
@@ -582,6 +1063,17 @@ function frame(ms){
   const q=g.createLinearGradient(tx,ty,hx,hy);q.addColorStop(0,css(c,0));q.addColorStop(1,css(c,0.9));g.strokeStyle=q;g.lineWidth=2.2;g.lineCap='round';
   g.beginPath();g.moveTo(tx,ty);g.lineTo(hx,hy);g.stroke();g.lineCap='butt';soft(hx,hy,sp*0.3,c,0.6);g.fillStyle='#fff';g.beginPath();g.arc(hx,hy,2.2,0,7);g.fill()}
  if(!fx.behind)drawBall();
+ if(big.now&&bigAge>=0&&bigAge<0.9){const a=bigAge/0.9,sx=curX+(R-curX)*eout(a),w=W*0.16;g.fillStyle=css(mood.c,0.1*(1-a));g.fillRect(L-56,trackT-pad,R-L+56+pad,trackH+pad*2);
+  const bq=g.createLinearGradient(sx-w,0,sx+w,0);bq.addColorStop(0,css(mood.c,0));bq.addColorStop(0.5,`rgba(255,255,255,${0.2*(1-a)})`);bq.addColorStop(1,css(mood.c,0));g.fillStyle=bq;g.fillRect(sx-w,trackT-pad,w*2,trackH+pad*2)}
+ if(big.wave){const waves=[];if(bigAge>=0&&bigAge<1.1)waves.push([bigAge/1.1,1]);if(bigK>0.3&&bigAge>1.1&&barAge<0.9)waves.push([barAge/0.9,0.4*bigK]);
+  g.save();g.globalCompositeOperation='lighter';
+  for(const[a,str]of waves){const e=eout(a),fade=(1-a)**1.5*str;
+   for(const[x0,x1]of[[curX,R+pad+20],[curX,L-70]]){const fx0=x0+(x1-x0)*e,dir=Math.sign(x1-x0),tw=90+120*e;
+    const fq=g.createLinearGradient(fx0-dir*tw,0,fx0+dir*8,0);fq.addColorStop(0,css(mood.c,0));fq.addColorStop(0.85,css(mood.c,0.16*fade));fq.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=fq;g.fillRect(Math.min(fx0-dir*tw,fx0+dir*8),trackT-pad,tw+8,trackH+pad*2);   // the front's wake
+    g.fillStyle=`rgba(255,255,255,${0.55*fade})`;g.fillRect(fx0-1,trackT-pad,2,trackH+pad*2);   // the front
+    for(let s=0;s<4;s++){const c3=ease(rgb(COL[s]),[255,255,255],0.4),sq=g.createLinearGradient(fx0-dir*tw*0.8,0,fx0,0);sq.addColorStop(0,css(c3,0));sq.addColorStop(1,css(c3,0.9*fade));   // each string lit as it passes
+     g.strokeStyle=sq;g.lineWidth=3;g.beginPath();g.moveTo(fx0-dir*tw*0.8,sy(s));g.lineTo(fx0,sy(s));g.stroke();soft(fx0,sy(s),12,c3,0.7*fade)}}}
+  g.restore()}
  // the cursor: a slim line with a soft column of light, a touch brighter on the beat
  q=g.createLinearGradient(curX-16,0,curX+16,0);q.addColorStop(0,css(mood.c,0));q.addColorStop(0.5,css(mood.c,0.1+0.08*beat));q.addColorStop(1,css(mood.c,0));g.fillStyle=q;g.fillRect(curX-16,trackT-pad,32,trackH+pad*2);
  g.restore();
@@ -590,8 +1082,8 @@ function frame(ms){
   g.beginPath();g.moveTo(curX,cTop);g.lineTo(curX,cBot);g.strokeStyle=css(mood.c,0.1+0.08*beat);g.lineWidth=8;g.stroke();g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=2;g.stroke();
   if(mf>0){g.beginPath();g.moveTo(curX,cBot);g.lineTo(curX,fy);g.strokeStyle=css(mood.c,0.3+0.1*beat);g.lineWidth=7;g.stroke();g.strokeStyle=css(mood.c,1);g.lineWidth=3;g.stroke()}
   g.lineCap='butt';if(clock<sweepAt)sweepAt=-9;const pop=1+0.25*Math.max(0,1-(clock-sweepAt)/0.3),bw=40*pop,bh=24*pop,by=cTop-18;
-  g.beginPath();g.roundRect(curX-bw/2,by-bh/2,bw,bh,bh/2);g.fillStyle='rgba(9,10,15,.92)';g.fill();g.strokeStyle=css(mood.c,mult===1?0.45:0.95);g.lineWidth=1.4;g.stroke();
-  g.font=`700 ${Math.round(14*pop)}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(mood.c,mult===1?0.75:1);g.fillText(`${mult}×`,curX,by+1)}
+  if(fin.mult==='now'&&hudBack==='now'){g.beginPath();g.roundRect(curX-bw/2,by-bh/2,bw,bh,bh/2);g.fillStyle='rgba(9,10,15,.92)';g.fill();g.strokeStyle=css(mood.c,mult===1?0.45:0.95);g.lineWidth=1.4;g.stroke();
+  g.font=`700 ${Math.round(14*pop)}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(mood.c,mult===1?0.75:1);g.fillText(`${mult}×`,curX,by+1)}}
  if(x4k>0.01){                                    // x4: glowing caps on the cursor, and a glint travelling round the board's edge
   soft(curX,trackT-pad-6,16,mood.c,0.6*x4k);soft(curX,trackB+pad+6,16,mood.c,0.6*x4k);
   const pw=R-L+56+pad,ph=trackH+pad*2,per=2*(pw+ph);
@@ -605,9 +1097,156 @@ function frame(ms){
   g.save();g.beginPath();g.roundRect(L-56,trackT-pad,pw,ph,18);g.strokeStyle=oq;g.lineWidth=1.6;g.shadowColor='#60a5fa';g.shadowBlur=(14+10*beat)*x4k;g.stroke();
   g.shadowBlur=0;g.beginPath();g.roundRect(L-52,trackT-pad+4,pw-8,ph-8,15);g.strokeStyle=`rgba(125,211,252,${0.18*x4k})`;g.lineWidth=1;g.stroke();g.restore();
  }
+ // ---- big moments over the board's edges ----
+ {const top=trackT-pad,bot=trackB+pad,px0=L-56,px1=R+pad,edgeA=x=>Math.max(0,Math.min(1,(x-px0)/(W*0.1),(px1-x)/(W*0.1)));   // (the edges fade out at the board's ends)
+  const fr=Math.floor(clock*30),hs=(i,f=fr)=>{const v=Math.sin(i*127.1+f*311.7)*43758.5453;return v-Math.floor(v)-0.5};
+  g.save();g.globalCompositeOperation='lighter';g.lineCap='round';g.lineJoin='round';
+  if(big.wave&&bigAge>=0&&bigAge<1.3){const a=bigAge/1.3,r=eout(a)*W*0.55;g.strokeStyle=css(mood.c,0.45*(1-a)**2);g.lineWidth=2+4*(1-a);g.beginPath();g.ellipse(curX,(top+bot)/2,r,r*0.42+(bot-top)*0.5*(1-a),0,0,7);g.stroke()}   // the ring opening round the board
+  // Surge at x4, not big moments (user: "the lightning around the board should happen at 4x, not big moment"): it races round
+  // when the streak reaches x4 and crackles on the beats while you stay there; a big moment no longer fires it
+  if(big.surge&&x4k>0.01){const bigAge=clock-x4At,bigK=x4k;const gc=x4k>0.5?[80,190,255]:ease(mood.c,[125,211,252],0.35);
+   // All the way round (user: "make the electric go all the way around instead of just the sides"): the bolts follow the
+   // board's whole rounded outline. From the cursor's two ends four arcs race round it (along the top and bottom edges, round
+   // the corners and down / up the ends) and meet halfway down each end; the crackles fall anywhere on the outline.
+   const rr0=18,PW=px1-px0-2*rr0,PH=bot-top-2*rr0,ARC=Math.PI*rr0/2,PER=2*PW+2*PH+4*ARC;
+   const per=u=>{u=((u%PER)+PER)%PER;                                     // a point on the outline (clockwise from the top-left) and its outward normal
+    if(u<PW)return[px0+rr0+u,top,0,-1];u-=PW;
+    if(u<ARC){const an=-Math.PI/2+u/rr0;return[px1-rr0+Math.cos(an)*rr0,top+rr0+Math.sin(an)*rr0,Math.cos(an),Math.sin(an)]}u-=ARC;
+    if(u<PH)return[px1,top+rr0+u,1,0];u-=PH;
+    if(u<ARC){const an=u/rr0;return[px1-rr0+Math.cos(an)*rr0,bot-rr0+Math.sin(an)*rr0,Math.cos(an),Math.sin(an)]}u-=ARC;
+    if(u<PW)return[px1-rr0-u,bot,0,1];u-=PW;
+    if(u<ARC){const an=Math.PI/2+u/rr0;return[px0+rr0+Math.cos(an)*rr0,bot-rr0+Math.sin(an)*rr0,Math.cos(an),Math.sin(an)]}u-=ARC;
+    if(u<PH)return[px0,bot-rr0-u,-1,0];u-=PH;
+    const an=Math.PI+u/rr0;return[px0+rr0+Math.cos(an)*rr0,top+rr0+Math.sin(an)*rr0,Math.cos(an),Math.sin(an)]};
+   const bolt=(u0,u1,seed,amp,a)=>{if(Math.abs(u1-u0)<4)return;const N=Math.max(4,Math.round(Math.abs(u1-u0)/14)),pts=[];
+    for(let k=0;k<=N;k++){const f=k/N,[x,y,nx,ny]=per(u0+(u1-u0)*f),d=(hs(seed+k)+0.5*hs(seed+k*3+9))*amp*Math.sin(Math.PI*f)**0.5;pts.push([x+nx*d,y+ny*d])}
+    for(const[w,c,al]of[[7,gc,0.12],[2.6,gc,0.5],[1,[240,248,255],0.95]]){g.strokeStyle=css(c,al*a);g.lineWidth=w;g.beginPath();g.moveTo(pts[0][0],pts[0][1]);for(let k=1;k<=N;k++)g.lineTo(pts[k][0],pts[k][1]);g.stroke()}};
+   const uT=curX-(px0+rr0),uB=PW+ARC+PH+ARC+(px1-rr0-curX),dR=(px1-rr0-curX)+ARC+PH/2,dL=(curX-px0-rr0)+ARC+PH/2;   // the cursor's ends; how far round to each end's middle
+   // The whole outline stays lit (user: "I think it would be better if the whole thing stayed full instead of racing around"):
+   // while at x4 lightning runs all the way round at once, re-drawn 30 times a second, brighter on the beat; a flash as x4
+   // arrives, then crackles on the beats on top
+   {const rim=bigK*Math.min(1,bigAge/0.4);g.beginPath();g.roundRect(px0,top,px1-px0,bot-top,rr0);   // the faint rim every look keeps
+    g.strokeStyle=css(gc,0.07*rim);g.lineWidth=7;g.stroke();g.strokeStyle=css(gc,0.3*rim);g.lineWidth=1.2;g.stroke()}
+   if(edgeX==='lightning'){
+   {const on=bigK*Math.min(1,bigAge/0.25)*(0.7+0.3*beat),seg=8,len=PER/seg;
+     for(let j=0;j<seg;j++)bolt(j*len-24,(j+1)*len+24,j*97+fr,7,on);
+     if(bigAge<0.6){const fl=1-bigAge/0.6;for(let j=0;j<seg;j++){const[hx,hy]=per((j+0.5)*len);soft(hx,hy,30,[240,248,255],0.5*fl)}}}
+    const crack=beat*bigK;if(crack>0.2&&bigAge>0.6)for(let j=0;j<3;j++){const u=(0.5+hs(j*31+Math.floor((t-ed[0])/beatLen)*7,0))*PER;bolt(u-60,u+60,j*53+fr,10,crack)}   // crackling on the beats, anywhere round it
+   }else if(edgeX==='stardust'){const on=bigK,reach=Math.min(1,bigAge/0.9),pth=new Path2D(),pth2=new Path2D();
+    for(const d of EDGEDUST){const u=(d.u*PER+clock*(46*d.v+20*beat))%PER;
+     if(reach<1){const du=Math.min(Math.abs(u-uT),PER-Math.abs(u-uT));if(du>reach*PER/2)continue}   // sweeping out from the cursor as x4 arrives
+     const[x,y,nx,ny]=per(u),tw=0.45+0.55*Math.max(0,Math.sin(clock*2.3+d.p)),off=d.o*(1+0.6*beat),z=d.z*(0.8+0.4*tw);
+     (tw>0.85?pth2:pth).rect(x+nx*off-z/2,y+ny*off-z/2,z,z)}
+    g.fillStyle=css(ease(gc,[235,245,255],0.4),0.75*on);g.fill(pth);g.fillStyle=`rgba(255,255,255,${0.95*on})`;g.fill(pth2);
+    if(reach<1)for(const dir of[1,-1]){const[hx,hy]=per(uT+dir*reach*PER/2);soft(hx,hy,22,[230,242,255],0.7*(1-reach*0.5))}}   // the sweep's leading glow
+   else if(edgeX==='aurora'){const on=bigK*Math.min(1,bigAge/0.8),bw=px1-px0;   // More real (user: "can we make aurora look more real?"): a curtain of fine
+    // vertical rays rising from a bright green lower edge into teal and violet tops, the rays shimmering and drifting sideways,
+    // the curtain's base folding slowly; below the board only a dim reflection of it, as on water
+    if(!AURORA_RAY){AURORA_RAY=document.createElement('canvas');AURORA_RAY.width=32;AURORA_RAY.height=256;   // 32 wide: soft sides (4 px with hard sides looked blocky)
+    const rx=AURORA_RAY.getContext('2d'),rq=rx.createLinearGradient(0,256,0,0);
+     rq.addColorStop(0,'rgba(150,255,190,1)');rq.addColorStop(0.06,'rgba(110,255,170,.9)');rq.addColorStop(0.22,'rgba(70,225,185,.55)');rq.addColorStop(0.5,'rgba(80,150,255,.28)');rq.addColorStop(0.78,'rgba(170,95,255,.12)');rq.addColorStop(1,'rgba(200,90,230,0)');rx.fillStyle=rq;rx.fillRect(0,0,32,256);const sq=rx.createLinearGradient(0,0,32,0);sq.addColorStop(0,'rgba(0,0,0,0)');sq.addColorStop(0.5,'rgba(0,0,0,1)');sq.addColorStop(1,'rgba(0,0,0,0)');rx.globalCompositeOperation='destination-in';rx.fillStyle=sq;rx.fillRect(0,0,32,256)}
+    // From the edge (user: "can we make it come from the edge instead of being over it?"): the rays grow straight out of the
+    // board's outline all the way round (along each point's outward normal), tallest off the top, shorter below and at the ends;
+    // the rim itself glows green as the curtain's bright lower edge
+    const T=clock,hmax=Math.min(230,H*0.3),d=devicePixelRatio||1;
+    const ray=(u,ny)=>{const side=ny<0?0.45-ny*0.55:0.45+ny*0.15,                                   // top 1, bottom 0.6, ends 0.45
+      h=hmax*side*(0.62+0.24*Math.sin(u*0.006+T*0.35)+0.14*Math.sin(u*0.015-T*0.6))*(0.88+0.2*beat),
+      i=(0.7+0.3*(0.5+0.5*Math.sin(u*0.012-T*0.5)))*(0.88+0.12*Math.sin(u*0.05-T*1.6));   // even: broad slow swells, no dark gaps (it broke into clumps)
+     return[h,i]};
+    const put=(c,k,u,w,hk,al)=>{const[x,y,nx,ny]=per(u),[h,i]=ray(u,ny);if(h<4)return;              // one ray on context c at scale k, turned to point outward
+     const arc=1;                                                                                   // (corners were dimmed against spikes; with the soft body that left them dark: user, "the corners have no light")
+     c.setTransform(-ny*k,nx*k,-nx*k,-ny*k,x*k,y*k);c.globalAlpha=Math.min(1,al*on*i*arc);c.drawImage(AURORA_RAY,-w/2,-h*hk,w,h*hk)};
+    // the body, painted at a quarter size and scaled up, so it's soft with no ray tips or steps showing (user's screenshot: clumps,
+    // a stepped outline at the ends, a hard edge where the glow stopped)
+    const aw=Math.ceil(W/4),ah=Math.ceil(H/4);if(!AURORA_BODY||AURORA_BODY.width!==aw||AURORA_BODY.height!==ah){AURORA_BODY=document.createElement('canvas');AURORA_BODY.width=aw;AURORA_BODY.height=ah}
+    const ac=AURORA_BODY.getContext('2d');ac.setTransform(1,0,0,1,0,0);ac.globalAlpha=1;ac.globalCompositeOperation='source-over';ac.clearRect(0,0,aw,ah);ac.globalCompositeOperation='lighter';
+    for(let u=0;u<PER;){put(ac,0.25,u,40,1.05,0.32);const[,,nx2,ny2]=per(u);u+=Math.abs(nx2)>0.05&&Math.abs(ny2)>0.05?3.5:6}   // more rays round the corners, where they fan out (3x made a hot spot)   // dimmer (user: "maybe make the aurora less bright"; was 0.5)
+    // scaled up in two steps (quarter -> half -> full; one 4x stretch left faint stair-steps: user, "less blocky still")
+    const mw=Math.ceil(W/2),mh=Math.ceil(H/2);if(!AURORA_MID||AURORA_MID.width!==mw||AURORA_MID.height!==mh){AURORA_MID=document.createElement('canvas');AURORA_MID.width=mw;AURORA_MID.height=mh}
+    const mc=AURORA_MID.getContext('2d');mc.clearRect(0,0,mw,mh);mc.imageSmoothingQuality='high';mc.drawImage(AURORA_BODY,0,0,mw,mh);
+    g.setTransform(d,0,0,d,0,0);g.globalAlpha=1;g.drawImage(AURORA_MID,0,0,W,H);
+    for(let u=0;u<PER;u+=4)put(g,d,u,16,0.9,0.055);                                               // fine rays over it, soft and faint: texture, not stripes
+    g.setTransform(d,0,0,d,0,0);g.globalAlpha=1;
+    g.beginPath();g.roundRect(px0,top,px1-px0,bot-top,rr0);g.strokeStyle=`rgba(140,255,190,${0.08*on})`;g.lineWidth=6;g.stroke();g.strokeStyle=`rgba(170,255,205,${0.4*on})`;g.lineWidth=1.3;g.stroke()}
+   else if(edgeX==='orbit'){const on=bigK*Math.min(1,bigAge/0.5);
+    for(let j=0;j<3;j++){const sp3=[260,190,330][j]*(0.85+0.3*beat),head=(uT+clock*sp3+j*PER/3)%PER,tail=150+60*j;
+     for(let k=0;k<60;k++){const f=k/60,[x,y]=per(head-f*tail);g.fillStyle=css(ease(gc,[235,245,255],0.5*(1-f)),on*(1-f)**1.6*0.8);const r2=2.6*(1-f)+0.4;g.beginPath();g.arc(x,y,r2,0,7);g.fill()}
+     const[hx,hy]=per(head);soft(hx,hy,18,[235,245,255],0.8*on);g.fillStyle=`rgba(255,255,255,${on})`;g.beginPath();g.arc(hx,hy,2.2,0,7);g.fill()}}
+   soft(curX,top,20,gc,0.35*bigK);soft(curX,bot,20,gc,0.35*bigK)}
+  if(big.flare&&bigK>0.01){const hit=Math.max(0,1-bigAge/0.6)**2,br=bigK*(0.35+0.25*beat)+hit;
+   for(const y of[top-6,bot+6]){const fq=g.createLinearGradient(px0,0,px1,0),cp=Math.max(0.3,Math.min(0.5,(curX-px0)/(px1-px0)));fq.addColorStop(0,css(mood.c,0));fq.addColorStop(Math.max(0,cp-0.25),css(mood.c,0.05*br));fq.addColorStop(cp,`rgba(255,255,255,${Math.min(0.9,0.45*br)})`);fq.addColorStop(Math.min(1,cp+0.45),css(mood.c,0.06*br));fq.addColorStop(1,css(mood.c,0));
+    g.fillStyle=fq;g.fillRect(px0,y-1,px1-px0,2);g.globalAlpha=0.35;g.fillRect(px0,y-4,px1-px0,8);g.globalAlpha=1;   // the long streak
+    soft(curX,y,30+40*hit,mood.c,0.5*br);soft(curX,y,10,[255,255,255],Math.min(1,0.8*br));
+    g.strokeStyle=`rgba(255,255,255,${Math.min(0.8,0.5*br)})`;g.lineWidth=1;const sl=18+30*hit;g.beginPath();g.moveTo(curX,y-sl);g.lineTo(curX,y+sl);g.moveTo(curX-sl*0.5,y-sl*0.5);g.lineTo(curX+sl*0.5,y+sl*0.5);g.moveTo(curX+sl*0.5,y-sl*0.5);g.lineTo(curX-sl*0.5,y+sl*0.5);g.stroke()}}   // a star on each end
+  if(preK>0){const e=preK*preK;                   // Big moment +, Build-up: light gathering along both rails toward the cursor
+   for(const y of[top,bot])for(const x0 of[px0,px1]){const xh=x0+(curX-x0)*e,lq=g.createLinearGradient(x0,0,xh,0);lq.addColorStop(0,css(mood.c,0));lq.addColorStop(1,css(mood.c,0.55*preK));g.fillStyle=lq;g.fillRect(Math.min(x0,xh),y-1,Math.abs(xh-x0),2);soft(xh,y,10+14*preK,[255,255,255],0.6*preK)}
+   soft(curX,(top+bot)/2,40+70*preK,mood.c,0.2*preK)}
+  if(bigX.drop&&bigAge>=0&&bigAge<1.1){const a=bigAge/1.1,r=eout(a)*W*1.1,cy=(top+bot)/2;   // The hit fills the screen: a ring past the edges
+   g.strokeStyle=css(mood.c,0.35*(1-a)**2);g.lineWidth=12*(1-a)+1;g.beginPath();g.ellipse(curX,cy,r*0.93,r*0.56,0,0,7);g.stroke();
+   g.strokeStyle=`rgba(240,245,255,${0.55*(1-a)**2})`;g.lineWidth=1.5+4*(1-a);g.beginPath();g.ellipse(curX,cy,r,r*0.6,0,0,7);g.stroke()}
+  if(bigX.strings&&bigK>0.01)for(let s=0;s<4;s++){const y=sy(s),c3=rgb(COL[s]),a=bigK*(0.22+0.35*beat),sq=g.createLinearGradient(px0,0,px1,0);   // Strings sing
+   sq.addColorStop(0,css(c3,0));sq.addColorStop(0.12,css(c3,a*0.5));sq.addColorStop(Math.max(0.2,Math.min(0.5,(curX-px0)/(px1-px0))),css(c3,a));sq.addColorStop(0.9,css(c3,a*0.4));sq.addColorStop(1,css(c3,0));
+   g.fillStyle=sq;g.fillRect(px0,y-2.5,px1-px0,5);g.globalAlpha=0.45;g.fillRect(px0,y-9,px1-px0,18);g.globalAlpha=1}
+  if(afterK>0)for(let i=0;i<40;i++){const u=(i*0.618)%1,ph=((bigAge-7)*0.25+i*0.137)%1,x=px0+(px1-px0)*u+Math.sin(ph*6+i)*10,y=bot-(bot-top+H*0.15)*ph;   // Afterglow: motes rising as it ends
+   soft(x,y,6,i%3?mood.c:[255,240,220],afterK*Math.sin(Math.PI*ph)*0.7)}
+  if(big.embers&&bigAge>=0&&bigAge<1.6)for(let i=0;i<46;i++){const ang=(i/46)*Math.PI*2+hs(i,0)*0.4,v=(180+260*Math.abs(hs(i*3,0)))*(Math.abs(Math.sin(ang))<0.35?1.4:0.8),tt=bigAge,x=curX+Math.cos(ang)*v*tt,y=(top+bot)/2+Math.sin(ang)*v*tt*0.6+200*tt*tt,a=Math.max(0,1-tt/1.6)**1.4;   // the burst out of the cursor
+   if(y>top-H*0.3&&y<bot+H*0.3){g.strokeStyle=css(i%3?mood.c:[255,240,220],a*0.9);g.lineWidth=1.6;g.beginPath();g.moveTo(x,y);g.lineTo(x-Math.cos(ang)*v*0.03,y-(Math.sin(ang)*v*0.6+400*tt)*0.03);g.stroke()}}
+  if(pol2.rails)for(const y of[top+0.5,bot-0.5]){const rq=g.createLinearGradient(px0,0,px1,0),cp=Math.max(0.3,Math.min(0.5,(curX-px0)/(px1-px0))),a=0.16+0.12*beat*(beatN===0?1:0.4)+0.1*heat;   // Rails: fine light lines along both edges, brightest at the cursor
+   rq.addColorStop(0,css(mood.c,0));rq.addColorStop(0.1,css(mood.c,a*0.35));rq.addColorStop(cp,css(mood.c,a));rq.addColorStop(0.9,css(mood.c,a*0.3));rq.addColorStop(1,css(mood.c,0));g.fillStyle=rq;g.fillRect(px0,y-0.5,px1-px0,1)}
+  if(pol2.column){const cq=g.createLinearGradient(curX-46,0,curX+46,0);cq.addColorStop(0,css(mood.c,0));cq.addColorStop(0.5,css(mood.c,0.05+0.04*beat));cq.addColorStop(1,css(mood.c,0));g.fillStyle=cq;g.fillRect(curX-46,top,92,bot-top);   // Light column: a wider beam,
+   for(let s=0;s<4;s++){const k=Math.exp(-(t-lastOn[s])/0.3),c3=ease(rgb(COL[s]),[255,255,255],0.5);soft(curX,sy(s),9+10*k,c3,0.35+0.5*k);g.fillStyle=`rgba(255,255,255,${0.7+0.3*k})`;g.beginPath();g.arc(curX,sy(s),1.6+1.2*k,0,7);g.fill()}   // catching each string where it crosses
+   for(const y of[top-6,bot+6]){const lq=g.createLinearGradient(curX-26,0,curX+26,0);lq.addColorStop(0,'rgba(255,255,255,0)');lq.addColorStop(0.5,`rgba(255,255,255,${0.35+0.2*beat})`);lq.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=lq;g.fillRect(curX-26,y-0.5,52,1)}}   // and a glint on its ends
+  g.restore()}
  // string names, outside the panel
  for(let s=0;s<4;s++){g.font=`600 15px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=css(rgb(COL[s]),0.8);g.fillText(NAMES[s],L-34,sy(s))}
 
+ g.restore();                                     // (the opening's clip)
+ if(scnS.open<1&&scnS.open>0.001){const lo=L-80,hi=R+40,cl=curX-(curX-lo)*scnS.open,cr=curX+(hi-curX)*scnS.open;   // light on the opening's edges
+  for(const ex of[cl,cr]){const eq=g.createLinearGradient(ex-16,0,ex+16,0);eq.addColorStop(0,'rgba(220,230,255,0)');eq.addColorStop(0.5,'rgba(220,230,255,.55)');eq.addColorStop(1,'rgba(220,230,255,0)');g.fillStyle=eq;g.fillRect(ex-16,trackT-pad-20,32,trackH+pad*2+40)}}
+ if(scnS.hud>=1&&scnS.open>=1){
+ // where the score group sits (as the plaque lays itself out), so the multiplier can sit right beside it (user: "move it over
+ // close to the score")
+ const hb=(()=>{const pw=R-L+56+pad,hl=L-56;g.font=`200 48px ${FONT}`;const sw=g.measureText(score.toLocaleString()).width,w=72+Math.max(sw,150),
+   left=hudBack==='corner'?36:hudStyle==='center'?hl+pw/2-(fin.mult==='badge'?38:0)-w/2:hl,cy=hudBack==='corner'?CORNER_Y-12:trackT-pad-60;return{left,right:left+w,cy,bx:left+w+38}})();
+ // New: what sits behind the score and the tag (Score over the aurora), then the tag itself drawn over the glow
+ if(hudBack!=='now'&&fx.hud&&hudStyle!=='off'){const pw=R-L+56+pad,hl=L-56,cy=hb.cy,cx=(hb.left+(fin.mult==='badge'?hb.bx+30:hb.right))/2,half=(fin.mult==='badge'?hb.bx+30:hb.right)-cx+24;
+  if(scoreStyle!=='now'){const w2=hb.right-hb.left+120;g.save();g.translate((hb.left+hb.right)/2+(fin.mult==='badge'?38:0),cy+4);g.scale(1,0.34);const hq=g.createRadialGradient(0,0,0,0,0,w2/2+90);hq.addColorStop(0,'rgba(3,4,10,.7)');hq.addColorStop(0.55,'rgba(3,4,10,.4)');hq.addColorStop(1,'rgba(3,4,10,0)');g.fillStyle=hq;g.fillRect(-w2,-w2,w2*2,w2*2);g.restore()}   // the new styles carry their own look: just a soft halo
+  else if(hudBack==='plate'){g.beginPath();g.roundRect(cx-half,cy-44,half*2,90,20);g.fillStyle='rgba(7,9,16,.78)';g.fill();g.strokeStyle='rgba(255,255,255,.09)';g.lineWidth=1;g.stroke()}
+  else if(true){const wide=0;g.save();g.translate(cx,cy);g.scale(1,0.34);const hq=g.createRadialGradient(0,0,0,0,0,half+90);hq.addColorStop(0,`rgba(3,4,10,${hudBack==='corner'?0.6:0.82})`);hq.addColorStop(0.55,'rgba(3,4,10,.45)');hq.addColorStop(1,'rgba(3,4,10,0)');g.fillStyle=hq;g.fillRect(-half-100,-half-100,half*2+200,half*2+200);g.restore()}
+  if(fin.mult==='now'){const cTop=trackT-pad-6,by=cTop-18,pop=1+0.25*Math.max(0,1-(clock-sweepAt)/0.3),bw=40*pop,bh=24*pop;
+   const tq2=g.createRadialGradient(curX,by,0,curX,by,46);tq2.addColorStop(0,'rgba(3,4,10,.75)');tq2.addColorStop(1,'rgba(3,4,10,0)');g.fillStyle=tq2;g.fillRect(curX-46,by-46,92,92);
+   g.beginPath();g.roundRect(curX-bw/2,by-bh/2,bw,bh,bh/2);g.fillStyle='rgba(6,7,12,.96)';g.fill();g.strokeStyle=mult===1?'rgba(255,255,255,.55)':css(ease(mood.c,[255,255,255],0.35),1);g.lineWidth=1.6;g.stroke();
+   g.font=`700 ${Math.round(14*pop)}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=mult===1?'#f5f5f7':css(ease(mood.c,[255,255,255],0.45),1);g.fillText(`${mult}×`,curX,by+1)}}
+ // New: hit calls. now = the game's tags under the board, born at the cursor and carried off with the tab (as in drawArcade);
+ // cursor = the word rising beside the string you hit, gone in under a second
+ {const TAG={Perfect:[[252,211,77],'PERFECT'],Good:[[226,232,240],'GOOD'],Messy:[[196,161,255],'MESSY'],miss:[[248,113,113],'MISS']};
+  g.save();g.font=`800 11px ${FONT}`;g.letterSpacing='1.5px';g.textAlign='center';g.textBaseline='middle';
+  let edge=Infinity,lastT=Infinity,said=false;const ty=trackB+pad+30;   // said: At the cursor shows only the newest call
+  for(let i=k;i>=0&&i>=k-80;i--){const nt=notes[i];if(Math.abs(nt[0]-lastT)<0.03)continue;lastT=nt[0];
+   const miss=missed.has(nt),age=t-nt[0]-(miss?0.15:0);if(age<0)continue;if(age>2.5)break;
+   const [c3,word]=TAG[miss?'miss':gradeOf(i)];
+   if(fin.calls==='cursor'){if(age>0.9||said)continue;said=true;const yy=sy(nt[2])-sz*0.9-Math.min(1,age/0.4)*12,a=Math.min(1,age/0.06)*Math.min(1,(0.9-age)/0.35);
+    g.save();g.globalAlpha=Math.max(0,a);g.textAlign='left';g.font=`700 11px ${FONT}`;g.fillStyle=word==='PERFECT'?'#fcd34d':css(c3,1);g.fillText(word,curX+12,yy);g.restore();continue}
+   const x=X(nt[0]),a=Math.min(1,(2.5-age)/0.8)*Math.max(0,Math.min(1,(x-L+30)/60));if(a<=0)continue;
+   const tw=g.measureText(word).width,w=tw+18,h=18;
+   if(x+w/2<edge-4){const pop=1+0.3*Math.max(0,1-age/0.14),sh=miss?Math.sin(age*60)*3*Math.max(0,1-age/0.3):0;
+    g.save();g.globalAlpha=a;g.translate(x+sh,ty);g.scale(pop,pop);
+    if(word==='PERFECT'&&age<0.5)soft(0,0,w*0.8,c3,0.25*(1-age/0.5));
+    g.beginPath();g.roundRect(-w/2,-h/2,w,h,h/2);g.fillStyle='rgba(9,10,15,.85)';g.fill();g.strokeStyle=css(c3,0.7);g.lineWidth=1;g.stroke();
+    if(word==='PERFECT'){const q2=g.createLinearGradient(0,-6,0,6);q2.addColorStop(0,'#fff3c4');q2.addColorStop(0.5,'#fcd34d');q2.addColorStop(1,'#e08a0b');g.fillStyle=q2}
+    else if(word==='GOOD'){const q2=g.createLinearGradient(0,-6,0,6);q2.addColorStop(0,'#ffffff');q2.addColorStop(1,'#aab4c3');g.fillStyle=q2}else g.fillStyle=css(c3,1);
+    g.fillText(word,0.75,0.5);g.restore();edge=x-w*pop/2}
+   else if(x+3<edge-3){g.globalAlpha=a;g.fillStyle=css(c3,0.9);g.beginPath();g.arc(x,ty,2.6,0,7);g.fill();g.globalAlpha=1;edge=x-3}}
+  g.letterSpacing='0px';g.restore();g.globalAlpha=1}
+ // New: the multiplier as a badge beside the score (Badge by the score)
+ if(fin.mult==='badge'&&scoreStyle==='now'){const pw=R-L+56+pad,hl=L-56,bx=Math.min(hb.bx,R-34),by=hb.cy-2,mf=mult===4?1:(streak%10)/10,
+   mcol=mult===1?[154,160,170]:mood.c,pop=1+0.2*Math.max(0,1-(clock-sweepAt)/0.3);
+  if(hudBack!=='now'){g.beginPath();g.arc(bx,by,31*pop,0,7);g.fillStyle='rgba(6,7,12,.88)';g.fill()}   // a dark disc under it, so it reads over the aurora
+  if(mult>1)soft(bx,by,48*pop,mcol,0.22+0.1*beat);
+  g.lineWidth=3;g.strokeStyle='rgba(255,255,255,.1)';g.beginPath();g.arc(bx,by,22*pop,0,7);g.stroke();
+  if(mf>0){g.lineCap='round';g.strokeStyle=css(mcol,1);g.beginPath();g.arc(bx,by,22*pop,-Math.PI/2,-Math.PI/2+Math.PI*2*mf);g.stroke();g.lineCap='butt'}
+  g.textAlign='center';g.textBaseline='middle';g.font=`300 ${Math.round(19*pop)}px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(`×${mult}`,bx,by+1);
+  g.font=`600 9px ${FONT}`;g.letterSpacing='1.8px';g.fillStyle='rgba(245,245,247,.45)';g.fillText(`${streak} STREAK`,bx,by+38);g.letterSpacing='0px'}
  // ---- score, multiplier, streak: quiet, top left above the track ----
  // Score layouts (user: "I don't like how above the highway looks"): row (as in the game: score + stars left, streak
  // right), centre (one group centred over the track), below (under the track), off (only the cursor's badge above).
@@ -636,7 +1275,7 @@ function frame(ms){
    // the next tier filling in (user: "the next color should be easy to see and get color as you get more"): faint at first,
    // more solid as it grows; its vivid accent traced round the rim with a glow so even a little progress shows
    const VIVID=['#ff9a52','#eef4ff','#ffcf33','#cfe3ff','#5fd0ff'],vc=VIVID[Math.min(4,tier)],ang=-Math.PI/2+Math.PI*2*frac;
-   if(frac>0){g.save();g.globalAlpha=0.35+0.65*frac;g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2,ang);g.closePath();g.fillStyle=metal(nm);g.fill();
+   if(frac>0&&!recPlain){g.save();g.globalAlpha=0.35+0.65*frac;g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2,ang);g.closePath();g.fillStyle=metal(nm);g.fill();
     g.globalAlpha=0.12+0.25*frac;g.fillStyle=vc;g.fill();g.restore();   // tinted with its accent, more as it grows
     g.beginPath();g.moveTo(0,0);g.lineTo(Math.cos(ang)*r,Math.sin(ang)*r);g.strokeStyle=vc;g.globalAlpha=0.8;g.lineWidth=1.2;g.stroke();g.globalAlpha=1}   // its leading edge
    for(let i=0;i<9;i++){const rr=r*(0.5+i*0.055);g.beginPath();g.arc(0,0,rr,0,7);g.strokeStyle=i%2?'rgba(0,0,0,.14)':'rgba(255,255,255,.12)';g.lineWidth=0.6;g.stroke()}   // grooves
@@ -645,7 +1284,7 @@ function frame(ms){
     g.beginPath();g.moveTo(0,0);g.arc(0,0,r,-Math.PI/2-0.3,-Math.PI/2+0.3);g.closePath();g.fillStyle=q;g.fill();g.restore()}
    g.restore();
    g.beginPath();g.arc(0,0,r-0.5,0,7);g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=1;g.stroke();   // the bright edge
-   if(frac>0){g.save();g.beginPath();g.arc(0,0,r+3,-Math.PI/2,ang);g.strokeStyle=vc;g.lineWidth=2.5;g.lineCap='round';g.shadowColor=vc;g.shadowBlur=8;g.globalAlpha=0.65+0.35*frac;g.stroke();g.restore()}   // the accent arc round the rim
+   if(frac>0&&!recPlain){g.save();g.beginPath();g.arc(0,0,r+3,-Math.PI/2,ang);g.strokeStyle=vc;g.lineWidth=2.5;g.lineCap='round';g.shadowColor=vc;g.shadowBlur=8;g.globalAlpha=0.65+0.35*frac;g.stroke();g.restore()}   // the accent arc round the rim
    g.beginPath();g.arc(0,0,r*0.36,0,7);g.fillStyle='rgba(0,0,0,.22)';g.fill();g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=0.7;g.stroke();   // the label, a shade deeper
    g.fillStyle='#050506';g.beginPath();g.arc(0,0,r*0.07,0,7);g.fill();   // the spindle hole
    if(tier===5){const sp4=(px,py,k,z)=>{g.fillStyle='rgba(255,255,255,'+(0.4+0.6*Math.max(0,Math.sin(clock*4+k)))+')';g.beginPath();g.moveTo(px,py-z);g.lineTo(px+z*0.28,py-z*0.28);g.lineTo(px+z,py);g.lineTo(px+z*0.28,py+z*0.28);g.lineTo(px,py+z);g.lineTo(px-z*0.28,py+z*0.28);g.lineTo(px-z,py);g.lineTo(px-z*0.28,py-z*0.28);g.closePath();g.fill()};sp4(r*0.78,-r*0.78,0,4.5);sp4(-r*0.85,r*0.55,2.2,3)}
@@ -666,8 +1305,177 @@ function frame(ms){
    g.font=`200 48px ${FONT}`;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle=q;g.fillText(sc,tx,ym+4);
    const ly=ym+20;g.fillStyle=tier?mt[1]:'rgba(245,245,247,.35)';g.fillRect(tx,ly-0.5,14,1);
    g.font=`600 10.5px ${FONT}`;g.letterSpacing='2.4px';g.textBaseline='middle';g.fillText(label,tx+22,ly);g.letterSpacing='0px'};
-  if(scoreLook==='plaque'&&award2==='records'){
-   if(hudStyle==='center')plaque((hl+hr)/2,trackT-pad-48,'center');else plaque(hl,hudStyle==='row'?trackT-pad-48:trackB+pad+50,'left');
+  const newHud=(cx0,ym)=>{const tier=Math.min(5,Math.floor(val)),[name,mt]=TIERS[tier],m4=mult===4,mf=m4?1:(streak%10)/10,
+    mcol=mult===1?[170,176,188]:mood.c,pop=1+0.2*Math.max(0,1-(clock-sweepAt)/0.3),silver=(y0,y1)=>{const q=g.createLinearGradient(0,y0,0,y1);q.addColorStop(0,'#ffffff');q.addColorStop(1,'#c3c9d2');return q},
+    caps=(t,x,y,al,col)=>{g.font=`600 10px ${FONT}`;g.letterSpacing='2.2px';g.textBaseline='middle';g.fillStyle=col||`rgba(245,245,247,${al})`;g.fillText(t,x,y);g.letterSpacing='0px'};
+   g.font=`200 44px ${FONT}`;const sw=g.measureText(sc).width;const tierTxt=tier?name+' RECORD':name,sub=`${tierTxt} · ${streak} STREAK`;
+   if(scoreStyle==='capsule'){g.font=`600 10px ${FONT}`;g.letterSpacing='2.2px';const subw=g.measureText(sub).width;g.letterSpacing='0px';
+    const h=70,cap=27,w=18+46+16+Math.max(sw,subw)+22+cap*2+8,x0=cx0-w/2,y0=ym-h/2-6;
+    g.beginPath();g.roundRect(x0,y0,w,h,h/2);g.fillStyle='rgba(7,9,16,.74)';g.fill();g.strokeStyle='rgba(255,255,255,.1)';g.lineWidth=1;g.stroke();
+    record(x0+18+23,y0+h/2,'center',23,false);
+    const tx=x0+18+46+16;g.font=`200 44px ${FONT}`;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle=silver(y0+10,y0+44);g.fillText(sc,tx,y0+43);
+    g.textAlign='left';caps(sub,tx+1,y0+57,0.5);
+    const ccx=x0+w-cap-8,ccy=y0+h/2;g.beginPath();g.arc(ccx,ccy,cap,0,7);g.fillStyle='rgba(255,255,255,.04)';g.fill();   // the multiplier's end-cap
+    if(mult>1)soft(ccx,ccy,cap*1.8*pop,mcol,0.18+0.1*beat);
+    g.lineWidth=2.5;g.strokeStyle='rgba(255,255,255,.1)';g.beginPath();g.arc(ccx,ccy,cap-5,0,7);g.stroke();
+    if(mf>0){g.lineCap='round';g.strokeStyle=css(mcol,1);g.beginPath();g.arc(ccx,ccy,cap-5,-Math.PI/2,-Math.PI/2+Math.PI*2*mf);g.stroke();g.lineCap='butt'}
+    g.textAlign='center';g.textBaseline='middle';g.font=`300 ${Math.round(18*pop)}px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(`×${mult}`,ccx,ccy+1)}
+   else if(scoreStyle==='orbit'&&orbitV==='tilted'){const R1=streakIn==='label'?30:26,RX=64,RY=21,ROT=-0.2,IN=0.6,w=RX*2+24+Math.max(sw,160),x0=Math.max(12,cx0-w/2),rcx=x0+RX,rcy=ym-12;   // (kept on screen in a narrow window)
+    const lvl=clock-sweepAt,lit=m4?10:streak%10,mc2=css(ease(mcol,[255,255,255],0.35),1);
+    if(streak<ringPrev&&ringPrev%10>0&&!m4){ringDrain={at:clock,n:ringPrev%10}}ringPrev=streak;   // a miss: remember what was lit, to drain it
+    const P=(th,k)=>{const ex=Math.cos(th)*RX*k,ey=Math.sin(th)*RY*k;return[rcx+ex*Math.cos(ROT)-ey*Math.sin(ROT),rcy+ex*Math.sin(ROT)+ey*Math.cos(ROT)]};
+    const band=(t0,t1)=>{g.beginPath();const n=Math.max(2,Math.ceil((t1-t0)/0.06));for(let k=0;k<=n;k++){const[x,y]=P(t0+(t1-t0)*k/n,1);k?g.lineTo(x,y):g.moveTo(x,y)}
+     for(let k=n;k>=0;k--){const[x,y]=P(t0+(t1-t0)*k/n,IN);g.lineTo(x,y)}g.closePath()};
+    const S0=Math.PI,SEG=Math.PI*2/10,GAP=0.035;                                                   // segments from the left, over the top, round the front
+    const drawHalf=(lo,hi)=>{                                                                      // the band between angles lo..hi (back half or front half)
+     band(lo,hi);const bq=g.createLinearGradient(0,rcy-RY,0,rcy+RY);bq.addColorStop(0,'rgba(22,26,40,.85)');bq.addColorStop(1,'rgba(8,10,18,.9)');g.fillStyle=bq;g.fill();
+     for(let k=0;k<10;k++){let a0=S0+k*SEG+GAP,a1=S0+(k+1)*SEG-GAP;for(const off of[0,-Math.PI*2]){const b0=Math.max(lo,a0+off),b1=Math.min(hi,a1+off);if(b1<=b0)continue;
+       const on=k<lit,dr=ringDrain.at>0&&clock-ringDrain.at<0.55&&k<ringDrain.n,flash=lvl>=0&&lvl<0.45;
+       if(!on&&!dr&&!flash)continue;band(b0,b1);
+       if(flash){g.fillStyle=`rgba(255,255,255,${0.85*(1-lvl/0.45)})`}
+       else if(dr&&!on){const q=(clock-ringDrain.at)/0.55;g.fillStyle=`rgba(248,113,113,${0.8*(1-q)})`}
+       else{const sh=m4?0.75+0.25*Math.sin(clock*4-k*0.63):1;g.fillStyle=css(ease(mcol,[255,255,255],k===lit-1&&!m4?0.35:0),0.9*sh)}
+       g.fill()}}
+     g.beginPath();const n=Math.ceil((hi-lo)/0.06);for(let k=0;k<=n;k++){const[x,y]=P(lo+(hi-lo)*k/n,1);k?g.lineTo(x,y):g.moveTo(x,y)}g.strokeStyle='rgba(255,255,255,.22)';g.lineWidth=1;g.stroke()};   // its fine outer edge
+    {const gx0=x0-30,gx1=x0+RX*2+24+380,hcx=(gx0+gx1)/2,hrx=(gx1-gx0)/2;g.save();g.translate(hcx,rcy+6);g.scale(1,0.24);   // a dark halo sized to the whole group (user's screenshot: "it can be hard to see" over a bright aurora)
+     const hq=g.createRadialGradient(0,0,0,0,0,hrx);hq.addColorStop(0,'rgba(3,4,10,.82)');hq.addColorStop(0.6,'rgba(3,4,10,.55)');hq.addColorStop(1,'rgba(3,4,10,0)');g.fillStyle=hq;g.fillRect(-hrx,-hrx,hrx*2,hrx*2);g.restore()}
+    if(mult>1)soft(rcx,rcy,RX*1.5*pop,mcol,0.13+0.08*beat);
+    if(lvl>=0&&lvl<0.9){const k=lvl/0.9;g.strokeStyle=css(mcol,0.7*(1-k)**2);g.lineWidth=2+3*(1-k);g.beginPath();g.ellipse(rcx,rcy,RX*(1+k*1.2),RY*(1+k*1.2),ROT,0,7);g.stroke()}   // a level-up pulse
+    drawHalf(Math.PI,Math.PI*2);                                                                   // back half, behind the record
+    recPlain=true;record(rcx,rcy,'center',R1,false);recPlain=false;
+    if(streakIn==='label'){const lr=R1*0.42;g.beginPath();g.arc(rcx,rcy,lr,0,7);g.fillStyle='rgba(8,9,14,.9)';g.fill();g.strokeStyle=css(ease(mcol,[255,255,255],0.4),0.8);g.lineWidth=1;g.stroke();   // the streak on the label
+     g.textAlign='center';g.textBaseline='middle';g.font=`700 ${streak>99?9:11}px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(String(streak),rcx,rcy+0.5)}   // just the tier's metal: its progress is the bar under the score (user: "maybe don't put the progress on the actual record")
+    drawHalf(0,Math.PI);                                                                           // front half, over it
+    if(lit>0&&!m4){const[hx,hy]=P(S0+lit*SEG-GAP,(1+IN)/2);soft(hx,hy,12,ease(mcol,[255,255,255],0.4),0.8)}   // the newest segment's glowing head
+    if(m4){g.save();g.globalCompositeOperation='lighter';const ra=clock*1.4;const[lx,ly]=P(ra,(1+IN)/2);soft(lx,ly,16,[235,245,255],0.5);   // light running round, dust
+     for(let k=0;k<40;k++){const th=clock*0.5+k*Math.PI*2/40,kk2=IN+(1-IN)*((k*0.37)%1);const[dx,dy]=P(th,kk2*1.06);g.fillStyle=`rgba(235,245,255,${(Math.sin(th)>0?0.75:0.3)*(0.5+0.5*Math.sin(clock*3+k))})`;g.fillRect(dx-0.8,dy-0.8,1.6,1.6)}g.restore()}
+    {const ringLow=Math.hypot(RX*Math.sin(ROT),RY*Math.cos(ROT)),tx2=rcx,ty2=rcy+ringLow+9,th2=21*pop,withS=streakIn==='tag';   // below the ring (user: "the multiplier also blocks the bottom of the ring")   // centred under the record (user: "Can we also center the multiplier?"; the tilted ring's front point sat off to one side)g.font=`700 ${Math.round(13*pop)}px ${FONT}`;const mw=g.measureText(`×${mult}`).width;g.font=`600 ${Math.round(12*pop)}px ${FONT}`;const stw=withS?g.measureText(String(streak)).width:0;
+     const tw2=withS?mw+stw+34:38*pop;g.beginPath();g.roundRect(tx2-tw2/2,ty2-th2/2+3,tw2,th2,th2/2);g.fillStyle='rgba(6,7,12,.97)';g.fill();g.strokeStyle=mc2;g.lineWidth=1.4;g.stroke();   // the x4 (and the streak), still, at the front
+     g.textBaseline='middle';g.font=`700 ${Math.round(13*pop)}px ${FONT}`;g.fillStyle=mc2;
+     if(withS){const lx=tx2-tw2/2+11;g.textAlign='left';g.fillText(`×${mult}`,lx,ty2+3.5);g.fillStyle='rgba(255,255,255,.25)';g.fillRect(lx+mw+6,ty2-3,1,13);g.font=`600 ${Math.round(12*pop)}px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(String(streak),lx+mw+13,ty2+3.5)}
+     else{g.textAlign='center';g.fillText(`×${mult}`,tx2,ty2+3.5)}}
+    const tx=x0+RX*2+24,LK=streakIn==='off'?scoreLookX:scoreLookX==='rolling'?'rollnos':scoreLookX==='now'?'nos':scoreLookX==='glow'?'glownos':'nos';   // *nos: the same look without its streak (it's in the ring)
+    if(score<lastScoreSeen)dispScore=score;else if(score>lastScoreSeen){gainN=score-lastScoreSeen;gainAt=clock}lastScoreSeen=score;   // (the passage loops: start over)
+    dispScore=LK==='rolling'||LK==='rollnos'?dispScore+(score-dispScore)*Math.min(1,dt*9):score;if(Math.abs(score-dispScore)<1)dispScore=score;
+    const SF=scoreFace,FACE=SF==='holo'?`200 50px ${FONT}`:SF==='star'?`200 50px ${FONT}`:SF==='bold'?`700 42px ${FONT}`:SF==='rounded'?`500 44px ui-rounded,"SF Pro Rounded",${FONT}`:SF==='mono'?`300 40px ui-monospace,"SF Mono",Menlo,monospace`:SF==='metal'?`300 46px ${FONT}`:`200 46px ${FONT}`;
+    const raw=Math.round(dispScore);let shown=SF==='mono'?String(raw).padStart(7,'0').replace(/\B(?=(\d{3})+(?!\d))/g,','):raw.toLocaleString();g.font=FACE;let sw2=g.measureText(shown).width;g.textAlign='left';g.textBaseline='alphabetic';
+    const CW=27,CH=42,CG=4,KG=9,digs=String(score),nd=digs.length,ncom=Math.floor((nd-1)/3);if(SF==='odo')sw2=nd*CW+(nd-1)*CG+ncom*(KG-CG);   // the odometer's width
+    if(LK==='glow'||LK==='glownos'){const gq=g.createLinearGradient(0,rcy-34,0,rcy+8);gq.addColorStop(0,'#ffffff');gq.addColorStop(1,css(ease(mcol,[255,255,255],0.25),1));g.save();g.shadowColor=css(mcol,0.8);g.shadowBlur=14;g.fillStyle=gq;g.fillText(shown,tx,rcy+8);g.restore()}
+    else if(SF==='holo'){const hc=tier?ease(rgb(mt[1]),[255,255,255],0.1):[200,210,225],   // the record's colour (user: "make it the color of the record")
+     fk=0.88+0.12*Math.sin(clock*23)*Math.sin(clock*7.3);
+     g.save();g.globalAlpha=fk;g.fillStyle=css(hc,0.1);g.fillText(shown,tx,rcy+8);g.shadowColor=css(hc,0.9);g.shadowBlur=12;g.strokeStyle=css(ease(hc,[255,255,255],0.4),1);g.lineWidth=1.1;g.strokeText(shown,tx,rcy+8);g.restore();
+     g.save();g.globalAlpha=0.12*fk;g.fillStyle=css(hc,1);for(let yy=rcy-32;yy<rcy+10;yy+=3)g.fillRect(tx,yy,sw2,1);g.restore()}   // faint scanlines
+    else if(SF==='star'){if(clock-gainAt<0.02&&sparks.length<40)for(let k=0;k<6;k++)sparks.push({x:tx+Math.random()*sw2,y:rcy-10-Math.random()*22,vx:(Math.random()-0.5)*18,vy:-14-Math.random()*22,t:clock});
+     g.save();g.shadowColor='rgba(220,235,255,.9)';g.shadowBlur=18;g.fillStyle='#ffffff';g.fillText(shown,tx,rcy+8);g.restore();
+     sparks=sparks.filter(p=>clock-p.t<1.1);for(const p of sparks){const a=clock-p.t,x=p.x+p.vx*a,y=p.y+p.vy*a;soft(x,y,4,[230,240,255],0.8*(1-a/1.1));g.fillStyle=`rgba(255,255,255,${1-a/1.1})`;g.fillRect(x-0.7,y-0.7,1.4,1.4)}}
+    else if(SF==='bold'){g.save();g.letterSpacing='-1px';const bq=g.createLinearGradient(0,rcy-28,0,rcy+8);bq.addColorStop(0,'#ffffff');bq.addColorStop(1,'#d5dae2');g.fillStyle=bq;g.fillText(shown,tx,rcy+8);g.restore();
+     const mm=tier?mt:['#9aa1ab','#eef1f5','#a7aeb8'],uq=g.createLinearGradient(tx,0,tx+sw2,0);uq.addColorStop(0,mm[0]);uq.addColorStop(0.5,mm[1]);uq.addColorStop(1,mm[2]);g.fillStyle=uq;g.fillRect(tx,rcy+13,sw2,2)}   // the metal underline
+    else if(SF==='odo'){if(score>lastScoreSeenOdo)odoSweep=clock;lastScoreSeenOdo=score;
+     while(odo.length<nd)odo.push(0);odo.length=Math.max(odo.length,nd);
+     const top=rcy-31,rimC=mult===1?[255,255,255]:ease(mcol,[255,255,255],0.25),rimA=mult===1?0.16:0.45+0.25*(m4?(0.5+0.5*Math.sin(clock*4)):0);
+     let x=tx;const cells=[];
+     for(let i=0;i<nd;i++){const ri=nd-1-i,t=+digs[i];let p=odo[ri];const diff=((t-p)%10+10)%10;p=diff<0.02?t:(p+diff*Math.min(1,dt*11))%10;odo[ri]=p;   // each digit rolls forward to its value
+      cells.push([x,p]);x+=CW+CG;if(ri>0&&ri%3===0)x+=KG-CG}
+     for(const[cx3,p]of cells){g.save();g.beginPath();g.roundRect(cx3,top,CW,CH,7);
+      const cq=g.createLinearGradient(0,top,0,top+CH);cq.addColorStop(0,'rgba(34,37,52,.95)');cq.addColorStop(0.5,'rgba(14,15,22,.97)');cq.addColorStop(1,'rgba(24,26,38,.95)');g.fillStyle=cq;g.fill();
+      if(m4)soft(cx3+CW/2,top+CH/2,CW,mcol,0.12);
+      g.clip();g.font=`300 30px ${FONT}`;g.textAlign='center';g.textBaseline='middle';const d0=Math.floor(p),fr=p-d0,cyc=top+CH/2+1;
+      for(const[dd,off]of[[d0%10,-fr],[(d0+1)%10,1-fr]]){const yy=cyc+off*CH*0.9;g.globalAlpha=1-Math.min(1,Math.abs(off)*1.1);g.fillStyle=silver(yy-14,yy+12);g.fillText(String(dd),cx3+CW/2,yy)}
+      g.globalAlpha=1;const sh=g.createLinearGradient(0,top,0,top+CH);sh.addColorStop(0,'rgba(0,0,0,.45)');sh.addColorStop(0.22,'rgba(0,0,0,0)');sh.addColorStop(0.78,'rgba(0,0,0,0)');sh.addColorStop(1,'rgba(0,0,0,.45)');g.fillStyle=sh;g.fillRect(cx3,top,CW,CH);   // the drum's curve
+      g.fillStyle='rgba(255,255,255,.08)';g.fillRect(cx3+3,top+2,CW-6,1);
+      const sa=clock-odoSweep;if(sa>=0&&sa<0.55){const sx=tx-40+(sw2+80)*(sa/0.55),lq=g.createLinearGradient(sx-22,0,sx+22,0);lq.addColorStop(0,'rgba(255,255,255,0)');lq.addColorStop(0.5,'rgba(255,255,255,.22)');lq.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=lq;g.fillRect(cx3,top,CW,CH)}   // light sweeping across on a gain
+      g.restore();g.beginPath();g.roundRect(cx3+0.5,top+0.5,CW-1,CH-1,7);g.strokeStyle=css(rimC,rimA);g.lineWidth=1;g.stroke()}
+     for(let i=1;i<nd;i++){const ri=nd-i;if(ri%3===0){const cxk=cells[i][0]-KG/2-CG/2+1;g.fillStyle='rgba(245,245,247,.5)';g.beginPath();g.arc(cxk,top+CH-6,1.6,0,7);g.fill()}}}   // the thousands marks
+    else if(SF==='metal'){const mm=tier?mt:['#9aa1ab','#eef1f5','#a7aeb8'],mq=g.createLinearGradient(0,rcy-30,0,rcy+8);mq.addColorStop(0,'#ffffff');mq.addColorStop(0.3,mm[1]);mq.addColorStop(0.75,mm[1]);mq.addColorStop(1,mm[2]);   // the record's metal, polished (its dark stop alone made it dull)
+     g.fillStyle=mq;g.fillText(shown,tx,rcy+8);g.save();g.globalAlpha=0.35;g.fillStyle='#ffffff';g.beginPath();g.rect(tx,rcy-30,sw2,7);g.clip();g.fillText(shown,tx,rcy+8);g.restore()}   // a fine highlight across the top
+    else if(SF==='mono'){const lead=(shown.match(/^[0,]*/)||[''])[0],lw2=g.measureText(lead).width;g.fillStyle='rgba(245,245,247,.22)';g.fillText(lead,tx,rcy+8);g.fillStyle=silver(rcy-30,rcy+4);g.fillText(shown.slice(lead.length),tx+lw2,rcy+8)}
+    else if(SF==='rounded'){g.fillStyle='#f5f5f7';g.fillText(shown,tx,rcy+8)}
+    else{g.fillStyle=silver(rcy-34,rcy+4);g.fillText(shown,tx,rcy+8)}
+    if(false&&(LK==='rolling'||LK==='rollnos')){const ga=clock-gainAt;if(ga>=0&&ga<0.8){   // the "+N" is off (user: "not huge on showing the point gain")
+     g.save();g.globalAlpha=Math.min(1,ga/0.06)*(1-ga/0.8);g.font=`600 14px ${FONT}`;g.fillStyle=css(ease(mcol,[255,255,255],0.3),1);g.fillText(`+${gainN.toLocaleString()}`,tx+sw2+10,rcy-18-ga*18);g.restore()}}
+    if(LK==='glow'){const cx2=tx+sw2+16,cy2=rcy-12;g.font=`600 14px ${FONT}`;const nw=g.measureText(String(streak)).width,pw=nw+34,ph=24;   // the streak chip
+     g.beginPath();g.roundRect(cx2,cy2-ph/2,pw,ph,ph/2);g.fillStyle='rgba(6,7,12,.9)';g.fill();g.strokeStyle=css(mcol,0.7);g.lineWidth=1.2;g.stroke();
+     const sx=cx2+13,sy2=cy2,z=6;g.beginPath();g.moveTo(sx,sy2-z);g.quadraticCurveTo(sx,sy2,sx+z,sy2);g.quadraticCurveTo(sx,sy2,sx,sy2+z);g.quadraticCurveTo(sx,sy2,sx-z,sy2);g.quadraticCurveTo(sx,sy2,sx,sy2-z);g.fillStyle=css(ease(mcol,[255,255,255],0.4),1);g.fill();
+     g.fillStyle='#f5f5f7';g.textAlign='left';g.textBaseline='middle';g.fillText(String(streak),cx2+24,cy2+1)}
+    if(LK==='split'){const hx=tx+sw2+18;g.fillStyle='rgba(255,255,255,.22)';g.fillRect(hx,rcy-30,1,34);
+     g.font=`300 30px ${FONT}`;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle='#f5f5f7';g.fillText(String(streak),hx+14,rcy-2);caps('STREAK',hx+15,rcy+10,0.55)}
+    // record progress as a bar under the score (user: "sort of hard to see the record progress around it": the record's own thin
+    // ring sat under the band): this tier in its metal, a bar filling in the next tier's metal, the next tier's name, the streak
+    if(recProg!=='now'){const ly=rcy+27,frac=tier>=5?1:val-tier,nx=TIERS[Math.min(5,tier+1)],fl=Math.max(0,1-(clock-recAt)/0.5),
+      cwd=t=>{g.font=`600 10px ${FONT}`;g.letterSpacing='2.2px';const v=g.measureText(t).width;g.letterSpacing='0px';return v},
+      disc=(x,y,r,m,pie,rim,pop2)=>{const rr2=r*(1+0.35*(pop2||0));g.save();g.translate(x,y);g.beginPath();g.arc(0,0,rr2,0,7);g.fillStyle='rgba(10,11,17,.95)';g.fill();   // a small record
+        if(m){const q=g.createLinearGradient(-rr2,-rr2,rr2,rr2);q.addColorStop(0,m[0]);q.addColorStop(0.5,m[1]);q.addColorStop(1,m[2]);
+         if(pie<1){g.beginPath();g.moveTo(0,0);g.arc(0,0,rr2,-Math.PI/2,-Math.PI/2+Math.PI*2*pie);g.closePath()}else{g.beginPath();g.arc(0,0,rr2,0,7)}g.fillStyle=q;g.fill();
+         g.strokeStyle='rgba(0,0,0,.25)';g.lineWidth=0.5;g.beginPath();g.arc(0,0,rr2*0.62,0,7);g.stroke()}
+        g.beginPath();g.arc(0,0,rr2-0.5,0,7);g.strokeStyle=rim;g.lineWidth=1;g.stroke();g.fillStyle='#050506';g.beginPath();g.arc(0,0,Math.max(1,rr2*0.16),0,7);g.fill();g.restore()};
+     let x=tx+9;g.textAlign='left';
+     if(recProg==='ladder'){                                                                       // a path of records (user: "can we improve the ladder look?")
+      const R0=9.5,SP=30,xs=[1,2,3,4,5].map(k=>x+(k-1)*SP);
+      for(let k=1;k<5;k++){const xa=xs[k-1]+R0+3,xb=xs[k]-R0-3,m=TIERS[k+1][1];g.beginPath();g.roundRect(xa,ly-1,xb-xa,2,1);g.fillStyle='rgba(255,255,255,.12)';g.fill();   // the track between discs
+       const f=k<tier?1:k===tier?frac:0;if(f>0){const q=g.createLinearGradient(xa,0,xb,0);q.addColorStop(0,TIERS[k][1][1]);q.addColorStop(1,m[1]);g.beginPath();g.roundRect(xa,ly-1,(xb-xa)*f,2,1);g.fillStyle=q;g.fill();if(k===tier)soft(xa+(xb-xa)*f,ly,6,rgb(m[1]),0.8)}}
+      if(tier===0&&frac>0){const xb=xs[0]-R0-3,xa=xb-14;g.beginPath();g.roundRect(xa,ly-1,(xb-xa)*frac,2,1);g.fillStyle=TIERS[1][1][1];g.fill()}
+      for(let k=1;k<=5;k++){const m=TIERS[k][1],got=k<=tier,nxt=k===tier+1,cur=k===tier,pop2=cur?fl:0,r=R0*(cur?1.15:1),cx4=xs[k-1];
+       if(cur)soft(cx4,ly,r*2.2,rgb(m[1]),0.22+0.4*pop2);if(nxt&&frac>0)soft(cx4,ly,r*1.9,rgb(m[1]),0.12+0.2*frac);
+       const rim=got?'rgba(255,255,255,.4)':nxt?css(rgb(m[1]),0.45+0.3*Math.sin(clock*3)**2):css(rgb(m[1]),0.28);
+       disc(cx4,ly,r,got||nxt?m:null,got?1:frac,rim,pop2);
+       if(got){g.save();g.beginPath();g.arc(cx4,ly,r*(1+0.35*pop2),0,7);g.clip();g.translate(cx4,ly);g.rotate(clock*0.8+k);const q=g.createLinearGradient(-r*0.25,-r,r*0.25,-r);q.addColorStop(0,'rgba(255,255,255,0)');q.addColorStop(0.5,'rgba(255,255,255,.4)');q.addColorStop(1,'rgba(255,255,255,0)');   // a turning shine
+        g.beginPath();g.moveTo(0,0);g.arc(0,0,r*1.4,-Math.PI/2-0.35,-Math.PI/2+0.35);g.closePath();g.fillStyle=q;g.fill();g.restore()}
+       if(got&&k===5){for(let j=0;j<3;j++){const a2=clock*0.7+j*2.1,tw=Math.max(0,Math.sin(clock*4+j*1.7));g.fillStyle=`rgba(255,255,255,${tw})`;const sx=cx4+Math.cos(a2)*r*1.25,sy3=ly+Math.sin(a2)*r*1.25,z=2.2*tw;g.beginPath();g.moveTo(sx,sy3-z);g.lineTo(sx+z*0.3,sy3);g.lineTo(sx,sy3+z);g.lineTo(sx-z*0.3,sy3);g.closePath();g.fill()}}}   // diamond sparkles
+      }
+     else{disc(x,ly,8,tier?mt:null,1,'rgba(255,255,255,.35)',fl);x+=16;const n=10,sw3=11,sg=3;
+      for(let k=0;k<n;k++){const sx=x+k*(sw3+sg),f=Math.max(0,Math.min(1,frac*n-k));g.beginPath();g.roundRect(sx,ly-4,sw3,8,2);g.fillStyle='rgba(255,255,255,.1)';g.fill();
+       if(f>0||fl>0){const q=g.createLinearGradient(0,ly-4,0,ly+4);q.addColorStop(0,nx[1][1]);q.addColorStop(1,nx[1][0]);g.save();g.beginPath();g.roundRect(sx,ly-4,fl>0?sw3:sw3*f,8,2);g.fillStyle=fl>0?`rgba(255,255,255,${0.8*fl})`:q;g.fill();g.restore()}
+       if(f>0&&f<1)soft(sx+sw3*f,ly,9,rgb(nx[1][1]),0.6)}
+      x+=n*(sw3+sg)+5;if(tier<5){disc(x,ly,8,nx[1],0.0001,css(rgb(nx[1][1]),0.55),0);x+=14;caps(nx[0],x,ly,0.6)}}}
+    else{const ly=rcy+26,frac=tier>=5?1:val-tier,nx=TIERS[Math.min(5,tier+1)],cw2=t=>{g.font=`600 10px ${FONT}`;g.letterSpacing='2.2px';const v=g.measureText(t).width;g.letterSpacing='0px';return v};
+     let x=tx+1;const t1=tier?name:'NO RECORD';g.textAlign='left';caps(t1,x,ly,0.8,tier?mt[1]:undefined);x+=cw2(t1)+10;
+     const bw=86;g.beginPath();g.roundRect(x,ly-3,bw,6,3);g.fillStyle='rgba(255,255,255,.18)';g.fill();
+     if(frac>0){const fq=g.createLinearGradient(x,0,x+bw,0);fq.addColorStop(0,nx[1][0]);fq.addColorStop(1,nx[1][1]);g.beginPath();g.roundRect(x,ly-3,Math.max(6,bw*frac),6,3);g.fillStyle=fq;g.fill();
+      soft(x+bw*frac,ly,10,rgb(nx[1][1]),0.7)}
+     x+=bw+10;if(tier<5){caps(nx[0],x,ly,0.62);x+=cw2(nx[0])+16}
+     if(LK==='now')caps(`${streak} STREAK`,x,ly,0.72);else if(LK==='rolling'){caps(String(streak),x,ly,0.95);caps('STREAK',x+cw2(String(streak))+6,ly,0.5)}}}
+   else if(scoreStyle==='orbit'){const R1=24,tilt=orbitV==='tilted',RX=tilt?50:37,RY=tilt?15:37,ROT=tilt?-0.22:0,w=RX*2+22+Math.max(sw,160),x0=cx0-w/2,rcx=x0+RX,rcy=ym-6;
+    const lvl=clock-sweepAt,mc2=css(ease(mcol,[255,255,255],0.35),1);
+    const P=th=>{const ex=Math.cos(th)*RX,ey=Math.sin(th)*RY;return[rcx+ex*Math.cos(ROT)-ey*Math.sin(ROT),rcy+ex*Math.sin(ROT)+ey*Math.cos(ROT)]};
+    const arcPath=(t0,t1)=>{g.beginPath();const n=Math.max(2,Math.ceil(Math.abs(t1-t0)/0.08));for(let k=0;k<=n;k++){const[x,y]=P(t0+(t1-t0)*k/n);k?g.lineTo(x,y):g.moveTo(x,y)}};
+    const start=tilt?Math.PI:-Math.PI/2,end=start+Math.PI*2*mf;                                  // tilted fills from the left, over the top (behind the record) and back round the front
+    const tag=(th,front)=>{const[tx2,ty2]=P(th),tw2=34*pop,th2=20*pop;g.beginPath();g.roundRect(tx2-tw2/2,ty2-th2/2,tw2,th2,th2/2);g.fillStyle='rgba(6,7,12,.96)';g.fill();g.strokeStyle=mc2;g.lineWidth=1.4;g.stroke();
+     g.textAlign='center';g.textBaseline='middle';g.font=`700 ${Math.round(12.5*pop)}px ${FONT}`;g.fillStyle=mc2;g.fillText(`×${mult}`,tx2,ty2+0.5)};
+    if(mult>1)soft(rcx,rcy,RX*1.6*pop,mcol,0.14+0.08*beat);
+    if(lvl>=0&&lvl<0.9){const k=lvl/0.9;g.strokeStyle=css(mcol,0.7*(1-k)**2);g.lineWidth=2+3*(1-k);g.beginPath();g.ellipse(rcx,rcy,RX*(1+k*1.4),RY*(1+k*1.4),ROT,0,7);g.stroke()}   // a level-up pulse
+    // the back of the ring (behind the record) for tilted; the whole ring for the others
+    const seg=(t0,t1,lit)=>{arcPath(t0,t1);g.lineCap='round';if(lit){g.strokeStyle=css(mcol,0.25);g.lineWidth=6;g.stroke();g.strokeStyle=css(mcol,1);g.lineWidth=2.4}else{g.strokeStyle='rgba(255,255,255,.12)';g.lineWidth=2}g.stroke();g.lineCap='butt'};
+    const ring=(lo,hi)=>{const a0=Math.max(lo,start),a1=Math.min(hi,end);seg(lo,hi,false);if(a1>a0)seg(a0,a1,true);
+     const a2=Math.max(lo,start-Math.PI*2),a3=Math.min(hi,end-Math.PI*2);if(a3>a2)seg(a2,a3,true)};   // (the fill wraps past 2π)
+    const tagTh=orbitV==='moon'?clock*(0.5+0.35*mult):(m4?start+Math.PI*1.5:end),tagFront=tilt?Math.sin(((tagTh%(2*Math.PI))+2*Math.PI)%(2*Math.PI))>0:true;
+    if(orbitV==='moon'){const RR=RX;g.lineWidth=1.5;g.strokeStyle='rgba(255,255,255,.12)';g.beginPath();g.arc(rcx,rcy,RR-7,0,7);g.stroke();   // the fine progress ring
+     if(mf>0){g.lineCap='round';g.strokeStyle=css(mcol,1);g.lineWidth=2;g.beginPath();g.arc(rcx,rcy,RR-7,-Math.PI/2,-Math.PI/2+Math.PI*2*mf);g.stroke();g.lineCap='butt'}
+     g.setLineDash([2,5]);g.strokeStyle='rgba(255,255,255,.14)';g.lineWidth=1;g.beginPath();g.arc(rcx,rcy,RR+4,0,7);g.stroke();g.setLineDash([])}   // the moon's path
+    else if(tilt)ring(Math.PI,Math.PI*2);
+    else ring(-Math.PI/2,Math.PI*1.5);
+    if(tilt&&!tagFront)tag(tagTh,false);
+    record(rcx,rcy,'center',R1,false);
+    if(tilt)ring(0,Math.PI);                                                                      // the front of the ring, over the record
+    if(tilt&&m4){for(let k=0;k<36;k++){const th=clock*0.6+k*Math.PI*2/36,fr=Math.sin(th)>0;const[dx,dy]=P(th);g.fillStyle=`rgba(235,245,255,${(fr?0.8:0.35)*(0.5+0.5*Math.sin(clock*3+k))})`;g.fillRect(dx-0.8,dy-0.8,1.6,1.6)}}   // dust circling at x4
+    if(orbitV==='moon'){const[mx,my]=[rcx+Math.cos(tagTh)*(RX+4),rcy+Math.sin(tagTh)*(RX+4)],mr=13*pop;soft(mx,my,mr*2.2,mcol,mult>1?0.4:0.15);
+     g.beginPath();g.arc(mx,my,mr,0,7);const mq=g.createRadialGradient(mx-mr*0.4,my-mr*0.4,1,mx,my,mr);mq.addColorStop(0,'#2a2d3a');mq.addColorStop(1,'#0b0c12');g.fillStyle=mq;g.fill();g.strokeStyle=mc2;g.lineWidth=1.4;g.stroke();
+     g.textAlign='center';g.textBaseline='middle';g.font=`700 ${Math.round(11*pop)}px ${FONT}`;g.fillStyle=mc2;g.fillText(`×${mult}`,mx,my+0.5)}
+    else if(!tilt||tagFront)tag(tagTh,true);
+    const tx=x0+RX*2+22;g.font=`200 46px ${FONT}`;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle=silver(rcy-34,rcy+4);g.fillText(sc,tx,rcy+8);
+    g.textAlign='left';caps(tier?name:'NO RECORD',tx+1,rcy+26,0.6,tier?mt[1]:undefined);g.font=`600 10px ${FONT}`;g.letterSpacing='2.2px';const nw2=g.measureText((tier?name:'NO RECORD')+'  ').width;g.letterSpacing='0px';
+    caps(`· ${streak} STREAK`,tx+1+nw2,rcy+26,0.45)}
+   else{const w=Math.max(sw+60,400),x0=cx0-w/2,yb=ym+2;                                                            // line
+    g.font=`200 52px ${FONT}`;g.textAlign='center';g.textBaseline='alphabetic';g.fillStyle=silver(yb-44,yb);g.fillText(sc,cx0,yb);
+    const hq=g.createLinearGradient(x0,0,x0+w,0);hq.addColorStop(0,'rgba(255,255,255,0)');hq.addColorStop(0.5,'rgba(255,255,255,.25)');hq.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=hq;g.fillRect(x0,yb+10,w,1);
+    record(x0+14,yb+28,'center',9,false);g.textAlign='left';caps(tierTxt,x0+30,yb+28,0.55,tier?mt[1]:undefined);
+    let px=x0+w-14;g.textAlign='right';caps(`${streak} STREAK`,px,yb+28,0.45);g.font=`600 10px ${FONT}`;g.letterSpacing='2.2px';px-=g.measureText(`${streak} STREAK`).width+14;g.letterSpacing='0px';
+    for(let k=4;k>=1;k--){const lit=k<mult||(k===mult&&m4),cur=k===mult&&!m4,fill=lit?1:cur?mf:0,x=px-(4-k)*16,y=yb+28;
+     g.beginPath();g.arc(x,y,4.5,0,7);g.strokeStyle=k<=mult?css(mcol,0.9):'rgba(255,255,255,.25)';g.lineWidth=1.2;g.stroke();
+     if(fill>0){g.beginPath();g.moveTo(x,y);g.arc(x,y,4.5,-Math.PI/2,-Math.PI/2+Math.PI*2*fill);g.closePath();g.fillStyle=css(mcol,1);g.fill();if(lit&&mult>1)soft(x,y,10,mcol,0.35)}}
+    g.textAlign='right';g.font=`300 13px ${FONT}`;g.textBaseline='middle';g.fillStyle='#f5f5f7';g.fillText(`×${mult}`,px-4*16+2,yb+28)}};
+  if(scoreLook==='plaque'&&award2==='records'&&scoreStyle!=='now'){const pw2=R-L+56+pad;newHud(hudBack==='corner'?36+190:hudStyle==='center'?(L-56)+pw2/2:(L-56)+190,hudBack==='corner'?CORNER_Y:trackT-pad-50)}
+  else if(scoreLook==='plaque'&&award2==='records'){
+   if(hudBack==='corner')plaque(36,CORNER_Y,'left');else if(hudStyle==='center')plaque((hl+hr)/2-(fin.mult==='badge'?38:0),trackT-pad-48,'center');   // shifted so score + multiplier are centred togetherelse plaque(hl,hudStyle==='row'?trackT-pad-48:trackB+pad+50,'left');
   }else if(hudStyle==='row'||hudStyle==='below'){
    const hb=hudStyle==='row'?trackT-pad-44:trackB+pad+62;   // row: the stars under the score (beside it they ran into the cursor's badge)
    g.textAlign='left';g.textBaseline='alphabetic';g.font=`300 52px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(sc,hl,hb);const scW=g.measureText(sc).width;if(hudStyle==='row')award(hl+2,hb+22,'left');else award(hl+scW+26,hb-14,'left');
@@ -682,11 +1490,12 @@ function frame(ms){
  // Milestones every 50 notes (user: "I don't want to show the streak, but show something at 50/100/150/etc"): a large light
  // number over the middle of the track, NOTE STREAK under it, thin lines drawing out to each side; ~1.6 s.
  {if(clock<mileAt)mileAt=-9;const m50=Math.floor(streak/50)*50;if(m50>mileN){mileN=m50;mileAt=clock}if(streak<mileN)mileN=Math.floor(streak/50)*50;
-  const ma=clock-mileAt;if(mileN>0&&ma>=0&&ma<1.6){const pw=R-L+56+pad,cx=L-56+pw/2,cy=trackT-pad-hudGap(),a=Math.min(1,ma/0.18)*Math.min(1,(1.6-ma)/0.45),sc=0.92+0.08*Math.min(1,ma/0.25);
+  const ma=clock-mileAt;if(mileN>0&&ma>=0&&ma<1.6){const pw=R-L+56+pad,cx=L-56+pw/2,cy=trackB+pad+96,a=Math.min(1,ma/0.18)*Math.min(1,(1.6-ma)/0.45),sc=0.92+0.08*Math.min(1,ma/0.25);
    g.save();g.globalAlpha=a;g.translate(cx,cy);g.scale(sc,sc);g.textAlign='center';g.textBaseline='alphabetic';g.font=`200 46px ${FONT}`;g.fillStyle=css(mood.c,1);g.fillText(String(mileN),0,0);
    const nw=g.measureText(String(mileN)).width,ext=Math.min(1,ma/0.5)*110;g.strokeStyle=css(mood.c,0.7);g.lineWidth=1;
    g.beginPath();g.moveTo(-nw/2-14,-14);g.lineTo(-nw/2-14-ext,-14);g.moveTo(nw/2+14,-14);g.lineTo(nw/2+14+ext,-14);g.stroke();
    g.font=`600 10px ${FONT}`;g.letterSpacing='3px';g.fillStyle='rgba(245,245,247,.7)';g.fillText('NOTE STREAK',0,16);g.letterSpacing='0px';g.restore()}}
+ }                                                // (New: the HUD shows once the board is open)
  requestAnimationFrame(frame);
 }
 
@@ -716,9 +1525,52 @@ function show(){
  bar.querySelectorAll('[data-lstyle]').forEach(b=>b.classList.toggle('on',b.dataset.lstyle===liveStyle));
  bar.querySelector('[data-mic]').classList.toggle('on',!!mic);
  bar.querySelector('[data-spread]').classList.toggle('on',spread);
+ bar.querySelectorAll('[data-viz]').forEach(b=>b.classList.toggle('on',b.dataset.viz===viz));
+ bar.querySelectorAll('[data-cosmos]').forEach(b=>b.classList.toggle('on',b.dataset.cosmos===cosmos));document.getElementById('cosmos-bar').style.display=viz==='cosmos'?'contents':'none';bar.querySelectorAll('[data-jumps]').forEach(b=>b.classList.toggle('on',b.dataset.jumps===jumps));document.getElementById('jump-bar').style.display=cosmos==='galaxy'?'contents':'none';
+ bar.querySelectorAll('[data-smode]').forEach(b=>b.classList.toggle('on',b.dataset.smode===spaceMode));bar.querySelector('[data-neb]').classList.toggle('on',nebula);document.getElementById('space-bar').style.display=viz==='space'?'contents':'none';
+ bar.querySelectorAll('[data-big]').forEach(b=>b.classList.toggle('on',big[b.dataset.big]));
+ bar.querySelectorAll('[data-pol2]').forEach(b=>b.classList.toggle('on',b.dataset.pol2==='all'?Object.values(pol2).every(Boolean):pol2[b.dataset.pol2]));
  bar.querySelector('[data-pause]').textContent=paused?'Play':'Pause';
 }
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.rprog)return;recProg=b.dataset.rprog;markRprog()});
+function markRprog(){bar.querySelectorAll('[data-rprog]').forEach(b=>b.classList.toggle('on',b.dataset.rprog===recProg))}
+{const v=new URLSearchParams(location.search).get('rprog');if(v)recProg=v}setTimeout(markRprog,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.sface)return;scoreFace=b.dataset.sface;markSface()});
+function markSface(){bar.querySelectorAll('[data-sface]').forEach(b=>b.classList.toggle('on',b.dataset.sface===scoreFace))}
+{const v=new URLSearchParams(location.search).get('sface');if(v)scoreFace=v}setTimeout(markSface,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.sin)return;streakIn=b.dataset.sin;markSin()});
+function markSin(){bar.querySelectorAll('[data-sin]').forEach(b=>b.classList.toggle('on',b.dataset.sin===streakIn))}
+{const v=new URLSearchParams(location.search).get('sin');if(v)streakIn=v}setTimeout(markSin,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.slook)return;scoreLookX=b.dataset.slook;markSlook()});
+function markSlook(){bar.querySelectorAll('[data-slook]').forEach(b=>b.classList.toggle('on',b.dataset.slook===scoreLookX))}
+{const v=new URLSearchParams(location.search).get('slook');if(v)scoreLookX=v}setTimeout(markSlook,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.orbv)return;orbitV=b.dataset.orbv;scoreStyle='orbit';markOrbv();markSstyle()});
+function markOrbv(){bar.querySelectorAll('[data-orbv]').forEach(b=>b.classList.toggle('on',b.dataset.orbv===orbitV))}
+{const v=new URLSearchParams(location.search).get('orbv');if(v)orbitV=v}setTimeout(markOrbv,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.sstyle)return;scoreStyle=b.dataset.sstyle;markSstyle()});
+function markSstyle(){bar.querySelectorAll('[data-sstyle]').forEach(b=>b.classList.toggle('on',b.dataset.sstyle===scoreStyle))}
+{const v=new URLSearchParams(location.search).get('sstyle');if(v)scoreStyle=v}setTimeout(markSstyle,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.hudb)return;hudBack=b.dataset.hudb;markHudb()});
+function markHudb(){bar.querySelectorAll('[data-hudb]').forEach(b=>b.classList.toggle('on',b.dataset.hudb===hudBack))}
+{const v=new URLSearchParams(location.search).get('hudb');if(v)hudBack=v}setTimeout(markHudb,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.edge)return;edgeX=b.dataset.edge;if(x4k<0.5){fx.x4=true;show()}x4At=clock;markEdge()});   // picking one shows it at x4
+function markEdge(){bar.querySelectorAll('[data-edge]').forEach(b=>b.classList.toggle('on',b.dataset.edge===edgeX))}
+{const v=new URLSearchParams(location.search).get('edge');if(v)edgeX=v}setTimeout(markEdge,0);
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.bigx)return;const k=b.dataset.bigx;
+ if(k==='all'){const on=!Object.values(bigX).every(Boolean);for(const x in bigX)bigX[x]=on}else bigX[k]=!bigX[k];markBigX()});
+function markBigX(){bar.querySelectorAll('[data-bigx]').forEach(b=>b.classList.toggle('on',b.dataset.bigx==='all'?Object.values(bigX).every(Boolean):bigX[b.dataset.bigx]))}
+{const v=new URLSearchParams(location.search).get('bigx');if(v)v.split(',').forEach(k=>{if(k in bigX)bigX[k]=true;if(k==='all')for(const x in bigX)bigX[x]=true})}
+setTimeout(markBigX,0);
 bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.viz){viz=b.dataset.viz;show();return}
+ if(b.dataset.cosmos){cosmos=b.dataset.cosmos;show();return}
+ if(b.dataset.jumps){jumps=b.dataset.jumps;show();return}
+ if('jumpnow' in b.dataset){jumpAt=clock;return}
+ if(b.dataset.smode){spaceMode=b.dataset.smode;show();return}
+ if('neb' in b.dataset){nebula=!nebula;show();return}
+ if(b.dataset.big){big[b.dataset.big]=!big[b.dataset.big];show();return}
+ if('bigfire' in b.dataset){if(bigX.build&&fireAt==null)fireAt=clock+barLenNow;else if(!bigX.build)bigAt=clock;return}
+ if(b.dataset.pol2){if(b.dataset.pol2==='all'){const on=!Object.values(pol2).every(Boolean);for(const k in pol2)pol2[k]=on}else pol2[b.dataset.pol2]=!pol2[b.dataset.pol2];show();return}
  if(b.dataset.look2)scoreLook=b.dataset.look2;else if(b.dataset.award)award2=b.dataset.award;else if(b.dataset.hud)hudStyle=b.dataset.hud;else if(b.dataset.stagger)stagger=b.dataset.stagger;else if(b.dataset.hold)holdStyle=b.dataset.hold;else if(b.dataset.bg)bgStyle=b.dataset.bg;else if(b.dataset.echo)echo=b.dataset.echo;else if(b.dataset.rep)repStyle=b.dataset.rep;else if(b.dataset.pass)passStyle=b.dataset.pass;else if(b.dataset.lead)bounceLead=b.dataset.lead;else if(b.dataset.bshape)bShape=b.dataset.bshape;else if(b.dataset.bpath)bPath=b.dataset.bpath;else if(b.dataset.pol){if(b.dataset.pol==='all'){const on=!Object.values(pol).every(Boolean);for(const k in pol)pol[k]=on}else pol[b.dataset.pol]=!pol[b.dataset.pol]}else if(b.dataset.lstyle)liveStyle=b.dataset.lstyle;else if('mic' in b.dataset){toggleMic();return}else if(b.dataset.song){song=b.dataset.song;clock=0;load()}else if(b.dataset.fx){fx[b.dataset.fx]=!fx[b.dataset.fx];if(b.dataset.fx==='misses')load()}else if('spread' in b.dataset){spread=!spread;load()}else if('pause' in b.dataset)paused=!paused;show()});
 // Use my bass: the input's level drives Live strings (on the string the tab played last; the game would use the detected string)
 async function toggleMic(){
@@ -732,5 +1584,85 @@ const sp=document.getElementById('speed');sp.oninput=()=>{speedSet=+sp.value;doc
 const sz=document.getElementById('size');sz.oninput=()=>{size=+sz.value;document.getElementById('sizev').textContent=size+'×';load()};
 const rs=document.getElementById('repsize');rs.oninput=()=>{repSize=+rs.value;document.getElementById('repsizev').textContent=repSize+'×'};
 const qs=new URLSearchParams(location.search);if(qs.get('t'))clock=+qs.get('t');if(qs.get('pause'))paused=true;if(qs.get('x4'))fx.x4=true;if(qs.get('award'))award2=qs.get('award');if(qs.get('hud'))hudStyle=qs.get('hud');if(qs.get('stagger'))stagger=qs.get('stagger');if(qs.get('bg'))bgStyle=qs.get('bg');if(qs.get('rep'))repStyle=qs.get('rep');if(qs.get('echo'))echo=qs.get('echo');if(qs.get('pass'))passStyle=qs.get('pass');if(qs.get('lead'))bounceLead=qs.get('lead');if(qs.get('shape'))bShape=qs.get('shape');if(qs.get('path'))bPath=qs.get('path');if(qs.get('polish'))for(const k of qs.get('polish').split(','))if(k==='all')for(const j in pol)pol[j]=true;else if(k in pol)pol[k]=true;if(qs.get('strings'))liveStyle=qs.get('strings');if(qs.get('misses'))fx.misses=true;if(qs.get('song'))song=Object.keys(PASSAGES)[+qs.get('song')];
+if(qs.get('big'))for(const k in big)big[k]=qs.get('big').split(',').includes(k);
+if(qs.get('viz'))viz=qs.get('viz');if(qs.get('space'))spaceMode=qs.get('space');if(qs.get('cosmos'))cosmos=qs.get('cosmos');if(qs.get('jumps'))jumps=qs.get('jumps');if(qs.get('jump'))jumpAt=clock-(+qs.get('jump')||0);
+if(qs.get('more'))for(const k in pol2)pol2[k]=qs.get('more')==='all'||qs.get('more').split(',').includes(k);
+if(qs.get('fire'))bigAt=clock-(+qs.get('fire')||0);
 load();show();requestAnimationFrame(frame);
+</script>
+<script>
+// New · moments: into the song, the ending, results and back, over the real board (see `fin` above). Real time, not the
+// passage's clock; ?scn=into|end|res|back&at=<s> holds a scene at a moment, ?fin=board:glass,keys:lit,... sets options.
+{
+const $=id=>document.getElementById(id),cl=(x,a=0,b=1)=>Math.max(a,Math.min(b,x)),sg=(a,b,x)=>cl((x-a)/(b-a)),sm=x=>x*x*(3-2*x);
+const LEN={into:{now:2.4,jump:2.6,dive:2.4},end:2.6,back:1.4},FLOW=[['into',0],['play',6],['end',0],['res',5],['back',0]];
+const q=new URLSearchParams(location.search);let hold=q.has('at')?+q.get('at'):null;
+(q.get('fin')||'').split(',').filter(Boolean).forEach(kv=>{const[k,v]=kv.split(':');if(k in fin)fin[k]=v});
+function go(k){scn.k=k;scn.at=performance.now()/1000;scn.jumped=false;if(k==='end'||k==='res')document.querySelectorAll('#stub-res .an').forEach(e=>e.classList.remove('in'))}
+if(q.get('scn'))go(q.get('scn'));
+function vis(el,o,extra){el.style.visibility=o>0.001?'visible':'hidden';el.style.opacity=o;if(extra!==undefined)el.style.clipPath=extra}
+// the record (as in the game's drawRecord, simplified)
+const TI=[null,['#7a4a22','#d39a6a'],['#6f7680','#e8edf2'],['#8a6a18','#ffe08a'],['#6a7c8c','#f2fbff'],['#3a5c9a','#c8f0ff']];
+function rec(c,x,y,r,v,t,spin){const tier=Math.floor(v),[c0,c1]=TI[tier]||['#222','#333'];c.save();c.translate(x,y);c.rotate(spin||0);
+ c.beginPath();c.arc(0,0,r,0,7);c.fillStyle='#0b0b0d';c.fill();const m=c.createLinearGradient(-r,-r,r,r);m.addColorStop(0,c0);m.addColorStop(.5,c1);m.addColorStop(1,c0);c.beginPath();c.arc(0,0,r*.94,0,7);c.fillStyle=m;c.fill();
+ c.strokeStyle='rgba(0,0,0,.25)';c.lineWidth=.6;for(let k=r*.42;k<r*.92;k+=r/24){c.beginPath();c.arc(0,0,k,0,7);c.stroke()}
+ const sh=c.createConicGradient(t*0.5,0,0);sh.addColorStop(0,'rgba(255,255,255,0)');sh.addColorStop(.12,'rgba(255,255,255,.22)');sh.addColorStop(.25,'rgba(255,255,255,0)');sh.addColorStop(.62,'rgba(255,255,255,.14)');sh.addColorStop(.75,'rgba(255,255,255,0)');sh.addColorStop(1,'rgba(255,255,255,0)');c.beginPath();c.arc(0,0,r*.94,0,7);c.fillStyle=sh;c.fill();
+ c.beginPath();c.arc(0,0,r*.34,0,7);c.fillStyle='#141418';c.fill();c.beginPath();c.arc(0,0,r*.05,0,7);c.fillStyle='#000';c.fill();
+ if(v%1>.01){c.beginPath();c.arc(0,0,r+3,-Math.PI/2,-Math.PI/2+Math.PI*2*(v%1));c.strokeStyle=(TI[tier+1]||TI[5])[1];c.lineWidth=2.5;c.lineCap='round';c.stroke()}c.restore()}
+let rs=7;const rnd=()=>(rs=(rs*16807)%2147483647)/2147483647;
+const RUN=Array.from({length:96},(_,i)=>{const hard=(i>50&&i<62)||(i>10&&i<14),n=4+Math.floor(rnd()*5),x=hard?Math.floor(rnd()*n*0.6):rnd()<.15?1:0,m=rnd()<.15?1:0,gd=Math.floor(rnd()*2);return[Math.max(0,n-x-m-gd),gd,m,x]});
+function results(age){
+ const pr=fin.enter==='pressed',c=$('resrec').getContext('2d');c.setTransform(2,0,0,2,0,0);c.clearRect(0,0,150,150);
+ const k=pr?sg(0.15,1.9,age):sg(0.5,2.1,age),v=3.4*sm(k);
+ if(pr){const d=sg(0,0.5,age),r=Math.min(75,64*(1+(1-sm(d))*0.5)),spin=(1-sm(sg(0,1.2,age)))*9;c.globalAlpha=cl(d*2);
+  if(d>=1&&age-0.5<0.7){const la=age-0.5;c.strokeStyle=`rgba(255,224,138,${(1-la/0.7)*0.8})`;c.lineWidth=2;c.beginPath();c.arc(75,75,Math.min(74,64+la*30),0,7);c.stroke()}
+  rec(c,75,75,r,v,age,spin);c.globalAlpha=1}else rec(c,75,75,64,v,age);
+ $('rscore').textContent=Math.floor(42543*sm(k)).toLocaleString();$('rtier').style.opacity=k>=1?1:0;
+ document.querySelectorAll('#stub-res .an').forEach((e,i)=>e.classList.toggle('in',age>(pr?(i?0.6+i*0.09:0.05):(i?2.1+i*0.18:0))));
+ const rc=$('runc'),w=rc.clientWidth,h=rc.clientHeight;if(!w)return;if(rc.width!==w*2){rc.width=w*2;rc.height=h*2}const g2=rc.getContext('2d');g2.setTransform(2,0,0,2,0,0);g2.clearRect(0,0,w,h);
+ const base=h-4,cw=w/RUN.length,st=pr?sg(0.8,2.2,age):sg(2.2,3.6,age);
+ RUN.forEach((b,i)=>{const f=i/RUN.length,kk=pr?sm(cl((st*1.25-f)*5)):(f<st?1:0);if(kk<=0)return;let y=base;const u=6.5*kk;['#f6d878','#d9dee5','#c4a1ff','#f27b7b'].forEach((col,j)=>{if(!b[j])return;g2.fillStyle=col;g2.globalAlpha=.85;g2.fillRect(i*cw+1,y-b[j]*u,cw-2,b[j]*u-1);y-=b[j]*u});g2.globalAlpha=1});
+ if(pr&&st>0&&st<1){const x=w*st*1.25-w*0.1,sq=g2.createLinearGradient(x-40,0,x+10,0);sq.addColorStop(0,'rgba(255,255,255,0)');sq.addColorStop(1,'rgba(255,255,255,.35)');g2.fillStyle=sq;g2.fillRect(x-40,0,50,base)}
+}
+function tick(){
+ const now=performance.now()/1000,age=hold!=null?hold:now-scn.at,cv=$('cv'),Wc=cv.clientWidth,Hc=cv.clientHeight;
+ const L=Math.max(Wc*0.09,96),R=Wc*0.97,cx0=L+(R-L)*0.2,cxM=L+(R-L)*0.5;
+ if(scn.flow&&hold==null){const i=FLOW.findIndex(f=>f[0]===scn.k),len=scn.k==='into'?LEN.into[fin.into]:scn.k==='end'?LEN.end:scn.k==='back'?LEN.back:FLOW[i][1];
+  if(age>len+0.25){if(i===FLOW.length-1){scn.flow=false;go('play')}else go(FLOW[i+1][0])}}
+ let S={open:1,hud:1,black:0,glide:0,dim:0},sel=0,load=0,card=0,res=0,resClip='none',glow=1,pick='',pickF='none',pickO=1;
+ const k=scn.k,trig=at=>{if(!scn.jumped&&age>=at){scn.jumped=true;jumpAt=clock}};
+ if(k==='into'){const into=fin.into,L2=LEN.into[into];
+  if(into==='now'){sel=1-sg(0,0.35,age);load=sg(0.3,0.55,age)*(1-sg(1.15,1.45,age));S.black=1-sg(1.3,1.7,age)}
+  else if(into==='jump'){sel=1-sg(0,0.4,age);const m=sm(sg(0.05,0.7,age)),dy=Hc*0.5-(Hc*0.16+Hc*0.14);pick=`translate(0,${dy*m}px) scale(${1-0.97*m})`;pickF=`brightness(${1+m*2.5})`;pickO=1-sg(0.55,0.75,age);
+   S.black=1-sg(0.45,0.9,age);trig(0.6)}
+  else{sel=1-sg(0,0.35,age);const m=sm(sg(0,1.0,age)),dy=Hc*0.5-(Hc*0.16+Hc*0.14);pick=`translate(0,${dy*m}px) scale(${1+m*6})`;pickF=`blur(${m*30}px) saturate(1.4)`;pickO=1-sg(0.6,1.2,age);S.black=1-sg(0.6,1.3,age)}
+  const o0=into==='now'?1.6:into==='jump'?1.6:1.4;card=sg(o0-0.4,o0,age)*(1-sg(L2,L2+0.4,age));S.open=sm(sg(o0,o0+0.8,age));S.hud=age>=L2?1:0;
+  if(age>L2+0.4){card=0}}
+ else if(k==='end'){S.glide=sm(sg(0,0.6,age));S.open=1-sm(sg(0.6,1.35,age));S.hud=0;
+  if(fin.out==='now'){if(age>1.6){S.black=1}}else{S.dim=0.15+0.3*sg(1.4,2.2,age);trig(1.45)}
+  res=age>1.6?1:0;const o=sm(sg(1.6,2.45,age)),x=(cxM/Wc*100);resClip=`inset(0 ${100-x-o*(100-x)}% 0 ${x-o*x}%)`;if(res)results(age-1.6)}
+ else if(k==='res'){res=1;S.open=0;S.hud=0;if(fin.out==='now')S.black=1;else S.dim=0.45;results(age)}
+ else if(k==='back'){S.open=0;S.hud=0;S.dim=0.45;results(99);
+  if(fin.back==='now'){res=1-sg(0,0.3,age);sel=sg(0.3,0.7,age)}
+  else{const f=sm(sg(0,0.5,age));res=age<0.5?1:0;resClip=`inset(0 ${f*50}% 0 ${f*50}%)`;sel=sg(0.6,1.2,age);const m=1-sm(sg(0.5,1.2,age)),dy=Hc*0.5-(Hc*0.16+Hc*0.14);pick=`translate(0,${dy*m}px) scale(${1-0.7*m})`;pickO=sg(0.45,0.7,age)}}
+ Object.assign(scnS,S);
+ // stand-ins
+ const ss=$('stub-sel');vis(ss,Math.max(sel,pick?pickO:0));[...ss.children].forEach(e=>{if(!e.classList.contains('covs'))e.style.opacity=sel});
+ const cv2=ss.querySelectorAll('.cv2');cv2[0].style.opacity=0.5*sel;cv2[2].style.opacity=0.5*sel;const p=cv2[1];p.style.transform=pick||'none';p.style.filter=pick?pickF:'none';p.style.opacity=pick?pickO:sel;
+ if(k==='into'&&fin.into!=='now')ss.querySelector('.glow').style.opacity=sel;
+ vis($('stub-load'),load);
+ const cd=$('stub-card');cd.style.setProperty('--cx',(Wc/2)+'px');cd.style.setProperty('--cy',(Hc*0.36-18-60)+'px');vis(cd,card);
+ const sr=$('stub-res');vis(sr,res,resClip);sr.querySelector('.glow').style.display=fin.out==='now'?'block':'none';sr.querySelector('.dim').style.display=fin.out==='now'?'none':'block';
+ requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+// controls
+const bar=$('bar');
+function mark(){bar.querySelectorAll('[data-fin]').forEach(b=>{const[a,v]=b.dataset.fin.split(':');b.classList.toggle('on',fin[a]===v)});
+ bar.querySelectorAll('[data-scn]').forEach(b=>b.classList.toggle('on',b.dataset.scn==='flow'?scn.flow:!scn.flow&&b.dataset.scn===scn.k))}
+bar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;hold=null;
+ if(b.dataset.fin){const[a,v]=b.dataset.fin.split(':');fin[a]=v;const show={into:'into',out:'end',back:'back',enter:'res'}[a];if(show){scn.flow=false;go(show)}}
+ if(b.dataset.scn){if(b.dataset.scn==='flow'){scn.flow=true;go('into')}else{scn.flow=false;go(b.dataset.scn)}}
+ setTimeout(mark,0)});
+mark();
+}
 </script>

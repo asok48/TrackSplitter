@@ -80,6 +80,9 @@ in use. Ground rules agreed so far (kept here so every computer's session has th
   (Apache 2.0). The pip package needs TensorFlow (no Python 3.13 build on Mac), so
   `tab.py` runs the ONNX model with onnxruntime and reimplements its note decoding in
   numpy (no librosa/scipy).
+- `desktop/`: the Encore Mac app (Electron around the server): `main.js` (window, server, microphone, window-only
+  recording), `preload.js` (`window.encoreApp`), `make-app.sh` (Electron 39.1.0, checksum-checked, into `.electron/`; builds
+  `~/Applications/Encore.app`; `POST /api/encore-app`).
 - `tools/gamecheck_replay.py`, `tools/gamecheck_experiment.py`: replay recorded game checks (judging, pitch reader
   variants, wrong-notes control); see NOTES.md.
 - `track-splitter.zip`: an email-sized copy of the app (git-ignored). Email filters
@@ -191,7 +194,7 @@ standard, drop D, half step down, 5-string, with a suggestion) and saves
   `rePluck`, soft pitch-change) plus the note's own pitch read after it; messy notes,
   wrong notes (`checkWrong`), too-soft plucks, tuning check (`tuneCheck`). Game checks
   record runs to `<library>/.game-checks/` for `static/check.html`.
-- Bass input listening (`listen`, YIN `pitchOf`, noise gate `input.floorDb`), string
+- Bass input listening (`listen`, YIN `pitchOf`, noise gate `input.floorDb`, Listening boost `input.listenGain` / `encore-listen-boost`), string
   detection (`stringFeatures`, `#strcal-dlg`) and timing calibration (`#calib-dlg`,
   `inputCalibration`); both calibrations also saved to `<library>/.calibration.json`.
 - Test start: localStorage `track-splitter-game-start` (seconds); Electra tests use 30.
@@ -218,15 +221,7 @@ syncing changes (`get_tab` re-syncs via `resync_import`).
 
 ## Guitar tabs (imported)
 
-The user's brother works on guitar (a Bass | Guitar switch in the tab view header,
-`#tab-instrument`, per song `track-splitter-tab-instrument`; guitar tuning choices kept as
-`song|guitar`). Guitar shows imported tabs only; the tab views, tunings, raise ½ step and
-Make repeats match work with 6 strings. Files `imported-guitar-tab - <name>.<ext>` /
-`.guitar-tab-imported.json` (+ `instrument`, `capo`, `track_index`); `instrument=guitar`
-on the tab APIs; Track picker (`POST /api/tab/tracks`, `tabimport.rank_tracks`); capo;
-6-line text tabs are guitar. Syncing uses `guitar_heard()` (`.guitar-heard.json`,
-`GUITAR_HEARD_RULES`); fingering `tab.guitar_fingering` (`GUITAR_STYLE`). Learning from
-imported tabs stays bass only.
+Bass | Guitar switch (`#tab-instrument`), `instrument=guitar` on the tab APIs, `.guitar-tab-imported.json`, `guitar_heard()`; see NOTES.md.
 
 ## Game screen (/game)
 
@@ -257,18 +252,20 @@ Hear myself's PSOLA shifter (`SHIFT_WORKLET`, `input.monShift`, `updateMonShift`
 Song select tuner (`#arc-tune`, `songTuning`, `readTuner`, `input.tunerSemis`): the song's tuning and each open string's cents.
 Arcade board (`drawArcade` / `arcadePrep` / `arcadeBoard`; mockup `design/game-mockups/arcade.html`):
 the tab glides under a still cursor, numbers on keycaps, echoes for repeats, song-driven background, blue x4.
-Moments (`moments.html`): Encore (`encorePlan`, `game.enc`, `encoreTick`, `addScore`), intro (`game.intro`), ending (`arcadeBoard.ending`).
+Moments (`moments.html`): Encore (`encorePlan`, `game.enc`, `encoreTick`, `addScore`), intro (`game.intro`), ending (`arcadeBoard.ending`, `--res-x`).
+Results: `prepResRun` / `drawResRun`, `practiceSpot` (`arcade.prLoop`), `game.dt`. Song progress under the board (`arcadeBoard.prog`).
+Scoreboard (2026-11-08): tilted ring multiplier, streak on the record, Hologram score, Ladder (`arcadeBoard.ringDrain`, `disp`); x4 aurora (`auroraBody`); Jump (`jumpOut`, `jumpOnOpen`), Stay in space (`resultsSky`), Fold (`#game-songs`); see NOTES.md.
+Big moment + layers (build-up from `cuesAt`'s `bigNext`, sky, ring, strings, afterglow `arcadeBoard.afterAt`).
 Arcade also draws chord frames (`chords`), held tubes only past a beat (`tails`), slurs / slides (`legatoMarks`); bass double stops
 judged as one (`bassChordPluck`, `chordNear`; `game.strums` = guitar's strum path); `gameNotesFor` sorts notes by time.
 Board mood from the song's cover (`songPalette`, `songMood`, `arcadeBoard.pal`); hits pop / ring / pulse the cursor; the streak warms the board (`build`, `warm`).
 Alive board (arcade.html › Alive): ripple strings, hit trail, electric trail note to note (`ballAt`, `info[i].after`, blue at x4); hit tags and the streak moment under the board; borderless panel layer (`arcadeBoard.panel`), glass, gauge strings, keycap faces; no slide marks.
+Big moments (2026-11-08): Embers, Surge (edge arcs), Flare from `cues.big`; More polish: lanes, bar glow, rails, light column. Galaxy background (`makeGalaxy`; band sways, kick pulses, hyperspace jumps at big moments / multiplier up; `songAn` on the player's master).
+REC (`#rec-btn`, `screenRec`, only in the Encore app): its window + app sound (`appOut`) + bass, lined up by `inputCalibration`, picture and sound as two recorders streamed to `/api/recording/*`, saved as MP4 in ~/Movies/Encore.
 
 ## Guitar game (step 2)
 
-The game works for guitar tabs: plays a version without the guitar and switches the input
-to Guitar; chords (notes within 30 ms) are judged and scored as one note (`strumByChange`,
-`readChord`, `chordPluck`, `CHORD_WAIT`); chord cards and bars on the board
-(`drawChordCards`, `drawChordBars`). Show my timing doesn't judge chords yet.
+Chords judged as one note (`strumByChange`, `readChord`, `chordPluck`, `CHORD_WAIT`); see NOTES.md.
 
 ## Guitar calibration
 

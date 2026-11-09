@@ -990,6 +990,17 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
 
 ## Guitar tabs (imported)
 
+(Moved from CLAUDE.md, word for word.)
+The user's brother works on guitar (a Bass | Guitar switch in the tab view header,
+`#tab-instrument`, per song `track-splitter-tab-instrument`; guitar tuning choices kept as
+`song|guitar`). Guitar shows imported tabs only; the tab views, tunings, raise ½ step and
+Make repeats match work with 6 strings. Files `imported-guitar-tab - <name>.<ext>` /
+`.guitar-tab-imported.json` (+ `instrument`, `capo`, `track_index`); `instrument=guitar`
+on the tab APIs; Track picker (`POST /api/tab/tracks`, `tabimport.rank_tracks`); capo;
+6-line text tabs are guitar. Syncing uses `guitar_heard()` (`.guitar-heard.json`,
+`GUITAR_HEARD_RULES`); fingering `tab.guitar_fingering` (`GUITAR_STYLE`). Learning from
+imported tabs stays bass only.
+
 The user asked for guitar tabs "similar to how we have tabs working for bass" (design:
 imported first, then playing along, then automatic). Step 1, imported guitar tabs:
 - A Bass | Guitar switch in the tab view header (`#tab-instrument`, per song in
@@ -1031,6 +1042,11 @@ imported first, then playing along, then automatic). Step 1, imported guitar tab
   synthetic song, bass or guitar, so text tabs there have no beat to go on.)
 
 ## Guitar game (step 2)
+
+(Moved from CLAUDE.md, 2026-11-08.) The game works for guitar tabs: plays a version without the guitar and switches the input
+to Guitar; chords (notes within 30 ms) are judged and scored as one note (`strumByChange`,
+`readChord`, `chordPluck`, `CHORD_WAIT`); chord cards and bars on the board
+(`drawChordCards`, `drawChordBars`). Show my timing doesn't judge chords yet.
 
 User: "Can we try adding it to game mode?" The Game section works for guitar tabs too.
 - `startGame` for a guitar tab: plays a version without the guitar (all guitar first, then
@@ -3031,6 +3047,496 @@ progessing the new one, just do a ring on the outside").
   hits scored, bolt, trail, ripple, gauge (since removed) and MISS seen; 120 fps, 95th-percentile frame 8.4-8.8 ms in the browser pane; no
   console errors (only the input's permission error from before the simulation). Not yet tried with the real bass, x4 /
   Encore not reached in the test.
+
+- Screen recording (2026-11-07): "I would like to be able to record my games with the entire screen and both the song and
+  my input" -> "when I record my screen, all I hear is my bass. I also want to hear the song too" (the Mac's screen
+  recording takes one microphone, the Scarlett, not what the computer plays) -> "record my entire usage while I have
+  recording enabled, not just during the song". REC (`#rec-btn`, `screenRec`, top right on every Encore screen) asks for the
+  screen (getDisplayMedia), then records it with a mix of everything the app plays (`appOut`: the player's master, the miss
+  thud and clicks now go through it; song previews are routed into it while recording) and the bass, until clicked again
+  or the browser's Stop sharing. The app's sound waits `inputCalibration` so the bass lines up; the bass is Hear myself's
+  output when it's on (`input.monTap`, tone match and boost), else the input at Hear myself's volume through the soft
+  clipper (`recWireBass`, rewired when the input or Hear myself changes). A limiter on the recording only (a first test
+  peaked at 0 dB; the browser's compressor adds make-up gain, so a 0.6 trim after it). MediaRecorder (MP4 if the browser
+  can, else WebM) sends 2 s pieces to `POST /api/recording/{id}/chunk`; `.../finish` remuxes the MP4 with the index first
+  (or converts WebM to H.264 / AAC) into `~/Movies/Encore/Encore <date> at <time>.mp4` (`RECORDINGS_DIR`), else keeps the
+  browser's file; the toast's Show in Finder (`POST /api/recording/reveal`). REC is a popover moved into an open modal
+  dialog (pause, settings, results) so it stays clickable there. Tested on the library copy with a canvas as the screen
+  and the simulated Scarlett, recordings to a scratch folder: H.264 + AAC MP4s of the right length, the game section
+  -14.6 dB mean / -3.8 dB peak, its low end 4 dB above the no-bass song alone (the bass is in); REC clickable in Settings.
+  Not tried with a real screen (the browser pane can't share one: needs the Mac's Screen & System Audio Recording
+  permission for the browser), the real Scarlett, or a long recording; previews only recorded if they start after REC.
+- Encore as its own Mac app (2026-11-07): "this isnt very safe cause chrome could randomly start recording my screen" (it
+  can't without a click and the picker, but the Mac's screen permission would let any site ask) -> "how much of a lift would
+  it be to make this into it's own app?" -> "if we make it it's own app, then we dont need to worry about the tab recording"
+  -> "yes let's do 1" (an Electron window around the existing server, not a self-contained bundle). `desktop/main.js`
+  (Electron: Chrome's engine, so the Scarlett's two channels, Web Audio and the calibration behave as in Chrome) shows /game
+  in its own window; starts the server with `start.sh --no-browser` if it isn't up (waiting up to 10 min for a first-run
+  install, log in ~/Library/Logs/Track Splitter.log) and stops it on quit only if it started it; one copy at a time; allows
+  the microphone etc. for 127.0.0.1:7860 only; `setDisplayMediaRequestHandler` answers getDisplayMedia with its own frame
+  (no picker, no screen permission); sound without a click first (`autoplayPolicy`); other links open in the browser.
+  `desktop/preload.js`: `window.encoreApp` (REC shows only there; Quit closes the app). `desktop/make-app.sh` (also
+  `POST /api/encore-app`, behind "Install Encore app" on a Mac): downloads Electron 39.1.0 once into `.electron/` (git-ignored),
+  checked against the release's SHASUMS256.txt, copies it to `~/Applications/Encore.app` (an earlier build replaced, anything
+  else there to the Trash), renames it Encore (`local.track-splitter.encore`, a microphone message, the pick icon via
+  sips + iconutil), puts in a stub that loads desktop/main.js from the project (main.js changes need no rebuild), signs it
+  ad hoc. 256 MB.
+  - Recording in the app: one MediaRecorder with the window and the sound put out nothing in Electron (each alone and a
+    canvas + sound were fine), and an MP4 recorder only gave data at stop (a first file was 1.8 s of 5.5, no sound). Now two
+    recorders: the picture as H.264 in WebM, the sound as Opus, in 2 s pieces (`?track=video|audio`); `finish` copies the
+    picture into the MP4 and makes the sound AAC (VP8/VP9 converted). REC also stuck awaiting `ctx.resume()` (fixed: not
+    awaited). Tested in the app (opened with a debugging port, driven over CDP, against the library copy on port 7860):
+    REC on title + song select for 10 s -> a 10.5 s MP4, 2880x1706 H.264 at 29 fps + AAC (the preview at -21 dB mean), a
+    frame showing only the Encore window with REC 0:06. Not tried: the app starting the server itself (would have used
+    the real library), the Scarlett in the app (the Mac's microphone prompt), Quit from inside the app.
+
+- "I think the game is starting to look good, I will like to still make it look more complete" (2026-11-08). Of four ideas
+  (richer results, song progress in a game, menu sound and motion, profile and milestones) the user picked the first two.
+  Mockup in its own page (user: "lets do mockups in a new page, the current one has way too much on it"):
+  `design/game-mockups/results.html` (`?screen=game` opens the second). Only data the game keeps (`game.result`,
+  `game.grade`, `game.hitAt`, the bars, `encorePlan`'s phrases, the light cues' big moments); the run is made up and judged
+  as the cursor passes. Results: record and score count up as now, then Perfect / Good / Messy / Miss counts with accuracy
+  and best streak, "Your run" (a bar per bar of music, its height the notes, stacked by grade; or a Ribbon of how clean
+  each bar was with misses as red ticks), hover a bar for its time and count, Encore phrases gold under it; "Where it
+  slipped": the 3 worst stretches under 75% clean (a good bar or two inside joins them; under 6 notes ignored) with
+  Practise (would open Practice looped there) and "Practise the hard parts"; Timing: every hit's dot against the beat,
+  the Perfect window gold, the average ("A touch early · average -16 ms"). Layout Stacked / Split; How it went Good /
+  Rough / Full combo. In game: the song as a line, each played bar coloured (gold all Perfect, soft white clean, red a
+  miss), Encore phrases ahead in gold, big moments as ticks, a bright head; at the Top edge, Under board or In score,
+  time on or off. Checked at 1440x900: no console errors, every option draws; the in-game view only checked by its
+  values (the browser pane was hidden, so no screenshot of it).
+- Built (user: "I like both split and bars"): the results screen (`#game-dlg`) is Split + Bars. The cover beside the title
+  (user: "also show the album colver as well"), the record (150 px) with the score beside it, the counts on the right
+  (Accuracy, Perfect, Good, Messy, Miss, Best streak; fading in one by one once the score has counted), then Your run
+  (`prepResRun` / `drawResRun`: a column per bar from `practiceBars()`, stacked by grade, a chord counted once, notes not
+  reached left out; Encore phrases gold under the played part; hover for the bar; draws in left to right), Where it
+  slipped (Practice on each; the footer's "Practice bars N–M" is the worst) and Timing (`game.dt`, each hit's pluck minus
+  its note, new; the window is the timing setting's Perfect). Practice (`practiceSpot`) closes the results and starts
+  Encore's Practice on that song with `arcade.prLoop`, which `startPractice` turns into the loop and its start. FULL COMBO
+  now shows on the results' record line ("Full combo · Gold record"). The spelling is Practice (user: "practice is spelled
+  practise on the results screen").
+- The ending: no SONG COMPLETE / FULL COMBO card or See results (user: "can we remove the see results popop and go straight
+  to the results?"). After asking for it smoother, then "the board shrunk into the results screen, almost like it's doing the
+  reverse of the intro", "make it go left to right" (a left-to-right sweep, briefly) and "what if the cursor then goes to
+  the middle and then the sides close on it?": the cursor glides to the board's middle (0.6 s, `curX0` -> `endMid`), the
+  sides close on it (the intro's opening in reverse, 0.75 s, light at both edges), its line stays alone while the rest goes
+  dark, then the fader goes black at once and the results open out from that line (`--res-x`; `res-open` clip with two
+  edges of light, `res-edge-l` / `-r`, 0.85 s; from the pause menu they open from the middle). The score's count starts
+  0.5 s in. `justify-content: safe center` so a short window scrolls instead of cutting the title off.
+- MESSY's tag and colour are violet (196,161,255), was amber, next to PERFECT's gold (user: "the messy indicator looks like
+  the perfect one").
+- Tested on a library copy (Hysteria only, port 7891) with its bass-only track as a simulated input (paired with the song's
+  first source only: the player starts the with/without buffers together, and stopping either had cut the fake input):
+  the last 50 s and 25 s of the song played to the end, results with real counts (e.g. 56 Perfect / 21 Good / 7 Messy /
+  167 Miss, timing -4 to -17 ms), Practice opened looped on the slipped bars ("Loop 1 · bars 139–173"), the ending's frames
+  captured from the board canvas (cursor glide, close, line alone) and the opening frozen halfway; no console or server
+  errors. The game only plays while the browser pane is visible (hidden, the intro hand-off waits). Not yet seen in the
+  Encore app on the Mac or with the real bass.
+- The song's progress in a game, Under board (user's pick): in `drawArcade` after the streak moment, 64% of the board's
+  width, centred, `min(cBot + 126, H - 26)` (under the hit tags and the 50-note moment). Each bar you've played (from
+  `plan.bars`; counted as `game.next` moves, kept in `arcadeBoard.prog`, a chord once) in how it went: gold all Perfect,
+  white clean, violet messy, red a miss, faint white with no notes; the Encore phrases still ahead in gold; a bright head;
+  the time either side. Fades with the score panel (intro, ending); steps back while the streak moment shows when a short
+  window puts them together; not in practice. Big moments (from the mockup) left out, as big moments are off for now.
+  Tested in a game from 1:40 on the library copy: drawn under the board with 2:02 / 3:48, played bars coloured, phrases
+  ahead; no console or server errors.
+- The ending waits for the song (user: "it stopped the song before it finished. even though there's no more bass, I want to
+  hear the end"): it began 0.5 s after the last note (`plan.lastEnd + 0.5`), cutting the outro; now only on `game.songEnded`
+  (the player reaching the end of `playRange()`, so a silent tail is still skipped). Space during the outro still pauses,
+  and Quit there counts as finished. Slower (user: "still an abrupt ending where the results screen quickly popped in"):
+  cursor glide 0.9 s, close 1.0 s, dark from 1.8 s, results at 2.5 s opening over 1.3 s, then the title (0.45 s), the
+  record and score (0.8 s, the count from 1.1 s), the numbers and run once it has counted, the buttons (1.9 s). Tested on the
+  library copy from 200 s: the song played past its last note (222.3 s) to the end of its sound (~225 s), the results 2.8 s
+  after; build-up checked frozen at points; no errors.
+- Repeats show their number again after a gap (user: "when there's no notes before a repeated note for a certain amount of
+  time, can we reshow the note?"): an echo (diamond) only within 1.5 beats of the note before (0.6-2.5 s; was 2.5 s
+  whatever the tempo), `restGap` in `arcadePrep`. Across the library's tabs 699 of 25,411 repeats get their number back
+  (1 beat: 1,280; 2 beats: 232). A rest measured from the note's end changed only 35 (tabs hold notes up to the next).
+  Display only (judging doesn't use it).
+- Holds (user: "held notes are still ending way too early. Also, when I play two held noted at the same times, only the last
+  played one is registered"). The hold rule replayed on the game checks since 2026-11-01 (22 bass games, 335 holds; a
+  Python copy of the hold part of `judge` in the scratchpad): 77% kept to the end; lost to "another note" 40 (the held
+  note's own overtones read as another note: +12 8, +7 7, +19 2, -12 2; another note you'd hit and were holding 14 of the
+  40; a semitone off 11) and "quiet" 30 (just under the -50 dB gate, -50 to -55, mostly 0.12-0.2 s before the note's end,
+  just past the grace). A lost hold greys the rest of its tube: the note "ends early". Now: the octave, two octaves and
+  octave-and-a-fifth count as the note (`HOLD_HARM` 12, -12, 19, 24); another hit note still ringing keeps it (`ringing`;
+  holding one note while playing the next on another string no longer drops the first); another pitch or silence has to
+  last `HOLD_WAIT` 0.1 s; the end grace `HOLD_GRACE` 0.25 s (was 0.2) or a quarter of the note, only if it was heard going
+  into it (`HOLD_FRESH` 0.12 s). Replayed: 94% kept (other 1, quiet 7, gap 12, never 1); a made-up let-go halfway through
+  every hold (silence, or a wrong note 3 semitones off) still loses 98% of them, a median 0.12 s after (the old rule: 100%,
+  0.01 s). Without the freshness check the wider grace kept 88% of the let-gos as held, so it stays. Double stops in the
+  library's tabs are nearly always within 30 ms (47 pairs; 30-60 ms only 19), so grouping is unchanged. Game checks now log
+  each hold (`{e: 'hold', k, at, kept, why}`). Not yet played with the real bass: the user was asked to play with Record
+  games for checking on so the logged holds can be checked.
+  - The user's game after that (2026-11-08 10:24, Sha-La-La-Lady 0-72 s, real bass) ran the old page (no hold events: the
+    Encore window wasn't reloaded; /game is served no-cache, so Cmd+R or reopening is enough). Replayed: old rule 30 of 32
+    holds kept, new 31. Most of its holds are quarter notes (0.48 s, held a median 0.48 s, no tube: tubes only past a beat).
+    The one long hold lost (1:06.0, 3.39 s in the tab, lost at 2.7-2.8 s under both rules) was muted 2.55 s in (the level
+    falling ~13 dB at once) with the next note's pitch starting 0.8 s before the tab's end: moving on early, or the tab
+    holding it longer than the song.
+  - The next game (10:29, Sha-La-La-Lady 0-80 s, the new page): 40 holds logged, 37 kept; lost 0:34.1 (0.48 s, at 97%),
+    1:09.4 (never read) and 1:06.0 again at 79%, let go ~0.8 s before the next note as in the game before. Across all 87
+    long notes (1 s+) hit in the game checks, the user lets go a median 0.29 s before the note's end (about when the next
+    note starts), up to ~1 s on the longest: lifting to move on. With the hold judged to the written end, only 49% of long
+    notes were kept (59% with the first fix). Now a long note's last stretch can be let go: a quarter of it, at least
+    `HOLD_LEAVE` 0.3 s, at most 40%, measured to its end or the next note, whichever is first; notes under 1 s keep
+    `HOLD_GRACE`. Replayed on all 906 holds since 2026-10: long notes kept 78%, all 92%; a let-go halfway (to the next note)
+    still lost on 98% of long notes. (The let-go check first put the cut halfway through the written note, which on tabs
+    whose notes overlap the next is after the next note starts.) The browser pane blocks the microphone: real playing has
+    to be in the Encore app (Cmd+R picks up page changes).
+  - "Look at my last recording of evolve ... Is there any way to improve the sustain so those hold longer?" (its 10:14 game,
+    before these changes): one long note, 0:37.2 (2.23 s, A on the D string), lost at 81% under every rule. It rang at a
+    steady -22 dB with no pluck until the mute at 2.14 s (the level falling ~16 dB in 0.06 s), but the pitch reader gave
+    nothing from 1.50 s (raw null at the same level; fading notes, maybe with open strings ringing along). Now a hold is
+    kept through unread frames while the note still rings: no reading, no real pluck since (soft plucks don't count), and
+    the level within `HOLD_RING` 6 dB of the last clear reading, less `HOLD_FADE` 6 dB a second (a mute falls far below it).
+    Replayed on all 906 holds: kept 92% -> 94%, long notes 78% -> 83%, that EVOLVE note kept; let-go checks (silence, a
+    wrong note, and a new one: a mute, the level 15 dB down but above the gate) still lose 98% of long notes. A first try
+    comparing with the level 0.12 s before kept 64% of muted long notes (the window forgot the drop). Page loads with no
+    errors; not yet played.
+- Listening boost (user: "it also helps if I turn up the gain, but then I get bad distortion"): the pitch reading's gate and
+  the hold's quiet line use a fixed -50 dB floor (`GATE_DB`, besides the floor-relative gate 10 dB over the input's quiet
+  level); more gain keeps a fading note above it longer, but the user's plucks already peak near -2 to -7 dB, so more clips
+  the Scarlett. The measured quiet level was -60 to -70 dB (-45 to -60 with today's higher gain: the noise rises with it,
+  so the gain bought nothing but distance from the fixed floor). Settings › Setup › Listening boost (`encore-listen-boost`,
+  0-24 dB, Off by default): a GainNode (`input.listenGain`) in front of the three analysers, floating point so it can't
+  clip; the meter and "Too loud" divide it back out (the input as it is); Hear myself, takes and game checks' audio don't go
+  through it; game checks record `listen_boost`. Replayed (the level shifted; pitch not re-read): long notes kept 83% ->
+  87% at +6, 89% at +12, all holds 94% -> 96%; a made-up mute still loses 98% of long notes. Checked in the page with a
+  test tone: the slider in Setup saves and shows +N dB, the meter reads -14 dB at Off and at +24, no console errors. Not
+  yet played: watch for ghost notes at high boost (the floor-relative gate should follow it).
+
+- Big moments and more polish (user, 2026-11-08: "can we improve the big moments animaton? Also, maybe improve the board look
+  some more"). Mocked up in arcade.html: a Big moment row (Now = the game's look then, Shockwave, Beams, Embers, Surge, Flare;
+  one fires on bar 5 of each loop, or Fire one; `?big=...&fire=<age>`) and More polish (Light column, Bar glow, Lanes, Rails;
+  `?more=all`). The Polish row is now on by default there. User: "i like ember/surge/flare and then all the polish options".
+  - In `drawArcade`, the old big-moment rim, haze, panel tint, flash and band are gone (the mesh still fills out, `0.12 * bigK`).
+    Still from the light cues (`cues.big` < 12 s while the loudness stays > 0.45; `bigAge` = `cues.big`), and the board never moves.
+    - Embers: 60 embers rising behind the board while it lasts, a glow on every third to keep gradients down. A burst of 46
+      sparks flies out of the cursor in the first 1.6 s.
+    - Surge: two arcs race from the cursor along the top and bottom edges (0.55 s, fading by 1.2 s), then crackle at three
+      random spots on the kicks (`beat * bigK` > 0.15). They are blue at x4 and gold in Encore.
+    - Flare: stars on the cursor's ends and thin streaks along both edges, a burst as it comes in, then breathing on the beat.
+  - More polish, always on:
+    - Lanes: a faint band per string, fading at the ends.
+    - Bar glow: bar and beat lines light as they reach the cursor and fade over ~70 px behind it.
+    - Rails: 1 px light lines on both edges, brightest at the cursor and pulsing on beat 1.
+    - Light column: a 92 px beam on the cursor, a bright point on each string that flares when it's hit
+      (`game.laneHitMs`), and a glint on its ends.
+  - Tested: the mockup draws every option with no errors. The game page loads on the library copy with no errors other than
+    the browser pane's blocked microphone. Not yet seen in a real game: the user is testing it in the Encore app.
+- "when the board closes, it reappears again with notes on it" (2026-11-08): at the ending, `endGame` put the tab's own view
+  back into `#tab-body`. It showed around the results while they opened out from the cursor line and the fader went. Now
+  `body.board-closed` (set as the ending hands over) hides `#tab-body` until the results close, or until the next game starts.
+  Only the script syntax was checked (Electron's Node); it hasn't been seen at a song's end yet.
+- Space background (user, 2026-11-08: "can we do more with the background to give it feel with the song?"). The mockup went
+  through several rounds in arcade.html:
+  - Song feel row: kick pulse, snare light strips, a loudness horizon, vocal ribbons, sections, accent rings, dust. User: "I dont
+    like the look", "Too busy / cheap", "imagine like a visualizer".
+  - Visualizer row, quiet looks (band mesh, light curtain, silk lines). User: "I was thinking something more dynamic".
+  - Visualizer row, livelier looks (flow field, liquid light, ridges, warp rings). User: "I like the idea of the flow field". An
+    improved flow (trails, around the board, with the tab, kick wave, depth, colour by sound) got "I liked it better before.
+    would be cool if it looks like space".
+  - Space (Warp / Drift, Nebula), with Warp's streaks and Drift's kick flares toned down after the first look. User: "Yes, build it".
+  - Built as Space › Warp with the nebula, in `drawArcade` right after the mesh, always on:
+    - `songAn`, an AnalyserNode on the player's `master` (the song only: no clicks or thuds; fftSize 1024, -85 to -25 dB),
+      read into 32 log bands (30 Hz-12 kHz) and eased like the mockup's (`arcadeBoard.spec`). Kicks come from the light cues.
+    - A 55% darkening over the mesh, which shows through.
+    - The nebula: 5 clouds in the mood's colours plus a violet and a blue, with 4 dust lanes cut out, on a 64x40 canvas
+      stretched; the bands light it.
+    - 520 stars flying out from behind the board's middle (`arcadeBoard.stars`, `warpV`). Speed is 0.05 + mids + loudness +
+      kicks + big moments, nearly still when the song isn't playing. Short streaks are drawn as two Path2D strokes (white,
+      and a quarter tinted the mood's colour), with dots on the nearest stars.
+  - Checked: script syntax, and /game loads on the library copy with no console errors. Not seen in a game, and the frame time
+    wasn't measured: the user is testing it in the Encore app.
+- Ending, stutter, more space (user: "can we clean up the ending? it still shows the board with the notes. Can we also clean up
+  the transition and make it look more polished? One other thing I did notice was some slight stuttering"; then "can we make
+  it look more like space?" and, of a 160x100 nebula, "looks cheap and low res"), 2026-11-08:
+  - Ending:
+    - When the song ended with its last notes still inside their judging window, `game.next` was short of the end, so the
+      song-end handler went straight to `endGame()`: no closing, and the tab's own view behind the results. Now `missRest()`
+      counts those notes as misses and the ending always plays (Arcade games; the tab view and guitar's 2D board still end
+      directly).
+    - `body.board-closed` is now set in `endGame` itself for any results (Quit included) and cleared when `#game-dlg` closes.
+    - Seen on the library copy: a game from 3:25 to Hysteria's end went to clean results, with no tab behind them.
+    - The transition polish asked for isn't done yet.
+  - Stutter, measured in the browser pane at 1440x900 on a 2x screen:
+    - Before: ~30 fps in a game, with Space's nebula as its own full-screen layer stretched with
+      `imageSmoothingQuality = 'high'`.
+    - Fixes: the nebula went into the mesh first, then became the painted one below, with one solid fill plus one image
+      instead of an added second copy. Star dots and embers are drawn as batched paths, Lanes moved onto the panel layer
+      (key includes `n`), and Surge's bolts use one path per width (they were hundreds of strokes a frame).
+    - Median frame is back to 8.4 ms (120 fps), but the 95th percentile was still 17-25 ms (some dropped frames). That
+      was partly while the nebula was being painted, and it wasn't measured once the painting had finished.
+  - More like space:
+    - The static layer, drawn once per size and now outside the opening's clip: 1,000 still stars plus 1,300 in a faint
+      galaxy band across the screen, with a glow.
+    - Each frame: 46 twinkling stars, the 6 brightest with a cross of light, and a shooting star every 9-18 s. Warp stars cut
+      to 360.
+    - The nebula (`nebulaStep`) is painted once per song colours and window size at half the window's size. It uses
+      domain-warped value noise (`nebNoise`, `nebFbm`, a 256x256 lattice) in space's blues and violets, with the song's
+      colours mixed in as an accent, dark dust lanes and whiter cores.
+    - It's painted ~5 ms of rows a frame, fades in over 1.5 s while the mesh is drawn underneath until then, drifts very
+      slowly, and is shown at 62-100% by the lows and big moments.
+    - The first painted version (the song's colours alone, warp 4x) looked like olive marble. The bluer, softer second
+      version wasn't seen: the user stopped the test server.
+- Galaxy replaces Space (user: "I think the stars look cheap and the background could use some work"), 2026-11-08:
+  - arcade.html got a Cosmos row (Deep field, Planet, Galaxy, Hyperspace): soft star sprites at three depths gliding with the
+    tab, and clouds painted small and blurred up (`filter: blur`) so they're smooth.
+  - The user picked Galaxy: "would like it to be more dynamic instead of static. Also like the hyperspeed, maybe do it only at
+    certain points".
+    - Alive: the band sways about its core, kick pulses run along it, it takes the multiplier's colour, and the core breathes.
+    - Jumps (Off / Big moments / + multiplier).
+    - "at least in the mockup, there's a bar going across": the colour tint along the band was a rectangle faded only at its
+      ends; now a soft oval.
+  - In the game:
+    - `makeGalaxy(W, H, dpr)` paints the sky once per size at full resolution: 160 soft blobs along a band at -0.32 rad, a
+      warm core, 40 dust lanes, blurred, plus 2,600 faint stars. It also makes 3 star sprites and 150 stars.
+    - It's drawn in place of the mesh (the mesh is still computed, not drawn) and swayed with a 1.18x scale so no edge shows.
+      The tint is a soft oval, and kick pulses come from the light cues when the lows are > 0.25.
+    - The stars glide with the tab, twinkle, and flare on kicks. The core glow and jump flash are limited to their own boxes.
+    - A jump (`GX.J`: 0.15 s in, 1.45 s out) happens when a big moment comes in (`cues.big` new, loud) or the multiplier goes
+      up / Encore starts (`arcadeBoard.sweepAt`). Stars stretch out from the core, the sky zooms up to 6%, and there's a flash.
+  - Removed: Space's painted nebula (`nebulaStep` and the noise), warp stars, twinkle crosses, the shooting star, and the static
+    layer's star field and band.
+  - Checked: script syntax only (the user had stopped the test server). The first frame pays for painting the sky once.
+- Themes (user, 2026-11-08: "lets make the game look better still. Maybe theme it better"). The game was a galaxy while the
+  menus were a grey mesh with an amber accent, and nothing said "Encore". Mockup `design/game-mockups/themes.html` (title, song
+  select, game, results; x4; arrow keys switch): Deep Space (the galaxy everywhere, glass panels, thin type, ring multiplier),
+  After Hours (vinyl / late-night studio: warm bokeh and grain, Didot italic wordmark, covers as sleeves with the record peeking
+  out, a rosewood neck with brass frets and ivory note tags, a VU-meter multiplier) and Arena (a live show's encore: light rigs,
+  haze, crowd phone lights, an LED-wall board with neon notes, condensed type, magenta accent). User: "I like it how it is
+  now, I want to improve on that"; of four ideas (menus on the galaxy, smoother transitions, board & HUD finish, results) they
+  picked the last three. Mockup `design/game-mockups/polish.html` (each row has Now = the game; Whole flow plays song select ->
+  into the song -> game -> ending -> results -> back; `?at=<s>` holds a scene at a moment): Into the song (Now: loading screen;
+  Jump: the picked cover shrinks to a star and you jump into the galaxy, the intro card where the score goes, the board opening
+  from the cursor; Dive: the cover fills the screen, blurs and becomes the sky), Ending (Now: black, results over the cover glow;
+  Stay in space: the galaxy stays, dims, a small jump as the results open from the line), Back (Now: a swap; Fold: results fold
+  into the line and the picked cover rises out of it), Board (Now; Glass slab: soft ends, rim lit at the cursor, a sheen and a
+  faint reflection; Floating: no box, a shadow under the strings), Keycaps (Now; Lit: shadow, tinted body, string-coloured rim,
+  top light, glow nearing the cursor), Multiplier (Now: the chip on the cursor; Badge by the score: ring with fill, glow, streak),
+  Hit calls (Now: pills under the board; At the cursor: the word rising beside the hit string), Results (Now: cover glow / Over
+  the galaxy; Now / Pressed in: the record drops in spinning and lands with a ring, counts cascade, the run's columns rise with
+  a light sweep, timing dots sprinkle in). Waiting on the user's picks. The browser pane was hidden, so the animations were
+  checked as held frames only.
+  User: "why is it so different from what we currently have?": polish.html's board was drawn from scratch, not the game's
+  code, so even Now only looked roughly like the game. User: "lets keep working off arcade.html"; polish.html is set aside.
+- arcade.html's view tidied (user: "can we clean up the mockup view? Way too much going on" ... "I mean on arcade"): the option
+  bar is now a panel on the right that stays closed (Options in the bottom-right dock, or O), each group on its own line under
+  its label as a heading; the dock also has Pause (the bar's own) and ✕ / H to hide everything but the board. The options and
+  their code are unchanged; the hint line only shows with the panel open.
+  The panel never covers the board (user: "make sure that the pop up doesn't block to the board"): while it's open the canvas
+  narrows to the space left of it (`resize()` reads the canvas's own size; a 16 px gap) and widens back when it closes or ✕ / H
+  hides it.
+- The polish ideas moved into arcade.html ("Yes, add them"), each row's Now being the game (`fin`, Options › New · moments /
+  New · board & HUD; `?fin=board:glass,keys:lit,...`, `?scn=into|end|res|back&at=<s>` holds a scene). To make Now match the
+  game, the mockup's score now sits centred (`hudStyle` center), close notes are Joined (`stagger`), and the game's scrolling
+  hit tags were ported in (grades made up per note, `gradeOf`).
+  - Board & HUD: Board Now / Glass slab (top sheen, rim lit brightest at the cursor, an oval reflection under it) / Floating
+    (the panel at 0.3 instead of 0.78, a shadow under the strings, light pooling round the cursor); Keycaps Now / Lit (tinted by
+    the string, rim and glow brightening over the last 240 px to the cursor; joined keycaps unchanged); Multiplier Now (the
+    cursor's badge) / Badge by the score (a ring that fills, glows from x2, streak under it; the cursor still fills); Hit calls
+    Now (the tags) / At the cursor (the newest word rising beside its string).
+  - Moments, over stand-ins for song select, loading and results (HTML; the real screens are the game's): Into Now (select
+    fades, loading, black, intro card, board opens from the cursor) / Jump (the cover shrinks to a star, the galaxy's own jump,
+    the card, the opening) / Dive (the cover grows and blurs into the sky); Ending Now (cursor to the middle, sides close, black,
+    results open out of the line over the cover glow) / Stay in space (the same close, a small jump, results over the dimmed
+    galaxy; this decides the results' background, so the separate Results background row was dropped); Back Now / Fold into
+    the cover; Results Now (count up) / Pressed in. Whole flow plays Into, the board for 6 s, Ending, Results 5 s, Back.
+  - The HUD and hit calls hide while the board is closed (no fade). Checked as held frames (the pane was hidden): no console
+    errors, every option draws.
+- User's picks in the mockup (read from the page): Into Jump, Ending Stay in space, Back Fold, Results Now, Board Floating,
+  Keycaps Lit, Multiplier Badge by the score, Hit calls Now. Not built yet.
+- "can we improve the big moments?" (2026-11-08). Seen in the mockup: Embers / Surge / Flare read well as it hits, but a second
+  later little says you're still in one (it looks like any x4 stretch), nothing leads into it, and it stops dead. arcade.html
+  got Options › Big moment + (new), each its own switch, off (`bigX`, `?bigx=build,sky,...` or `all`): Build-up (the bar
+  before: light gathers along both rails to the cursor, the sky dims up to 32%, a glow swells at the cursor; Fire one then
+  waits a bar; the game could do it since lights.py's cues are made ahead), Sky lights up (the galaxy band glows in the
+  song's colour while it lasts, a brighter core on the beat, a wave along the band each bar), Hit fills the screen (a ring
+  opening from the cursor past the screen's edges, a brief bloom), Strings sing (the strings glow wider, pulsing on the
+  beat), Afterglow (motes rising over 4 s as it ends; the sky's glow lingers). Checked with all on: no console errors.
+- Surge all the way round (user: "make the electric go all the way around instead of just the sides"): in arcade.html the bolts
+  follow the board's whole rounded outline (`per(u)`, a point and its normal, clockwise from the top-left): four arcs race from
+  the cursor's two ends round the corners and meet halfway down each end (0.75 s, fading by 1.4 s, a glow where they meet), and
+  the beat crackles fall anywhere on the outline (4 of them).
+  - Then "the lightning around the board should happen at 4x, not big moment", "keep it going when it's at 4x too" and "I think
+    it would be better if the whole thing stayed full instead of racing around": Surge now fires when the streak reaches x4
+    (`x4At`) and, while at x4, lightning runs round the whole outline at once (8 overlapping bolts re-drawn 30 times a second,
+    brighter on the beat), a flash as x4 arrives, crackles on the beats on top; big moments no longer fire it. Not in the game
+    yet (its Surge still runs along the two edges on big moments).
+- Procedural skies (user: "can we make the galaxy move? Like procedurally generated?"): Cosmos › Spiral (new) / Voyage (new) in
+  arcade.html (`drawProc`, seeded per song by `strHash`, so a song always gets the same sky). Spiral: a spiral galaxy grown from
+  the seed (2-4 arms, winding, colours), 2,600 stars orbiting faster inside than outside over its arms' glow, tilted behind the
+  board and big enough that the arms show above and below it; the music and big moments spin it faster. Voyage (after "it would
+  be better if these things smoothly transitioned, like you traveling and they move into it"; it first slid sideways past
+  screen-wide chunks): flying forward. Nebulae, galaxies and clusters (`voyThing`) start as specks near the vanishing point,
+  grow and pass off the edges, mostly above / below the board, fading in far away and out before they're huge, a new one made
+  far ahead each time; stars stream out and stretch only in a surge (a big moment, very busy music).
+  - Frame time in the browser pane (1440x900 on a 2x screen): Galaxy 8.3 ms (120 fps); Spiral and Voyage ~18-19 ms. The
+    JavaScript is ~1.4 ms, and with every new layer switched off the page still took ~19 ms, so the extra is the browser's
+    drawing: Galaxy sits right at the 120 Hz budget and anything a little heavier falls to every other refresh. Full-screen
+    added-light fills were removed (the spiral's glow and the tints drawn plainly). Needs measuring in the Encore app before
+    building.
+  - "it looks really blurry and blocky in the back": the far stars had been dropped to screen resolution (soft on a 2x screen),
+    a nebula was a 32 px painting stretched up, the spiral's glow 320 px. Now the star field is at full resolution again, Voyage's
+    things are painted at 256 px straight from soft gradients (clusters as round points), the spiral's glow at 1024 px. High
+    quality scaling on them cost ~10 ms a frame and isn't needed at those sizes. Frame time unchanged (~18-19 ms).
+  - "in voyage, It keeps skipping in the background from slow to fast": its speed followed each kick and the bass level frame by
+    frame. Now the speed wanted comes from how busy the music is, the streak and big moments, and the actual speed eases to it
+    (`PROC.go`; ~0.9 s speeding up, ~1.6 s slowing down); kicks only flare the near stars. Spiral's turning uses the same speed.
+    Measured: the speed changed by at most 0.02 per 0.1 s while rising from 0.54 to 0.87 as the streak built.
+- x4 edge (user: "instead of lightning around the edges, could we make it look more spacey?"): Options › x4 edge (new) in
+  arcade.html (`edgeX`, `?edge=`; picking one turns on the x4 preview): Lightning (as before), Stardust (default: 320 motes
+  flowing round the outline, twinkling, spreading a little on the beat, sweeping out both ways from the cursor over 0.9 s as x4
+  arrives), Aurora (two layers of soft curtains waving up from the top edge and down from the bottom, cyan into violet, taller
+  on the beat), Orbit (three comets circling the outline at different speeds with fading tails). All keep a faint blue rim.
+  Checked each at x4: no console errors.
+  - Aurora more real (user: "can we make aurora look more real?"): a curtain of vertical rays (a 4x256 gradient strip,
+    `AURORA_RAY`, drawn every 3 px, 6 px wide so they overlap, plus a soft glow pass every 9 px) rising from a bright green
+    lower edge into teal and violet tops, up to 30% of the window tall; brightness in bands drifting sideways with a gentle
+    shimmer; the base folds slowly; only a dim upside-down reflection under the board (no curtain hanging down). A first pass
+    was too faint, then too crisp (it looked like visualizer bars). Frame time 8.3 ms, as Galaxy alone.
+  - From the edge (user: "can we make it come from the edge instead of being over it?"): the rays now grow out of the board's
+    whole outline along each point's outward normal (`per(u)`, each ray turned with setTransform), tallest off the top (1),
+    shorter below (0.6) and at the ends (0.45); the rim glows green as the bright lower edge; the reflection is gone. 8.3 ms.
+  - Polish ("seems sort of blocky"): the ray strip is 32 px wide with soft sides (faded to nothing at both edges), rays 12 px
+    wide every 3 px (the glow pass 44 px every 10 px) so they blend into one curtain; rays on the corners at 45% (they fanned out
+    and bunched at their base into bright spikes). 8.3 ms.
+  - Still blocky up close (user's screenshot: clumps of light with dark gaps, a stepped outline at the ends where the rays point
+    sideways, a straight edge where the glow stopped): the body is now painted at a quarter of the window's size
+    (`AURORA_BODY`, rays 40 px wide every 6 px) and scaled up, so it's soft with no tips or steps; fine rays at 16% over it
+    for texture; brightness evened out (broad slow swells, 70-100%, no gaps) and heights steadier. 8.3 ms (p95 8.9).
+  - "still cut off" (the same straight edge on the left): the moments' opening clip (x from L-80 to R+40) stayed on even with
+    the board fully open, and the edge effects are drawn inside it; on a narrow test window the cut fell off-screen. Now the clip
+    is only set while the board opens or closes. Checked at 1600x900: the aurora fades out freely past the board's left end.
+- The user likes Aurora but, at x4 (screenshots, one in a big moment with Sky lights up): "the multiplier and score are hard to
+  see now, I'm fine changing it". The cursor's 1x-4x tag was drawn with the board, before the edge glow, which washed over it;
+  the score sat in the aurora's brightest part. Options › Score over the aurora (new) (`hudBack`, `?hudb=`): Now / Halo
+  (default: a soft dark oval behind the score and round the tag, the aurora parting round them) / Glass plate (a dark plate
+  behind the score) / Top corner (the score at the top-left, `CORNER_Y` 64, on a faint halo). In all but Now the tag is drawn
+  after the glow, dark with a brighter rim. Checked each over Aurora at x4: no console errors.
+  - "but the multiplier next to the score at the top": Multiplier defaults to Badge by the score (`fin.mult` 'badge', the
+    user's earlier pick; the cursor's tag goes), on a dark disc when a backing is on, and the halo / plate are sized to take it
+    (plate 450 wide, the halo shifted toward it); in Top corner it sits beside the corner score. Checked all three: no errors.
+  - "move it over close to the score": one layout for the score group (`hb`, as the plaque measures itself) puts the badge 38 px
+    past the score's right edge, the halo / plate fit around both, and the pair is centred over the board (the plaque shifted
+    38 px left). "also maybe make the aurora less bright": body 0.5 -> 0.32, fine rays 0.16 -> 0.1, rim 0.6 -> 0.4.
+- "can we update score and multiplier into a potential new style thats more cohesive? Also, the streak alert should go below the
+  board": Options › Score style (new) (`scoreStyle`, `?sstyle=`, `newHud`): Now (plaque + badge) / Capsule (default: one dark
+  glass pill, record, score, the multiplier in a round end-cap with its ring; "SILVER RECORD · 57 STREAK" under the score) /
+  Orbit (the multiplier a ring orbiting the record, a x4 tag riding it where it has filled to; score beside, "SILVER · 57
+  STREAK") / Line (score large, a hairline, the tier left, x4 + four pips lighting to the multiplier + the streak right). The
+  new styles skip the badge and the plate, keeping only a soft halo. The streak milestone ("50 NOTE STREAK") is now under the
+  board (`trackB+pad+96`, below the hit tags). Checked all three over Aurora: no errors (Line's row widened to 400 px after its
+  x4 ran into the tier).
+  - "I like some version of orbit, can we go with that but work more on it?": Score style defaults to Orbit, with Options › Orbit
+    look (new) (`orbitV`, `?orbv=`): Tilted ring (default: a planet-style ring, back half behind the record and front half over
+    it, filling from the left over the top and round the front, the x4 tag riding the filling end and drawn behind the record
+    when it's on the back half; at x4 the ring is fully lit and 36 motes of dust circle it), Moon (a small moon carrying the x4
+    circles the record on a dotted path, faster at higher multipliers, over a fine progress ring), Flat (the first Orbit,
+    cleaned up). All: a pulse ring out from the record when the multiplier goes up, the tier name in its metal, the x4 tag
+    larger (12.5 px). Checked at x2 and x4 and on a level-up: no errors.
+  - "Tilted ring is cool, I feel like we could improve it": rebuilt as a band (dark glass, a fine bright outer edge; 64x21,
+    inner edge at 60%, record 26) with ten segments from the left over the top and round the front, one per note toward the
+    next multiplier (each hit lights the next; a glowing head on the newest); the x4 tag stays still at the front of the ring;
+    a level-up flashes every segment white for 0.45 s with the pulse; a miss drains the lit segments in red over 0.55 s
+    (`ringDrain`); at x4 every segment shimmers in turn, a light runs round and 40 motes of dust circle. Kept on screen in a
+    narrow window. The first band (inner edge at 72%) was too thin to read at the browser pane's size.
+  - "that looks cool, sort of hard to see the record progress around it" (the record's own thin progress ring sat under the
+    band): under the score now, the tier in its metal, an 86 px bar filling in the next tier's metal with a glow at its end,
+    the next tier's name, then the streak ("BRONZE ▬▭▭ SILVER  35 STREAK"). No errors.
+  - "maybe don't put the progress on the actual record": in the tilted ring the record is drawn plain (`recPlain`: no next-tier
+    wedge filling the disc, no accent arc round it), just its tier's metal; progress is only the bar.
+  - "it can be hard to see" (screenshot at x4 over a bright aurora: DIAMOND, 86 STREAK and the bar faint): a dark halo sized to
+    the whole ring group (the backing's halo was laid out for the old plaque), labels brighter (tier 0.8, next tier 0.62,
+    streak 0.72), the bar 6 px with a brighter track and end glow. No errors.
+  - "can we change how the score and streak looks?": Options › Score & streak (new) (`scoreLookX`, `?slook=`, tilted ring only):
+    Now / Rolling (default: the score counts up to each new total over ~0.3 s, `dispScore`; "+N" floats up beside it for 0.8 s
+    on each gain; the streak's number bright, its label dim) / Glow (the score lit from below in the multiplier's colour with a
+    soft glow; the streak a chip beside it, a four-point star and the number; dropped from the bar row) / Split (the score, a
+    hairline, the streak as its own counter, 30 px over a STREAK label). Checked each: no errors.
+  - "can we incorperate the streak into the multiplier somehow?": Options › Streak in the ring (new) (`streakIn`, `?sin=`):
+    In the tag (default: the ring's front tag reads "x4 | 49") / On the record (the streak on the record's label, the record 30
+    px) / Off. When it's in the ring the Score & streak look keeps its score treatment but drops its own streak (bar row, chip,
+    split counter). Checked both: no errors.
+  - "I like in the record. Can we also center the multiplier?": On the record is the default; the x4 tag is centred under the
+    record (it sat on the tilted ring's front point, a few px to one side).
+  - "the multiplier also blocks the bottom of the ring": the tag now sits just below the ring's lowest point (9 px under it),
+    the whole group raised 8 px so the tag clears the board.
+  - "can we change how the score looks?": Options › Score face (new) (`scoreFace`, `?sface=`), with any Score & streak look:
+    Now (thin silver) / Metal (default: SF 300 in the record's own metal, polished: white into the metal's light stop, a fine
+    highlight across the top; the metal's dark stop alone first made silver dull grey) / Rounded (SF Rounded 500, white) / Mono
+    (SF Mono 300, seven digits, the leading zeros dim: 0,006,795). Checked each: no errors.
+  - "I feel like we could make is cool like the multiplier we just did": Score face › Odometer (default, `odo`): each digit in its
+    own dark glass cell (27x42, like the board's keycaps, a top highlight, shading top and bottom like a drum), rolling forward to
+    its new value like a mechanical counter (`odo`, a position per digit from the right, eased at 11/s); a light sweep across
+    the cells on each gain (`odoSweep`, 0.55 s); rims take the multiplier's colour from x2 and pulse at x4 with a soft glow
+    inside; a gap and a dot at the thousands. Checked at rest and mid-roll: no errors.
+  - "I like how it is now. How about the record progress?": Options › Record progress (new) (`recProg`, `?rprog=`): Now (the
+    bar) / Ladder (default: five small discs Bronze to Diamond, earned ones in their metal, the next filling like a pie with a
+    glow, the rest dark; then "PLATINUM · 17%" (or DIAMOND); the disc just earned pops and flashes, from the record's `recAt`) /
+    Segments (this tier's disc, ten glass segments filling in the next tier's metal like the ring's ten, flashing white when a
+    tier is reached, the next tier's disc and name). Checked both: no errors.
+  - "ladder, but don't show type and percentage next to it": the Ladder's label is gone; just the five discs.
+  - "I'm still not huge on the score look": three more Score faces, Hologram the default now: Hologram (`holo`: SF 200 50 px
+    outline digits stroked in the multiplier's colour with a glow, a faint fill, scanlines, a slight flicker), Starlight
+    (`star`: white with an 18 px bloom; 6 sparks drift up off the digits on each gain, `sparks`), Bold (SF 700 42 px, -1 px
+    tracking, white, a 2 px underline in the record's metal). Odometer, Metal, Rounded, Mono, Now still there. Checked each.
+  - "I like hologram, not huge on showing the point gain": Hologram stays the default; the "+N" that floated beside the score is
+    off (the score still counts up).
+  - "make it the color of the record": Hologram's glow and outline are in the record tier's metal colour (light stop), plain
+    silver-grey before any record, instead of the multiplier's colour.
+  - "can we improve the ladder look?": the Ladder is a path now: discs 9.5 px, 30 apart, the current one 15% bigger with a glow
+    ("you are here"); a thin track between them, lit (blending one tier's metal into the next) between earned records and
+    filling toward the next with a glowing tip (a short lead-in fills toward Bronze before any record); earned discs get a
+    turning shine, Diamond three twinkling sparkles; the next disc keeps its pie fill with a pulsing rim in its metal; future
+    discs a faint rim in their own metal. No errors.
+- Aurora "less blocky still": the quarter-size body is scaled up in two steps (into a half-size canvas with high-quality
+  smoothing, `AURORA_MID`, then to full size; one 4x stretch left faint stair-steps), and the fine rays are softer (16 px wide
+  every 4 px at 5.5%, were 10 px at 10%, which read as stripes). Frame time 8.3 ms (p95 8.9), unchanged.
+  - "the corners have no light": the corner dimming (from the spiky version) is gone and the body's rays are packed tighter round
+    the corners (every 3.5 px instead of 6, where they fan out; every 2 px made a hot spot). 8.3 ms.
+- Built into the game (user: "alright build this", 2026-11-08), in static/index.html's drawArcade and the Encore flow:
+  scoreboard (tilted ring of ten segments for the multiplier, level-up flash, red drain on a miss, dust at x4; the x tag under
+  it; the streak on the record's label, the record drawn without progress; Hologram score in the record's metal, counting up,
+  no +N; the Ladder path under it; the Encore meter as the last row, ENCORE READY beside it; a halo; arcadeBoard.plaque kept
+  for the intro flip and Encore motes); the cursor's badge only counts in now. x4 aurora from the board's edge (two-step
+  scaled body, fine rays, corners lit); Surge's lightning removed from big moments. Floating panel (0.3) with a shadow under the
+  strings and light pooled at the cursor; Lit keycaps. Jump (`jumpOut`: the picked cover shrinks to a point, a flash, then
+  loading; `arcadeBoard.jumpOnOpen` jumps the galaxy as the board starts), Stay in space (`resultsSky`: the results over the
+  galaxy's painted sky, dimmed, settling; the ending dims to 0.5 instead of 0.96), Fold (Songs folds the results into the
+  middle line, the cover rises back into the carousel). Not built: the Big moment + layers (never picked), Spiral / Voyage.
+  Checked on a library copy (port 7884): scoreboard at x1, x4 forced with a temporary switch (removed) at 8.4 ms with the
+  aurora, results over the sky after Quit, Songs; no console errors. Not checked: the cover-shrink animation itself (the pane
+  only draws on screenshots), a real ending, real playing.
+  - Then checked: a real ending (Flower Power Madness from 3:03): the board closed over the dimmed galaxy and the results opened
+    over the sky (`over-sky`), no errors. The cover shrink, held at 520 ms, measured the card at 58% and moving to the middle
+    (the browser pane doesn't repaint a paused animation, so judged by its numbers); its ease-in barely moved it for half its
+    time, now an ease-in-out over 0.7 s. Not checked: real playing in the Encore app.
+- Big moment + in the game (user: "yeah use all of them"): `cuesAt` now also gives `bigNext` / `bigNextLoud` (the next big moment
+  and how loud it comes in; the cues are made for the whole song), so Build-up runs through the 2 s before one that will be loud
+  (> 0.45): light gathering along both edges to the cursor, the sky dimmed up to 32%. Sky lights up (the galaxy band in the mood's
+  colour, a brighter core on the beat, a wave along the band every 2 s), Hit fills the screen (a ring from the cursor past the
+  edges, a bloom), Strings sing (the strings glowing wider on the beat), Afterglow (4 s after it ends: motes rising, the sky's
+  glow lingering at 70%; `arcadeBoard.afterAt`). Checked on the library copy (Fireman & Dancer from 2:30, big moments at 2:35 and
+  2:55): no errors, frame time 8.3 ms (p95 9.0); the burst showed at 2:35; each layer wasn't caught on its own at this rate.
+- "getting some stuttering again. Also, the multiplier doesnt change color":
+  - Colour: the ring, its tag and glow used the board's mood, which below x4 follows the song's cover; they use `MULT_COLORS`
+    now (grey, yellow, orange, blue; gold in Encore). Checked at x2 / x3 / x4.
+  - Stutter: measured in the browser pane with x4 forced (a temporary switch, removed): spikes to 55-75 ms at x4. Causes and
+    fixes: the aurora's fine rays (~900 full-size blended rays a frame for 5.5% texture) removed; its body repainted every
+    other frame and drawn only round the board; its half-size stretch at medium quality, not high; its outline samples cached
+    per board size (`arcadeBoard.auroraGeo`; it built ~3,000 small arrays a frame, so garbage-collector pauses); the
+    hologram's glow as wide faint strokes instead of shadowBlur. After: x4 worst frame 23 ms, the same as x1 and as the page
+    from before today's build measured right after (~14 ms median in the pane at the time, which was slower than earlier).
+    Not checked in the Encore app.
+- "maybe its me, but it seems like hit registration has gotten worse": judging listens every 20 ms on the same thread that draws
+  (`listen`, setInterval), so heavy frames make ticks late. Game checks log each tick (`frames[i][0]`, the audio clock): every
+  check up to 13:48 today had ticks 23.2 ms apart, 0-0.3% over 40 ms, worst 23-70 ms. A check of the new build on the library
+  copy (x4 forced, aurora and a big moment, in the browser pane, after the stutter fixes): 1.3% over 40 ms, p99 46 ms, worst
+  93 ms. The analyser window is 4096 samples (~85 ms), so most late ticks still see the attack, but late ones are timed late.
+  Waiting on a game check from the Encore app on the user's Mac to compare; moving listening off the main thread (an
+  AudioWorklet) would remove the link to drawing entirely.
 
 ## Open ideas / to do
 

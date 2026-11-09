@@ -1341,6 +1341,17 @@
   body.arcade dialog:not(.game-screen) .text-input, body.arcade dialog:not(.game-screen) select { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .14); }
   body.arcade dialog:not(.game-screen) .icon-btn { color: rgba(245, 245, 247, .7); }
   body.arcade .menu { font-family: var(--arc-font); background: rgba(14, 15, 22, .97); border-color: rgba(255, 255, 255, .12); backdrop-filter: blur(20px); }
+  /* Record (Encore, every screen): REC, red and counting while recording (by id: it's moved into open dialogs, whose button rules would restyle it) */
+  #rec-btn { position: fixed; inset: 14px 16px auto auto; margin: 0; z-index: 70; display: none; align-items: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 14px;
+             border: 1px solid rgba(255, 255, 255, .14); background: rgba(10, 11, 17, .7); color: rgba(245, 245, 247, .6); font: 800 11px var(--arc-font); letter-spacing: .14em; cursor: pointer; backdrop-filter: blur(12px); }
+  #rec-btn:popover-open { display: inline-flex; }
+  #rec-btn i { width: 8px; height: 8px; border-radius: 50%; background: rgba(245, 245, 247, .45); }
+  #rec-btn:hover { color: #f5f5f7; border-color: rgba(255, 255, 255, .3); }
+  #rec-btn.on { color: #fecaca; border-color: rgba(248, 113, 113, .6); }
+  #rec-btn.on i { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: rec-blink 1.2s ease-in-out infinite; }
+  #rec-btn:disabled { opacity: .6; cursor: default; }
+  @keyframes rec-blink { 50% { opacity: .35; } }
+  .toast .toast-act { margin-left: 10px; border: 0; background: none; padding: 0; color: #fcd34d; font: inherit; font-weight: 700; cursor: pointer; }
   body.arcade .toast { font-family: var(--arc-font); background: rgba(14, 15, 22, .95); border-color: rgba(255, 255, 255, .12); backdrop-filter: blur(20px); }
   /* The violet that was written as colours rather than the accent, in Encore's amber / white */
   body.arcade .tab-line .playhead { stroke: #f2d2b6; filter: drop-shadow(0 0 4px rgba(217, 160, 116, .9)); }
@@ -1704,6 +1715,78 @@
   #game-dlg .dlg-foot { justify-content: center; gap: 12px; padding: 24px 0 0; }
   #game-dlg .dlg-foot .btn, #game-dlg .dlg-foot .btn.primary { font-size: 11.5px; transform: none; }
   #game-dlg .dlg-foot .btn:hover, #game-dlg .dlg-foot .btn:focus-visible { transform: none; }
+  /* Results, Split (mockup design/game-mockups/results.html, user: "I like both split and bars"): the record with the score
+     beside it on the left, the counts on the right, then the run bar by bar, where it slipped and the timing under it. */
+  #game-dlg > form { overflow-y: auto; padding-top: 4vh; padding-bottom: 4vh; justify-content: safe center; }   /* safe: a short window scrolls instead of cutting the title off */
+  #game-dlg .game-results { width: min(980px, 100%); margin-top: 18px; }
+  #game-dlg .res-top { display: grid; grid-template-columns: auto 1fr; gap: 56px; align-items: center; width: 100%; }
+  #game-dlg .res-head { display: flex; align-items: center; gap: 26px; text-align: left; }
+  #game-dlg .res-txt { display: flex; flex-direction: column; align-items: flex-start; }
+  #game-dlg .res-txt .game-score { margin: 0 0 8px; font-size: clamp(56px, 6vw, 76px); }
+  #game-dlg .res-txt .game-next { margin-top: 8px; }
+  #game-dlg #game-counts { display: grid; grid-template-columns: repeat(3, auto); row-gap: 18px; justify-content: end; margin: 0; }
+  #game-dlg #game-counts > div { padding: 0 30px; border-left: 1px solid var(--arc-line); text-align: left; opacity: 0; transform: translateY(6px); transition: opacity .4s, transform .4s; }
+  #game-dlg #game-counts > div:nth-child(3n + 1) { border-left: 0; }
+  #game-dlg.res-on #game-counts > div { opacity: 1; transform: none; }
+  #game-dlg.res-on #game-counts > div:nth-child(2) { transition-delay: .08s; } #game-dlg.res-on #game-counts > div:nth-child(3) { transition-delay: .16s; }
+  #game-dlg.res-on #game-counts > div:nth-child(4) { transition-delay: .24s; } #game-dlg.res-on #game-counts > div:nth-child(5) { transition-delay: .32s; }
+  #game-dlg.res-on #game-counts > div:nth-child(6) { transition-delay: .4s; }
+  #game-dlg #game-counts dt, #game-dlg #game-counts dd { text-align: left; }
+  #game-dlg #game-counts dt, .res-label { font: 600 10.5px var(--arc-font); letter-spacing: .24em; text-transform: uppercase; color: var(--arc-faint); }
+  #game-dlg #game-counts dd { margin: 6px 0 0; font: 200 30px var(--arc-font); font-variant-numeric: tabular-nums; color: #f5f5f7; }
+  #game-dlg #game-counts dd small { font-size: 15px; color: var(--arc-faint); }
+  #game-dlg .res-perfect dt { color: #f6d878; } #game-dlg .res-good dt { color: #d9dee5; }
+  #game-dlg .res-messy dt { color: #c4a1ff; } #game-dlg .res-miss dt { color: #f27b7b; }
+  #game-dlg .res-run { position: relative; width: 100%; margin-top: 30px; text-align: left; opacity: 0; transition: opacity .5s .5s; }
+  #game-dlg.res-on .res-run { opacity: 1; }
+  #game-dlg .res-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  #game-run-cv { display: block; width: 100%; height: 118px; cursor: crosshair; }
+  #game-dlg .res-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 300 11px var(--arc-font); color: var(--arc-faint); font-variant-numeric: tabular-nums; }
+  #game-dlg .res-tip { position: absolute; z-index: 2; pointer-events: none; padding: 7px 11px; border-radius: 9px; background: rgba(12, 13, 20, .82);
+    border: 1px solid var(--arc-line); font: 300 12.5px var(--arc-font); white-space: nowrap; opacity: 0; transition: opacity .12s; }
+  #game-dlg .res-tip b { font-weight: 500; }
+  #game-dlg .res-below { display: flex; justify-content: space-between; align-items: flex-start; gap: 40px; margin-top: 18px; }
+  #game-dlg .res-weak { display: flex; flex-direction: column; gap: 8px; }
+  #game-dlg .res-spot { display: flex; align-items: center; gap: 14px; font: 300 14px var(--arc-font); }
+  #game-dlg .res-spot em { font-style: normal; color: var(--arc-faint); font-size: 12px; margin-left: 6px; }
+  #game-dlg .res-spot i { width: 7px; height: 7px; border-radius: 50%; background: #f27b7b; box-shadow: 0 0 8px #f27b7b; }
+  #game-dlg .res-spot .btn { height: 28px; padding: 0 14px; font-size: 10px; letter-spacing: .18em; }
+  #game-dlg .res-timing { min-width: 300px; }
+  #game-dlg .res-timing p { margin: 8px 0 0; font: 300 14px var(--arc-font); }
+  #game-dlg .res-timing p em { font-style: normal; color: var(--arc-faint); font-size: 12px; }
+  #game-tim-cv { display: block; width: 300px; height: 44px; margin-top: 8px; }
+  #game-dlg .dlg-foot { padding-top: 22px; }
+  /* opening out from the line the board closed on (--res-x; the middle when it opens from the pause menu) */
+  #game-dlg { --res-x: 50%; }
+  body.board-closed #tab-body { visibility: hidden; }   /* the closed board stays closed under the results */
+  #game-dlg[open] > form, #game-dlg[open] > .dlg-cover { animation: res-open 1.3s cubic-bezier(.6, 0, .25, 1) both; }
+  #game-dlg[open]::before, #game-dlg[open]::after { content: ''; position: absolute; top: 0; bottom: 0; width: 2px; z-index: 3; pointer-events: none;
+    background: #fff; box-shadow: 0 0 18px 3px rgba(var(--arc-mood), .75), 0 0 3px #fff; animation: res-edge-l 1.3s cubic-bezier(.6, 0, .25, 1) both; }
+  #game-dlg[open]::after { animation-name: res-edge-r; }
+  @keyframes res-open { from { clip-path: inset(0 calc(100% - var(--res-x)) 0 var(--res-x)); } to { clip-path: inset(0 0 0 0); } }
+  /* Stay in space (arcade.html › Ending, user's pick 2026-11-08): the results over the galaxy the song was played in (its sky,
+     dimmed, settling with a small zoom as they open), not the cover's glow on black */
+  #game-dlg .res-sky { display: none; position: absolute; inset: 0; width: 100%; height: 100%; }
+  #game-dlg.over-sky .res-sky { display: block; animation: res-sky 1.6s cubic-bezier(.2, .7, .2, 1) both; }
+  #game-dlg.over-sky > .dlg-cover { display: none; }
+  @keyframes res-sky { from { transform: scale(1.07); filter: brightness(1.7); } to { transform: none; filter: none; } }
+  /* Fold (arcade.html › Back to songs, user's pick): Songs folds the results into the line in the middle before song select */
+  #game-dlg.folding[open] > form, #game-dlg.folding[open] > .dlg-cover, #game-dlg.folding[open] > .res-sky { animation: res-fold .5s cubic-bezier(.6, 0, .4, 1) both; }
+  @keyframes res-fold { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 50% 0 50%); } }
+  #arc-jump-flash { position: fixed; inset: 0; z-index: 210; pointer-events: none; background: radial-gradient(circle at 50% 50%, #fff, rgba(220, 230, 255, .6) 30%, rgba(160, 180, 255, 0) 70%); opacity: 0; }
+  @keyframes res-edge-l { from { left: var(--res-x); } 75% { opacity: 1; } to { left: 0; opacity: 0; } }
+  @keyframes res-edge-r { from { left: var(--res-x); } 75% { opacity: 1; } to { left: calc(100% - 2px); opacity: 0; } }
+  /* then it builds: the song, the record and score (counting), the numbers and the run (res-on), the buttons */
+  #game-dlg[open] .game-head { animation: res-up .8s .45s cubic-bezier(.2, .7, .2, 1) both; }
+  #game-dlg[open] .res-head { animation: res-up .9s .8s cubic-bezier(.2, .7, .2, 1) both; }
+  #game-dlg[open] .dlg-foot { animation: res-up .7s 1.9s cubic-bezier(.2, .7, .2, 1) both; }
+  @keyframes res-up { from { opacity: 0; transform: translateY(14px); } }
+  /* the album cover beside the title (user: "also show the album colver as well") */
+  #game-dlg .game-head { display: grid; grid-template-columns: auto auto; column-gap: 22px; align-content: center; justify-content: center; }
+  #game-dlg .game-art { display: block; grid-row: 1 / span 3; width: 96px; align-self: center; }
+  #game-dlg .game-art .arc-cover { --card: 96px; width: 96px; border-radius: 8px; box-shadow: 0 14px 40px rgba(0, 0, 0, .5); }
+  #game-dlg .game-head > :not(.game-art) { grid-column: 2; justify-self: start; text-align: left; }
+  @media (max-width: 1100px) { #game-dlg .res-top { grid-template-columns: 1fr; gap: 22px; justify-items: center; } #game-dlg #game-counts { justify-content: center; } }
   /* settings: rows on hairlines, choices as pills with the picked one lit */
   #settings-dlg { --accent: rgb(var(--arc-mood)); --accent-hover: #fff; }
   #settings-dlg.full { background: rgba(5, 6, 10, .55); backdrop-filter: blur(18px) saturate(.9); }
@@ -2176,7 +2259,7 @@
     <div class="arc-title-foot">
       <span class="arc-hint"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Enter</kbd> pick</span>
       <span class="arc-foot-links">
-        <button type="button" class="arc-link hidden" id="arc-icon" title="Installs Encore as an app with its own icon and window (Chrome)">Install Encore app</button>
+        <button type="button" class="arc-link hidden" id="arc-icon" title="Installs Encore as an app with its own icon and window">Install Encore app</button>
         <button type="button" class="arc-link" id="arc-app" title="Stops Encore (and its processing); open it again from its icon">Quit</button>
       </span>
     </div>
@@ -2232,7 +2315,7 @@
           <div class="arc-tune-strings" id="arc-tune-strings"></div>
         </div>
         <div class="arc-actions">
-          <div class="arc-sort arc-mode" id="arc-mode" role="group" aria-label="Play or practise"><button type="button" data-mode="play">Play</button><button type="button" data-mode="practice" title="No score: move around the song, loop a part, slow it down">Practice</button></div>
+          <div class="arc-sort arc-mode" id="arc-mode" role="group" aria-label="Play or practice"><button type="button" data-mode="play">Play</button><button type="button" data-mode="practice" title="No score: move around the song, loop a part, slow it down">Practice</button></div>
           <button type="button" class="btn primary" id="arc-go">Play</button>
         </div>
       </div>
@@ -2613,6 +2696,8 @@
         <button type="button" class="btn sm" id="gs-calibrate">Calibrate timing…</button></div>
       <div class="set-row"><span>Strings</span>
         <button type="button" class="btn sm" id="gs-strings">Calibrate strings…</button></div>
+      <div class="set-row" title="Turns up what the game listens to, without distortion: like more gain on the interface, so long notes stay heard as they fade. Keep the interface's gain where it sounds clean. Doesn't change Hear myself"><span>Listening boost</span>
+        <label class="set-range"><input type="range" id="gs-boost" min="0" max="24" step="1" aria-label="Listening boost"><span id="gs-boost-db"></span></label></div>
       <div class="set-row" title="Records your bass and everything the game hears and decides during each game, saved in your library, to look at afterwards on the Game check page"><span>Record games for checking</span>
         <label class="switch"><input type="checkbox" id="gs-check"><span class="track"></span></label></div>
       <div class="set-row"><span>Game checks</span>
@@ -2672,20 +2757,40 @@
       <div class="game-diff" id="game-diff"></div>
     </div>
     <div class="dlg-body game-results">
-      <div class="game-stars" id="game-stars" aria-label="Record"></div>
-      <div class="game-score" id="game-score">0</div>
-      <p class="game-best" id="game-best"></p>
-      <p class="game-next" id="game-next"></p>
-      <dl>
-        <dt>Accuracy</dt><dd id="game-acc"></dd>
-        <dt>Notes hit</dt><dd id="game-hits"></dd>
-        <dt>Best streak</dt><dd id="game-streak"></dd>
-      </dl>
+      <div class="res-top">
+        <div class="res-head">
+          <div class="game-stars" id="game-stars" aria-label="Record"></div>
+          <div class="res-txt">
+            <div class="game-score" id="game-score">0</div>
+            <p class="game-best" id="game-best"></p>
+            <p class="game-next" id="game-next"></p>
+          </div>
+        </div>
+        <dl id="game-counts">
+          <div><dt>Accuracy</dt><dd id="game-acc"></dd></div>
+          <div class="res-perfect"><dt>Perfect</dt><dd id="game-perfect"></dd></div>
+          <div class="res-good"><dt>Good</dt><dd id="game-good"></dd></div>
+          <div class="res-messy"><dt>Messy</dt><dd id="game-messy"></dd></div>
+          <div class="res-miss"><dt>Miss</dt><dd id="game-miss"></dd></div>
+          <div><dt>Best streak</dt><dd id="game-streak"></dd></div>
+        </dl>
+      </div>
+      <div class="res-run" id="game-run">
+        <div class="res-row"><span class="res-label">Your run</span><span class="res-label" id="game-hits"></span></div>
+        <canvas id="game-run-cv" aria-label="How each bar went"></canvas>
+        <div class="res-tip" id="game-run-tip"></div>
+        <div class="res-axis" id="game-axis"></div>
+        <div class="res-below">
+          <div class="res-weak" id="game-weak"></div>
+          <div class="res-timing" id="game-res-timing"><span class="res-label">Timing</span><canvas id="game-tim-cv"></canvas><p id="game-tim-txt"></p></div>
+        </div>
+      </div>
       <p class="game-note" id="game-note"></p>
     </div>
     <div class="dlg-foot">
       <button type="button" class="btn" data-close>Close</button>
       <button type="button" class="btn hidden" id="game-songs">Songs</button>
+      <button type="button" class="btn hidden" id="game-practice"></button>
       <button type="button" class="btn primary" id="game-again">Play again</button>
     </div>
   </form>
@@ -2761,6 +2866,7 @@
 <datalist id="artist-options"></datalist>
 <div class="menu hidden" id="menu" role="menu"></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<button type="button" class="rec-btn" id="rec-btn" popover="manual" title="Record Encore with its sound and your bass, until you click again (saved in Movies › Encore)"><i></i><span>REC</span></button>
 
 <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js"}}</script>
 <script>
@@ -3021,7 +3127,14 @@
   // busy machine (e.g. while a song is being separated) doesn't make playback stutter.
   const ctx = new AudioContext({ latencyHint: 'playback' });
   const master = ctx.createGain();
-  master.connect(ctx.destination);
+  // appOut: everything the app plays meets here on its way out (the player's master, the miss thud, clicks; song previews while
+  // recording), so a screen recording can take a copy of it (`screenRec`)
+  const appOut = ctx.createGain();
+  appOut.connect(ctx.destination);
+  master.connect(appOut);
+  // songAn: what the song sounds like right now, for Encore's Space background (its stars and nebula follow the bands)
+  const songAn = Object.assign(ctx.createAnalyser(), { fftSize: 1024, smoothingTimeConstant: 0.55, minDecibels: -85, maxDecibels: -25 });
+  master.connect(songAn);
   const gain = { a: ctx.createGain(), b: ctx.createGain(), o: ctx.createGain(), m: ctx.createGain() };   // without, only, original, my bass
   gain.a.connect(master); gain.b.connect(master); gain.o.connect(master); gain.m.connect(master);
   // original: the decoded original file or null; originalScale matches its volume to the versions.
@@ -5517,6 +5630,7 @@
     const held = (c.held || []).find(([s0, e0]) => s0 <= t && t < e0 + 0.4), ph = c.phrases ? last(c.phrases) : -1;
     return { kick: k < 0 ? 9 : t - c.kick[k], kickNo: k, snare: s < 0 ? 9 : t - c.snare[s], snareNo: s, level: c.level[Math.max(0, Math.min(c.level.length - 1, Math.floor(t * rate)))],
              big: b < 0 ? 9 : t - c.big[b], bigNo: b, accent: a < 0 ? 9 : t - c.accent[a],
+             bigNext: b + 1 < c.big.length ? c.big[b + 1] - t : 9, bigNextLoud: b + 1 < c.big.length ? c.level[Math.max(0, Math.min(c.level.length - 1, Math.floor(c.big[b + 1] * rate) + Math.round(rate * 0.3)))] : 0,
              sing: held ? { at: t - held[0], len: held[1] - held[0], loud: held[3], pitch: held[2] } : null, phrase: ph < 0 ? 9 : t - c.phrases[ph] };
   }
   // Arcade board (Board: Arcade; from design/game-mockups/arcadeBoard.html, user: "I'm good with this for now, implement").
@@ -5631,10 +5745,12 @@
     const cum = new Float32Array(want.length + 1); for (let i = 0; i < want.length; i++) cum[i + 1] = cum[i] + sm[i] * base * step;
     const warp = (t) => { if (t <= 0) return t * base; const x = Math.min(want.length - 1, t / step), i = Math.floor(x); return cum[i] + (cum[i + 1] - cum[i]) * (x - i) + (t > end ? (t - end) * base : 0); };
     // repeats as the game counts them (the very next note played, notes struck together skipped), neighbours on the string
-    const info = notes.map(() => ({ rep: false, prev: -Infinity, next: Infinity })), prevOn = {};
+    const info = notes.map(() => ({ rep: false, prev: -Infinity, next: Infinity })), prevOn = {}, restGap = Math.min(2.5, Math.max(0.6, 1.5 * 60 / (d.bpm || 120)));
     notes.forEach((nt, i) => {
       let pk = i - 1; while (pk >= 0 && nt[0] - notes[pk][0] < 0.03 && notes[pk][2] !== nt[2]) pk--;
-      const q = pk >= 0 ? notes[pk] : null; info[i].rep = !!q && q[2] === nt[2] && q[3] === nt[3] && nt[0] - q[0] < 2.5;
+      // more than a beat and a half after the note before it's a full keycap again (user: "when there's no notes before a
+      // repeated note for a certain amount of time, can we reshow the note?"; was 2.5 s; steady repeated quarters stay echoes)
+      const q = pk >= 0 ? notes[pk] : null; info[i].rep = !!q && q[2] === nt[2] && q[3] === nt[3] && nt[0] - q[0] < restGap;
       if (prevOn[nt[2]] !== undefined) { info[i].prev = notes[prevOn[nt[2]]][0]; info[prevOn[nt[2]]].next = nt[0]; }
       prevOn[nt[2]] = i;
     });
@@ -5691,6 +5807,34 @@
     }
   }
   const encoreMeter = (t) => { const e = game.enc; if (!e) return 0; if (e.on) return t < e.on.t0 ? 1 : Math.max(0, 1 - (t - e.on.t0) / (e.on.t1 - e.on.t0)); return e.meter; };
+  // Encore's Galaxy background (user, after the Space looks: "I think the stars look cheap and the background could use some
+  // work"; picked Galaxy in arcade.html's Cosmos row, "would like it to be more dynamic instead of static. Also like the
+  // hyperspeed, maybe do it only at certain points"). Painted once per window size: a soft band of the galaxy (many soft blobs
+  // along a line, painted at a sixth of the size and blurred up, so it's smooth), a warm core, dark dust lanes, and a fine dust of
+  // faint stars; plus star sprites (a hot core in a coloured halo) and 150 stars at three depths, mostly faint.
+  function makeGalaxy(W, H, dpr) {
+    const R = ((a) => () => (a = (a * 16807) % 2147483647) / 2147483647)(1234567), sky = document.createElement('canvas');
+    sky.width = Math.round(W * dpr); sky.height = Math.round(H * dpr); const x = sky.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const sm = document.createElement('canvas'), sw = Math.ceil(W / 6), sh = Math.ceil(H / 6); sm.width = sw; sm.height = sh; const c = sm.getContext('2d');
+    const deep = [24, 34, 90], vio = [90, 50, 150], warm = [150, 80, 70], blob = (cx, cy, r, col, a, dark) => {
+      const q = c.createRadialGradient(cx, cy, 0, cx, cy, r); q.addColorStop(0, dark ? 'rgba(2,3,7,.55)' : acss(col, a)); q.addColorStop(1, dark ? 'rgba(2,3,7,0)' : acss(col, 0)); c.fillStyle = q; c.fillRect(-sw, -sh, sw * 2, sh * 2);
+    };
+    c.translate(sw * 0.55, sh * 0.5); c.rotate(-0.32); c.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 160; i++) { const u = R() * 2 - 1; blob(u * sw * 0.8, (R() + R() + R() - 1.5) * sh * 0.09 * (1.2 - Math.abs(u) * 0.6), sw * (0.03 + R() * 0.06), Math.abs(u) < 0.2 ? warm : R() < 0.5 ? vio : deep, 0.16 + 0.12 * (1 - Math.abs(u))); }
+    c.globalCompositeOperation = 'source-over'; for (let i = 0; i < 40; i++) blob((R() * 2 - 1) * sw * 0.7, (R() - 0.5) * sh * 0.05, sw * (0.015 + R() * 0.03), null, 0, true);   // dust lanes
+    x.fillStyle = '#020307'; x.fillRect(0, 0, W, H); x.filter = `blur(${14 * dpr}px)`; x.drawImage(sm, -30, -30, W + 60, H + 60); x.filter = 'none';
+    const ca = Math.cos(-0.32), sa = Math.sin(-0.32);
+    for (let i = 0; i < 2600; i++) {                     // a fine dust of faint stars, most along the band
+      let px, py; if (i < 1600) { const u = (R() * 2 - 1) * W * 0.8, v = (R() + R() + R() - 1.5) * H * 0.08; px = W * 0.55 + u * ca - v * sa; py = H * 0.5 + u * sa + v * ca; } else { px = R() * W; py = R() * H; }
+      x.fillStyle = `rgba(${R() < 0.2 ? '255,225,200' : R() < 0.4 ? '200,215,255' : '235,238,250'},${0.06 + R() * 0.22})`; x.beginPath(); x.arc(px, py, 0.35 + R() * 0.45, 0, 7); x.fill();
+    }
+    const spr = [[255, 236, 214], [236, 240, 255], [190, 210, 255]].map((col) => {
+      const k = document.createElement('canvas'); k.width = k.height = 64; const q = k.getContext('2d'), gq = q.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gq.addColorStop(0, 'rgba(255,255,255,1)'); gq.addColorStop(0.06, acss(col, 0.95)); gq.addColorStop(0.18, acss(col, 0.28)); gq.addColorStop(0.45, acss(col, 0.06)); gq.addColorStop(1, acss(col, 0)); q.fillStyle = gq; q.fillRect(0, 0, 64, 64); return k;
+    });
+    const stars = []; for (let i = 0; i < 150; i++) { const d = i < 90 ? 0 : i < 135 ? 1 : 2, b = Math.pow(R(), 2.2); stars.push({ x: R() * W, y: R() * H, d, r: [2.2, 3.2, 4.6][d] * (0.6 + b * 1.6), b: 0.25 + 0.75 * b, c: R() < 0.2 ? 0 : R() < 0.7 ? 1 : 2, tw: R() < 0.3, f: 0.5 + R() * 1.5, p: R() * 7 }); }
+    return { key: `${W}x${H}x${dpr}`, sky, spr, stars, pulses: [], kickAge: 9, bigAge: 9, jumpAt: -1e9 };
+  }
   function drawArcade(t, force) {
     const body = $('#tab-body');
     let cv = tabView.canvas;
@@ -5732,7 +5876,18 @@
     // The board reacting to the music (user picked Big moments and Landings in moments.html; the kicks and snares lighting the
     // glass came out: "the board flashing to the song is distracting"): a big moment (a chorus or drop coming in, lights.py)
     // lights its rim while the song stays loud; hitting a note after a gap opens a ring of light from the cursor and lights every string.
+    // Big moments redone (user: "can we improve the big moments animaton?", picked Embers, Surge and Flare in arcade.html's Big
+    // moment row, 2026-11-08; the rim, haze, tint, flash and band they replace are gone; the board still never moves): a burst of
+    // sparks from the cursor then embers rising behind the board, arcs racing along its edges then crackling on the kicks, and
+    // a lens flare on the cursor's ends with streaks along both edges.
     const bigOn = !!cues && cues.big < 12 && cues.level > 0.45, bigAge = cues ? cues.big : 9;
+    // Big moment + (arcade.html, user: "yeah use all of them", 2026-11-08): Build-up (through the 2 s before one that will be loud,
+    // light gathers along both edges to the cursor and the sky dims), Sky lights up (the galaxy band glows in the song's colour
+    // while it lasts), Hit fills the screen (a ring from the cursor past the screen's edges, a bloom), Strings sing (the strings
+    // glow wider on the beat), Afterglow (as it ends, motes rise over the board and the sky's glow lingers, 4 s).
+    const preK = cues && !bigOn && cues.bigNext < 2 && cues.bigNextLoud > 0.45 ? (1 - cues.bigNext / 2) ** 1.5 : 0;
+    if (arcadeBoard.wasBig && !bigOn) arcadeBoard.afterAt = ms; arcadeBoard.wasBig = bigOn;
+    const afterAge = (ms - (arcadeBoard.afterAt ?? -1e9)) / 1000, afterK = afterAge >= 0 && afterAge < 4 ? 1 - afterAge / 4 : 0;
     arcadeBoard.big = (arcadeBoard.big || 0) + ((bigOn ? 1 : 0) - (arcadeBoard.big || 0)) * Math.min(1, dt * (bigOn ? 6 : 1.5)); const bigK = arcadeBoard.big;
     const plan = game.on && !game.pr ? (enc?.plan || encorePlan(d)) : null;
     let landF = 0;
@@ -5742,7 +5897,15 @@
     }
     // the track uses up to half the window (user: "a lot of wasted space on the screen"; it was 30%, at most 250 px), a little
     // below the middle; the notes keep their size and the strings spread apart instead
-    const trackH = Math.min(H * 0.5, 400), trackT = H * 0.56 - trackH / 2, trackB = trackT + trackH, sizeSp = Math.min(H * 0.3, 250) / n, L = Math.max(W * 0.09, 96), R = W * 0.97, curX = L + (R - L) * 0.2, pad = 18;
+    const trackH = Math.min(H * 0.5, 400), trackT = H * 0.56 - trackH / 2, trackB = trackT + trackH, sizeSp = Math.min(H * 0.3, 250) / n, L = Math.max(W * 0.09, 96), R = W * 0.97, curX0 = L + (R - L) * 0.2, pad = 18;
+    // The song's done (user: "what if the cursor then goes to the middle and then the sides close on it?"; was SONG COMPLETE
+    // and See results): the cursor glides to the board's middle, the sides close on it (the intro's opening in reverse), its
+    // line stays alone while the rest goes dark, and the results open out from it (#game-dlg's res-open). Only once the song
+    // itself has ended (user: "it stopped the song before it finished. even though there's no more bass, I want to hear the
+    // end"; it began 0.5 s after the last note), and slower (user: "still an abrupt ending").
+    const ending = game.on && !game.pr && plan && !(intro && introEl < intro.lead + 1) && game.next >= notes.length && game.songEnded ? (arcadeBoard.ending ||= { at: ms, fc: game.judged > 0 && game.hits === game.judged && !game.grade.includes('Messy'), score: game.score, val: starsFor(game.score, game.units || notes.length) }) : null;
+    const endEl = ending ? (ms - ending.at) / 1000 : -1, endMid = (L - 62 + R + pad + 6) / 2;
+    const slide = ending ? Math.min(1, endEl / 0.9) : 0, curX = curX0 + (endMid - curX0) * slide * slide * (3 - 2 * slide);
 
     // ---- around the track: a deep colour mesh following the song ----
     // Drawing is the cost here, not the code (0.3 ms a frame, yet 20 fps at 1440x900 on a 2x screen: full-screen layers and
@@ -5750,6 +5913,19 @@
     // So the mesh is drawn small with the dark overlay and the glow behind the cursor baked in, then stretched once; the
     // vignette, grain and the glass panel are drawn once per window size (arcadeStatic); glows are plain soft strokes.
     arcadeBoard.mesh ||= Object.assign(document.createElement('canvas'), { width: 48, height: 30 });
+    {   // the song's sound now, for Space below (`songAn` on the player's master: 32 bands, 30 Hz-12 kHz; the kicks come from the light cues)
+      const sp = arcadeBoard.spec ||= new Float32Array(32), fb = arcadeBoard.fbins ||= new Uint8Array(songAn.frequencyBinCount);
+      if (player.playing) {
+        songAn.getByteFrequencyData(fb); const hz = ctx.sampleRate / songAn.fftSize;
+        for (let i = 0; i < 32; i++) {
+          const f0 = 30 * 400 ** (i / 32), f1 = 30 * 400 ** ((i + 1) / 32), b0 = Math.max(1, Math.floor(f0 / hz)), b1 = Math.max(b0 + 1, Math.ceil(f1 / hz));
+          let mx = 0; for (let b = b0; b < b1 && b < fb.length; b++) mx = Math.max(mx, fb[b]);
+          const want = Math.max(0, (mx / 255 - 0.3) / 0.7); sp[i] += (want - sp[i]) * Math.min(1, dt * (want > sp[i] ? 28 : 6));
+        }
+      } else for (let i = 0; i < 32; i++) sp[i] *= Math.max(0, 1 - dt * 3);
+      const avg = (a, b) => { let x = 0; for (let i = a; i < b; i++) x += sp[i]; return x / (b - a); };
+      arcadeBoard.bands = [avg(0, 5), avg(5, 12), avg(12, 22), avg(22, 32)];
+    }
     {
       const m = arcadeBoard.mesh.getContext('2d'), mw = 48, mh = 30;
       arcadeBoard.meshT += dt * (0.2 + 0.6 * busy);
@@ -5767,10 +5943,62 @@
       m.globalCompositeOperation = 'source-over'; m.fillStyle = 'rgba(5,6,10,0.594)'; m.fillRect(0, 0, mw, mh);   // = drawn at 70% over the dark, then a 42% dark layer
       m.globalCompositeOperation = 'lighter'; arcadeSoft(m, curX / W * mw, (trackT + trackB) / 2 / H * mh, 0.45 * mh, mood.c, 0.04 + 0.08 * beat * (0.4 + heat));   // a glow behind where you play
       m.globalCompositeOperation = 'source-over';
-      g.imageSmoothingEnabled = true; g.drawImage(arcadeBoard.mesh, 0, 0, W, H);
+      // ---- the Galaxy (makeGalaxy; in place of the mesh, which isn't drawn now): the band sways about its core, light runs out
+      // along it from the core on kicks, it takes on the multiplier's colour as the streak builds, the core breathes with the lows.
+      // A hyperspace jump (stars stretch out from the core, the sky pushes in, a soft flash; ~1.5 s) only when a big moment comes
+      // in or the multiplier goes up (Encore too). The board never moves.
+      const GX = arcadeBoard.galaxy?.key === `${W}x${H}x${dpr}` ? arcadeBoard.galaxy : (arcadeBoard.galaxy = makeGalaxy(W, H, dpr)), sec = ms / 1000, bd = arcadeBoard.bands;
+      if (cues && cues.big < GX.bigAge && cues.big < 0.2 && cues.level > 0.45) GX.jumpAt = ms - cues.big * 1000; GX.bigAge = cues ? cues.big : 9;
+      if (arcadeBoard.sweepAt > GX.jumpAt && ms - arcadeBoard.sweepAt < 200 && game.on) GX.jumpAt = arcadeBoard.sweepAt;
+      if (arcadeBoard.jumpOnOpen && game.on) { GX.jumpAt = ms; arcadeBoard.jumpOnOpen = false; }   // Jump: into the song with a hyperspace jump
+      if (cues && cues.kick < GX.kickAge && bd[0] > 0.25) GX.pulses.push({ at: ms, s: 0.6 + bd[0] }); GX.kickAge = cues ? cues.kick : 9;
+      GX.pulses = GX.pulses.filter((q) => ms - q.at < 2200);
+      const ja = (ms - GX.jumpAt) / 1000; GX.J = ja >= 0 && ja < 1.6 ? (ja < 0.15 ? ja / 0.15 : (1 - (ja - 0.15) / 1.45) ** 2) : 0;
+      const gcx = W * 0.55, gcy = H * 0.5, zoom = (1 + 0.06 * GX.J) * 1.18; let q;   // (its own q: the function's is declared further down)
+      g.fillStyle = '#020307'; g.fillRect(0, 0, W, H);
+      g.save(); g.translate(gcx, gcy); g.rotate(0.06 * Math.sin(sec * 0.05) + 0.02 * Math.sin(sec * 0.13)); g.scale(zoom, zoom); g.translate(-gcx, -gcy);   // (larger, so no edge shows as it sways)
+      g.globalAlpha = 0.75 + 0.25 * Math.min(1, bd[0] * 0.8 + bigK * 0.5); g.drawImage(GX.sky, 0, 0, W, H); g.globalAlpha = 1;
+      g.globalCompositeOperation = 'lighter'; g.translate(gcx, gcy); g.rotate(-0.32);
+      g.save(); g.scale(W * 0.8 / (H * 0.18), 1); q = g.createRadialGradient(0, 0, 0, 0, 0, H * 0.18);   // the multiplier's colour along the band, a soft oval
+      q.addColorStop(0, acss(mood.c, 0.05 + 0.09 * heat + 0.06 * bigK)); q.addColorStop(0.5, acss(mood.d, 0.025 + 0.04 * heat)); q.addColorStop(1, acss(mood.d, 0)); g.fillStyle = q; g.fillRect(-H * 0.18, -H * 0.18, H * 0.36, H * 0.36); g.restore();
+      for (const p of GX.pulses) {                       // light running out along the band from the core
+        const a = (ms - p.at) / 2200, dd = W * 0.75 * (1 - (1 - a) ** 2), al = 0.14 * p.s * (1 - a) ** 1.5;
+        for (const sx of [-1, 1]) { g.save(); g.translate(sx * dd, 0); g.scale(3.2, 1); q = g.createRadialGradient(0, 0, 0, 0, 0, H * 0.07); q.addColorStop(0, acss(amix(mood.c, [255, 255, 255], 0.4), al)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(-H * 0.07, -H * 0.07, H * 0.14, H * 0.14); g.restore(); }
+      }
+      g.restore();
     }
-    // ---- the still layers (vignette, grain, the glass panel and its shadow), drawn once per size ----
-    const pw = R - L + 56 + pad, phh = trackH + pad * 2, skey = `${W}x${H}x${dpr}|${trackT}|${L}|${R}`;
+    {   // the Galaxy's stars: three depths gliding left with the tab, some twinkling, the near ones flaring on kicks; in a jump, stretched out from the core
+      const GX = arcadeBoard.galaxy, J = GX.J, sec = ms / 1000, bd = arcadeBoard.bands, kk = (cues ? Math.exp(-cues.kick * 4) : 0) * (0.4 + bd[0]), gcx = W * 0.55, gcy = H * 0.5;
+      const tabPx = player.playing ? (warp(t + 0.1) - warp(t)) / 0.1 * (R - L) / (AVIS * 1.25) : 0;
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (const st of GX.stars) {
+        st.x -= tabPx * [0.004, 0.012, 0.03][st.d] * dt; if (st.x < -20) st.x += W + 40;
+        const tw = st.tw ? 0.75 + 0.25 * Math.sin(sec * st.f + st.p) : 1, near = st.d === 2 ? 1 : 0, a = st.b * tw * (1 + 0.4 * kk * near), sz = st.r * (1 + 0.25 * kk * near), spr = GX.spr[st.c];
+        if (J > 0.02 && st.d > 0) {
+          const dx = st.x - gcx, dy = st.y - gcy, l = sz * (3 + 60 * J * st.d) * (0.4 + Math.hypot(dx, dy) / W);
+          g.save(); g.translate(st.x, st.y); g.rotate(Math.atan2(dy, dx)); g.globalAlpha = Math.min(1, a * (0.6 + 0.6 * J)); g.drawImage(spr, -l * 0.15, -sz * 0.5, l, sz); g.restore();
+        }
+        g.globalAlpha = Math.min(1, a); g.drawImage(spr, st.x - sz, st.y - sz, sz * 2, sz * 2);
+      }
+      g.globalAlpha = 1;
+      const my = (trackT + trackB) / 2, cr = H * 0.55, gk = 0.6 + 0.4 * Math.min(1, bd[0] + bigK * 0.6);   // the core, breathing with the lows
+      let q2 = g.createRadialGradient(gcx, my, 0, gcx, my, cr); q2.addColorStop(0, acss(amix(mood.c, [255, 240, 220], 0.6), 0.22 * gk)); q2.addColorStop(0.4, acss(mood.d, 0.08 * gk)); q2.addColorStop(1, acss(mood.d, 0)); g.fillStyle = q2; g.fillRect(gcx - cr, my - cr, cr * 2, cr * 2);
+      if (J > 0.02) { const fr = W * 0.6; q2 = g.createRadialGradient(gcx, gcy, 0, gcx, gcy, fr); q2.addColorStop(0, `rgba(235,240,255,${0.12 * J})`); q2.addColorStop(1, 'rgba(235,240,255,0)'); g.fillStyle = q2; g.fillRect(gcx - fr, gcy - fr, fr * 2, fr * 2); }   // the jump's flash
+      g.restore();
+    }
+    {   // Big moment +: the sky lights up (and lingers in the afterglow), dims through the build-up, blooms on the hit
+      const sk = Math.max(bigK, afterK * 0.7), T = ms / 1000;
+      if (sk > 0.01) {
+        g.save(); g.globalCompositeOperation = 'lighter'; g.translate(W * 0.55, H * 0.5); g.rotate(-0.32);
+        g.save(); g.scale(W * 0.9 / (H * 0.22), 1); let q3 = g.createRadialGradient(0, 0, 0, 0, 0, H * 0.22); q3.addColorStop(0, acss(mood.c, 0.16 * sk)); q3.addColorStop(0.5, acss(mood.d, 0.08 * sk)); q3.addColorStop(1, acss(mood.d, 0)); g.fillStyle = q3; g.fillRect(-H * 0.22, -H * 0.22, H * 0.44, H * 0.44); g.restore();
+        q3 = g.createRadialGradient(0, 0, 0, 0, 0, H * 0.3); q3.addColorStop(0, `rgba(255,236,210,${0.2 * sk * (0.7 + 0.3 * beat)})`); q3.addColorStop(1, 'rgba(255,236,210,0)'); g.fillStyle = q3; g.fillRect(-H * 0.3, -H * 0.3, H * 0.6, H * 0.6);
+        const wa = (T * 0.5) % 1; g.save(); g.translate((wa * 2 - 1) * W * 0.8, 0); g.scale(3, 1); q3 = g.createRadialGradient(0, 0, 0, 0, 0, H * 0.12); q3.addColorStop(0, acss(mood.c, 0.16 * sk * (1 - wa))); q3.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q3; g.fillRect(-H * 0.12, -H * 0.12, H * 0.24, H * 0.24); g.restore();   // a wave along the band every 2 s
+        g.restore();
+      }
+      if (preK > 0) { g.fillStyle = `rgba(2,3,8,${0.32 * preK})`; g.fillRect(0, 0, W, H); }
+      if (bigOn && bigAge < 0.5) { g.fillStyle = `rgba(235,240,255,${0.16 * (1 - bigAge / 0.5) ** 2})`; g.fillRect(0, 0, W, H); }
+    }
+    const pw = R - L + 56 + pad, phh = trackH + pad * 2, skey = `${W}x${H}x${dpr}|${trackT}|${L}|${R}|${n}`;
     if (arcadeBoard.staticKey !== skey) {
       arcadeBoard.staticKey = skey;
       const c = arcadeBoard.static ||= document.createElement('canvas'); c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
@@ -5784,23 +6012,37 @@
       // background, with Glass (a sheen across the top, a shadow at the bottom, a fine bright top edge) and the played side darker.
       const pc = arcadeBoard.panel ||= document.createElement('canvas'); pc.width = c.width; pc.height = c.height;
       const pg = pc.getContext('2d'), px0 = L - 56, py0 = trackT - pad; pg.setTransform(dpr, 0, 0, dpr, 0, 0); pg.clearRect(0, 0, W, H);
-      pg.beginPath(); pg.roundRect(px0, py0, pw, phh, 18); pg.fillStyle = 'rgba(10,11,17,.78)'; pg.fill(); pg.save(); pg.clip();
+      // Floating (arcade.html › Board › Floating, user's pick 2026-11-08): the panel much lighter (0.3, was 0.78) with a soft shadow
+      // under the strings, so the tab floats on the sky; light pools round the cursor (with the Light column, below)
+      pg.beginPath(); pg.roundRect(px0, py0, pw, phh, 18); pg.fillStyle = 'rgba(10,11,17,.3)'; pg.fill(); pg.save(); pg.clip();
+      q = pg.createLinearGradient(0, trackT, 0, trackB); q.addColorStop(0, 'rgba(2,3,8,0)'); q.addColorStop(0.5, 'rgba(2,3,8,.35)'); q.addColorStop(1, 'rgba(2,3,8,0)'); pg.fillStyle = q; pg.fillRect(px0, trackT, pw, trackH);
       q = pg.createLinearGradient(L, 0, curX, 0); q.addColorStop(0, 'rgba(0,0,0,.35)'); q.addColorStop(1, 'rgba(0,0,0,0)'); pg.fillStyle = q; pg.fillRect(px0, py0, curX - px0, phh);   // the played side darker
       q = pg.createLinearGradient(0, py0, 0, py0 + phh * 0.4); q.addColorStop(0, 'rgba(255,255,255,.075)'); q.addColorStop(1, 'rgba(255,255,255,0)'); pg.fillStyle = q; pg.fillRect(px0, py0, pw, phh * 0.4);
       q = pg.createLinearGradient(0, py0 + phh * 0.75, 0, py0 + phh); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(1, 'rgba(0,0,0,.28)'); pg.fillStyle = q; pg.fillRect(px0, py0 + phh * 0.75, pw, phh * 0.25);
       pg.strokeStyle = 'rgba(255,255,255,.2)'; pg.lineWidth = 1; pg.beginPath(); pg.moveTo(px0 + 22, py0 + 1.5); pg.lineTo(px0 + pw - 22, py0 + 1.5); pg.stroke(); pg.restore();
+      const lsp = trackH / n; for (let s = 0; s < n; s++) { pg.fillStyle = acss(crgb(s), s % 2 ? 0.03 : 0.014); pg.fillRect(px0, trackT + (n - 1 - s) * lsp + lsp * 0.08, pw, lsp * 0.84); }   // Lanes (More polish): a faint band per string
       pg.globalCompositeOperation = 'destination-in'; q = pg.createLinearGradient(px0, 0, px0 + pw, 0); q.addColorStop(0, 'rgba(0,0,0,0)'); q.addColorStop(0.12, '#000'); q.addColorStop(0.88, '#000'); q.addColorStop(1, 'rgba(0,0,0,0)');
       pg.fillStyle = q; pg.fillRect(0, 0, W, H); pg.globalCompositeOperation = 'source-over';
     }
     // The count-in opens the board from the cursor outward on its first beat, rising into place.
-    const op = intro ? Math.max(0, Math.min(1, (introEl - intro.card) / (1.4 * intro.B))) : 1, ope = 1 - (1 - op) ** 3;
+    let op = intro ? Math.max(0, Math.min(1, (introEl - intro.card) / (1.4 * intro.B))) : 1;
+    if (ending) op = Math.min(op, 1 - Math.max(0, Math.min(1, (endEl - 0.9) / 1.0)));
+    const ope = 1 - (1 - op) ** 3;
     const opL = curX - (curX - (L - 62)) * ope, opR = curX + (R + pad + 6 - curX) * ope;
-    g.save(); if (op < 1) { g.beginPath(); g.rect(opL, 0, opR - opL, H); g.clip(); g.translate(0, 14 * (1 - ope)); }
-    if (bigK > 0.01) {                                   // a big moment: a haze of light above and below the board
-      const hq = g.createLinearGradient(0, trackT - H * 0.22, 0, trackB + H * 0.22); hq.addColorStop(0, acss(mood.c, 0)); hq.addColorStop(0.3, acss(mood.c, 0.07 * bigK)); hq.addColorStop(0.5, acss(mood.d, 0.03 * bigK)); hq.addColorStop(0.7, acss(mood.c, 0.07 * bigK)); hq.addColorStop(1, acss(mood.c, 0));
-      g.fillStyle = hq; g.fillRect(0, trackT - H * 0.22, W, trackB - trackT + H * 0.44);
+    g.drawImage(arcadeBoard.static, 0, 0, W, H);   // (outside the opening's clip: the stars stay while the board opens and closes)
+    if (bigK > 0.01) {                                   // a big moment: embers rising behind the board for as long as it lasts
+      g.save(); g.globalCompositeOperation = 'lighter'; const sec = ms / 1000, ep = [new Path2D(), new Path2D(), new Path2D()];
+      for (let i = 0; i < 60; i++) {
+        const P = 2.6 + (i % 5) * 0.5, u = (sec / P + i * 0.137) % 1, x = ((i * 0.618) % 1) * W + Math.sin(sec * 0.8 + i) * 18, y = H * 1.02 - u * H * 1.05, r = 0.8 + ((i * 0.29) % 1) * 1.8;
+        const a = Math.sin(Math.PI * u) * bigK * (0.35 + 0.45 * ((i * 0.71) % 1));
+        if (i % 6 === 0) arcadeSoft(g, x, y, r * 5, mood.c, a * 0.35);   // (a glow on every sixth: gradients are the cost)
+        ep[Math.min(2, Math.floor(a * 4))].moveTo(x + r * 0.7, y); ep[Math.min(2, Math.floor(a * 4))].arc(x, y, r * 0.7, 0, 7);
+      }
+      ep.forEach((b, k) => { g.fillStyle = `rgba(255,245,230,${0.15 + 0.25 * k})`; g.fill(b); });
+      g.restore();
     }
-    g.drawImage(arcadeBoard.static, 0, 0, W, H); g.drawImage(arcadeBoard.panel, 0, 0, W, H);
+    g.save(); if (op < 1) { g.beginPath(); g.rect(opL, 0, opR - opL, H); g.clip(); g.translate(0, 14 * (1 - ope)); }
+    g.drawImage(arcadeBoard.panel, 0, 0, W, H);
 
     // ---- the track: blue at x4 ----
     g.save();
@@ -5811,7 +6053,6 @@
       q.addColorStop(0, 'rgba(21,87,192,0)'); q.addColorStop(cp, `rgba(30,110,230,${(0.5 + 0.06 * beat) * x4k})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(21,87,192,${0.22 * x4k})`); q.addColorStop(1, 'rgba(21,87,192,0)');
       g.fillStyle = q; g.fill();
     }
-    if (bigK > 0.01) { q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0); q.addColorStop(0, acss(mood.d, 0)); q.addColorStop(0.15, acss(mood.d, 0.07 * bigK)); q.addColorStop(0.85, acss(mood.d, 0.07 * bigK)); q.addColorStop(1, acss(mood.d, 0)); g.fillStyle = q; g.fill(); }
     // (the washes below fade out at both ends: the board is borderless)
     const warm = build * (1 - x4k) * (1 - encK);      // a streak building: the track warms in the song's colour toward the cursor, before x4's blue
     if (warm > 0.01) {
@@ -5824,7 +6065,6 @@
       q.addColorStop(0, 'rgba(160,95,8,0)'); q.addColorStop(cp, `rgba(225,150,25,${(0.4 + 0.06 * beat) * encK})`); q.addColorStop(Math.min(1, cp + 0.35), `rgba(160,95,8,${0.2 * encK})`); q.addColorStop(1, 'rgba(160,95,8,0)');
       g.fillStyle = q; g.fill();
     }
-    if (bigK > 0.01) { g.save(); q = g.createLinearGradient(L - 56, 0, L - 56 + pw, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.15, acss(mood.c, 0.4 * bigK)); q.addColorStop(0.85, acss(mood.c, 0.4 * bigK)); q.addColorStop(1, acss(mood.c, 0)); g.strokeStyle = q; g.lineWidth = 1.4; g.shadowColor = acss(mood.c, 1); g.shadowBlur = 26 * bigK; g.stroke(); g.restore(); }   // its rim lit
     g.clip();
     const sp = trackH / n, sy = (s) => trackT + (n - 1 - s) * sp + sp / 2, fa = AVIS * 0.25, fb = AVIS, wt = warp(t), X = (tt) => L + (warp(tt) - wt + fa) / (fa + fb) * (R - L);
     {   // Polish (arcade.html): Spotlight (light where you play, the far end dimmer, back to nothing at the faded edge) and Glass's
@@ -5836,16 +6076,24 @@
     }
     const sa = (ms - arcadeBoard.sweepAt) / 800;   // the multiplier went up: one soft band of light along the track
     if (sa >= 0 && sa < 1) { const sx = curX + (R - curX) * sa, w = W * 0.12; q = g.createLinearGradient(sx - w, 0, sx + w, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.16 * (1 - sa))); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(sx - w, trackT - pad, w * 2, phh); }
-    if (bigAge < 0.9) {                                  // a big moment coming in: a soft flash and a bright band out from the cursor
-      const a = bigAge / 0.9, sx = curX + (R - curX) * (1 - (1 - a) ** 3), w = W * 0.16; g.fillStyle = acss(mood.c, 0.1 * (1 - a)); g.fillRect(L - 56, trackT - pad, pw, phh);
-      q = g.createLinearGradient(sx - w, 0, sx + w, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, `rgba(255,255,255,${0.2 * (1 - a)})`); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(sx - w, trackT - pad, w * 2, phh);
-    }
     // bar lines and beat ticks
     for (let i = 0; i < bars.length; i++) {
       const b0 = bars[i], len = (bars[i + 1] ?? b0 + barLen) - b0; if (X(b0) > R + 20) break; if (X(b0 + len) < L - 20) continue;
       for (let j = 0; j < 4; j++) { const x = X(b0 + j * len / 4); if (x < L - 10 || x > R + 10) continue;
         if (j === 0) { g.strokeStyle = 'rgba(255,255,255,.09)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, trackT - 6); g.lineTo(x, trackB + 6); g.stroke(); }
         g.fillStyle = j === 0 ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.14)'; g.fillRect(x - 0.5, trackB + pad - 7, 1, j === 0 ? 6 : 4); }
+    }
+    // More polish (user picked all of arcade.html's More polish row, 2026-11-08): Bar glow (a bar line lights up as it reaches the
+    // cursor and fades behind it); Lanes are on the panel layer, Light column and Rails by the cursor
+    for (let i = Math.max(0, bi - 2); i < bars.length && i < bi + 3; i++) {
+      const b0 = bars[i], len = (bars[i + 1] ?? b0 + barLen) - b0;
+      for (let j = 0; j < 4; j++) {
+        const x = X(b0 + j * len / 4), dd = curX - x; if (dd < -60 || dd > 220) continue;
+        const k = dd < 0 ? (1 + dd / 60) ** 2 * 0.4 : Math.exp(-dd / 70), a = (j === 0 ? 0.42 : 0.14) * k;
+        q = g.createLinearGradient(0, trackT - pad, 0, trackB + pad); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, a)); q.addColorStop(1, acss(mood.c, 0));
+        g.fillStyle = q; g.fillRect(x - (j === 0 ? 1 : 0.5), trackT - pad, j === 0 ? 2 : 1, phh);
+        if (j === 0 && dd >= 0) arcadeSoft(g, x, trackB + pad - 4, 10, mood.c, 0.5 * k);
+      }
     }
     // strings: brighter for a moment when played, rippling out from the cursor
     for (let s = 0; s < n; s++) {
@@ -6175,7 +6423,10 @@
       else g.fillStyle = fl ? acss(c, 0.9 * fl + 0.1) : 'rgba(30,22,6,.94)';
       g.fill(); g.shadowBlur = 0;
       if (tied && !fl && !gd) { g.fillStyle = acss(c, 0.16); g.fill(); }
-      g.strokeStyle = gd ? acss(c, 0.75 + 0.25 * Math.max(near, isNext ? 1 : 0)) : acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k); g.lineWidth = 1.2; g.stroke();
+      // Lit (arcade.html › Keycaps › Lit, user's pick): tinted by the string, the rim and a glow brightening over the last 240 px to the cursor
+      const litN = face && !missed ? Math.max(0, Math.min(1, 1 - (x - curX) / 240)) : 0;
+      if (face && !missed) { g.fillStyle = acss(c, 0.07 + 0.13 * litN); g.fill(); if (litN > 0.3) { g.save(); g.globalCompositeOperation = 'lighter'; arcadeSoft(g, x, y, cw * 1.15, c, (litN - 0.3) * 0.32); g.restore(); } }
+      g.strokeStyle = gd ? acss(c, 0.75 + 0.25 * Math.max(near, isNext ? 1 : 0)) : acss(amix(c, [125, 211, 252], missed ? 0 : 0.6 * x4k), 0.35 + 0.6 * Math.max(near, isNext ? 0.6 : 0) + 0.2 * x4k + 0.35 * litN); g.lineWidth = 1.2; g.stroke();
       if (gd && !fl && !passed) {                        // a glint crossing the gold keycap now and then
         g.save(); g.beginPath(); g.roundRect(x - cw / 2, y - ch / 2, cw, ch, ch * 0.3); g.clip(); const gx = x - cw + ((ms / 1000 * 0.9 + k * 0.13) % 1.6) * cw * 1.6, gq = g.createLinearGradient(gx - 6, y - ch / 2, gx + 6, y + ch / 2);
         gq.addColorStop(0, 'rgba(255,240,200,0)'); gq.addColorStop(0.5, 'rgba(255,240,200,.28)'); gq.addColorStop(1, 'rgba(255,240,200,0)'); g.fillStyle = gq; g.fillRect(x - cw / 2, y - ch / 2, cw, ch); g.restore();
@@ -6188,6 +6439,106 @@
     // the cursor: a slim line with a soft column of light
     q = g.createLinearGradient(curX - 16, 0, curX + 16, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.1 + 0.08 * beat)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(curX - 16, trackT - pad, 32, phh);
     g.restore();
+    {   // Rails, Light column (More polish) and the big moment's edges (Surge, Flare, the burst of sparks)
+      const top = trackT - pad, bot = trackB + pad, px0 = L - 56, px1 = L - 56 + pw, cp = Math.max(0.3, Math.min(0.5, (curX - px0) / pw));
+      const edgeA = (x) => Math.max(0, Math.min(1, (x - px0) / (W * 0.1), (px1 - x) / (W * 0.1)));   // (the edges fade out at the board's ends)
+      const fr = Math.floor(ms / 1000 * 30), hs = (i, f = fr) => { const v = Math.sin(i * 127.1 + f * 311.7) * 43758.5453; return v - Math.floor(v) - 0.5; };
+      g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round'; g.lineJoin = 'round';
+      for (const y of [top + 0.5, bot - 0.5]) {        // Rails: fine light lines along both edges, brightest at the cursor, pulsing on beat 1
+        const a = 0.16 + 0.12 * beat * (beatN === 0 ? 1 : 0.4) + 0.1 * heat; q = g.createLinearGradient(px0, 0, px1, 0);
+        q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.1, acss(mood.c, a * 0.35)); q.addColorStop(cp, acss(mood.c, a)); q.addColorStop(0.9, acss(mood.c, a * 0.3)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(px0, y - 0.5, pw, 1);
+      }
+      arcadeSoft(g, curX, (trackT + trackB) / 2, trackH * 0.9, mood.c, 0.09 + 0.05 * beat);   // Floating: light pooling round the cursor
+      q = g.createLinearGradient(curX - 46, 0, curX + 46, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(0.5, acss(mood.c, 0.05 + 0.04 * beat)); q.addColorStop(1, acss(mood.c, 0)); g.fillStyle = q; g.fillRect(curX - 46, top, 92, bot - top);   // Light column: a wider beam,
+      for (let s = 0; s < n; s++) {                    // catching each string where it crosses, flaring when it's played
+        const k = Math.exp(-(ms - (game.laneHitMs[s] ?? -1e9)) / 300), c3 = amix(crgb(s), [255, 255, 255], 0.5);
+        arcadeSoft(g, curX, sy(s), 9 + 10 * k, c3, 0.35 + 0.5 * k); g.fillStyle = `rgba(255,255,255,${0.7 + 0.3 * k})`; g.beginPath(); g.arc(curX, sy(s), 1.6 + 1.2 * k, 0, 7); g.fill();
+      }
+      for (const y of [top - 6, bot + 6]) { q = g.createLinearGradient(curX - 26, 0, curX + 26, 0); q.addColorStop(0, 'rgba(255,255,255,0)'); q.addColorStop(0.5, `rgba(255,255,255,${0.35 + 0.2 * beat})`); q.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q; g.fillRect(curX - 26, y - 0.5, 52, 1); }   // and a glint on its ends
+      if (x4k > 0.01) {
+        // x4: an aurora growing out of the board's edge (arcade.html › x4 edge › Aurora; user: "instead of lightning around the
+        // edges, could we make it look more spacey?", then "more real", "come from the edge instead of being over it", "less
+        // blocky", "less bright", "the corners have no light"; it replaces Surge's lightning, which they'd moved to x4). Soft rays
+        // stand out along each point of the outline's normal, tallest off the top, shorter below and at the ends, from a bright green
+        // base into teal and violet tops, brightness swelling slowly along it, a little taller on the beat. The body is painted
+        // at a quarter of the window's size and scaled up in two steps (so it's soft, no ray tips or steps), faint fine rays over
+        // it, and the rim glowing green.
+        const on = x4k, T = ms / 1000, hmax = Math.min(230, H * 0.3), rr0 = 18, PW = pw - 2 * rr0, PH = phh - 2 * rr0, ARC = Math.PI * rr0 / 2, PER = 2 * PW + 2 * PH + 4 * ARC;
+        const per = (u) => { u = ((u % PER) + PER) % PER;                            // a point on the outline (clockwise from the top-left) and its outward normal
+          if (u < PW) return [px0 + rr0 + u, top, 0, -1]; u -= PW;
+          if (u < ARC) { const an = -Math.PI / 2 + u / rr0; return [px1 - rr0 + Math.cos(an) * rr0, top + rr0 + Math.sin(an) * rr0, Math.cos(an), Math.sin(an)]; } u -= ARC;
+          if (u < PH) return [px1, top + rr0 + u, 1, 0]; u -= PH;
+          if (u < ARC) { const an = u / rr0; return [px1 - rr0 + Math.cos(an) * rr0, bot - rr0 + Math.sin(an) * rr0, Math.cos(an), Math.sin(an)]; } u -= ARC;
+          if (u < PW) return [px1 - rr0 - u, bot, 0, 1]; u -= PW;
+          if (u < ARC) { const an = Math.PI / 2 + u / rr0; return [px0 + rr0 + Math.cos(an) * rr0, bot - rr0 + Math.sin(an) * rr0, Math.cos(an), Math.sin(an)]; } u -= ARC;
+          if (u < PH) return [px0, bot - rr0 - u, -1, 0]; u -= PH;
+          const an = Math.PI + u / rr0; return [px0 + rr0 + Math.cos(an) * rr0, top + rr0 + Math.sin(an) * rr0, Math.cos(an), Math.sin(an)]; };
+        if (!arcadeBoard.auroraRay) { const c = document.createElement('canvas'); c.width = 32; c.height = 256; const rx = c.getContext('2d'), rq = rx.createLinearGradient(0, 256, 0, 0);
+          rq.addColorStop(0, 'rgba(150,255,190,1)'); rq.addColorStop(0.06, 'rgba(110,255,170,.9)'); rq.addColorStop(0.22, 'rgba(70,225,185,.55)'); rq.addColorStop(0.5, 'rgba(80,150,255,.28)'); rq.addColorStop(0.78, 'rgba(170,95,255,.12)'); rq.addColorStop(1, 'rgba(200,90,230,0)');
+          rx.fillStyle = rq; rx.fillRect(0, 0, 32, 256); const sq = rx.createLinearGradient(0, 0, 32, 0); sq.addColorStop(0, 'rgba(0,0,0,0)'); sq.addColorStop(0.5, 'rgba(0,0,0,1)'); sq.addColorStop(1, 'rgba(0,0,0,0)');
+          rx.globalCompositeOperation = 'destination-in'; rx.fillStyle = sq; rx.fillRect(0, 0, 32, 256); arcadeBoard.auroraRay = c; }   // one ray: the colours up its length, soft sides
+        const RAY = arcadeBoard.auroraRay, B = g.getTransform();
+        // The outline's samples are worked out once per board size (x, y, normal, distance round): building small arrays for every
+        // ray each frame (~3,000) made the garbage collector pause now and then (user: "getting some stuttering again").
+        const gk = `${px0}|${top}|${pw}|${phh}`;
+        if (arcadeBoard.auroraGeo?.key !== gk) {
+          const samp = (stepAt) => { const out = []; for (let u = 0; u < PER;) { const [x, y, nx, ny] = per(u); out.push(x, y, nx, ny, u); u += stepAt(nx, ny); } return Float32Array.from(out); };
+          arcadeBoard.auroraGeo = { key: gk, body: samp((nx, ny) => (Math.abs(nx) > 0.05 && Math.abs(ny) > 0.05 ? 3.5 : 6)), };   // more rays round the corners, where they fan out
+        }
+        const geo = arcadeBoard.auroraGeo, wob = 0.88 + 0.2 * beat;
+        const put = (c, base, k, A, j, w, hk, al) => { const x = A[j], y = A[j + 1], nx = A[j + 2], ny = A[j + 3], u = A[j + 4];   // one ray turned to point outward
+          const h = hmax * (ny < 0 ? 0.45 - ny * 0.55 : 0.45 + ny * 0.15) * (0.62 + 0.24 * Math.sin(u * 0.006 + T * 0.35) + 0.14 * Math.sin(u * 0.015 - T * 0.6)) * wob; if (h < 4) return;
+          const i = (0.7 + 0.3 * (0.5 + 0.5 * Math.sin(u * 0.012 - T * 0.5))) * (0.88 + 0.12 * Math.sin(u * 0.05 - T * 1.6));
+          const a1 = -ny * k, b1 = nx * k, c1 = -nx * k, d1 = -ny * k, e1 = x * k, f1 = y * k;
+          c.setTransform(base.a * a1 + base.c * b1, base.b * a1 + base.d * b1, base.a * c1 + base.c * d1, base.b * c1 + base.d * d1, base.a * e1 + base.c * f1 + base.e, base.b * e1 + base.d * f1 + base.f);
+          c.globalAlpha = Math.min(1, al * on * i); c.drawImage(RAY, -w / 2, -h * hk, w, h * hk); };
+        const aw = Math.ceil(W / 4), ah = Math.ceil(H / 4), mw2 = Math.ceil(W / 2), mh2 = Math.ceil(H / 2);
+        if (!arcadeBoard.auroraBody || arcadeBoard.auroraBody.width !== aw || arcadeBoard.auroraBody.height !== ah) { arcadeBoard.auroraBody = Object.assign(document.createElement('canvas'), { width: aw, height: ah }); arcadeBoard.auroraMid = Object.assign(document.createElement('canvas'), { width: mw2, height: mh2 }); }
+        const ac = arcadeBoard.auroraBody.getContext('2d'), mc = arcadeBoard.auroraMid.getContext('2d'), I = new DOMMatrix();
+        arcadeBoard.auroraTick = !arcadeBoard.auroraTick; if (arcadeBoard.auroraTick || !arcadeBoard.auroraDrawn) { arcadeBoard.auroraDrawn = true;   // repainted every other frame (it moves slowly)
+        ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over'; ac.clearRect(0, 0, aw, ah); ac.globalCompositeOperation = 'lighter';
+        for (let j = 0; j < geo.body.length; j += 5) put(ac, I, 0.25, geo.body, j, 40, 1.05, 0.32);   // where they fan out
+        mc.globalCompositeOperation = 'copy'; mc.imageSmoothingQuality = 'medium'; mc.drawImage(arcadeBoard.auroraBody, 0, 0, mw2, mh2); }   // quarter -> half -> full (one 4x stretch left stair-steps)
+        { const ax0 = Math.max(0, px0 - hmax * 0.6), ay0 = Math.max(0, top - hmax * 1.15), ax1 = Math.min(W, px1 + hmax * 0.6), ay1 = Math.min(H, bot + hmax * 0.75);   // only the part round the board
+          g.globalAlpha = 1; g.drawImage(arcadeBoard.auroraMid, ax0 / 2, ay0 / 2, (ax1 - ax0) / 2, (ay1 - ay0) / 2, ax0, ay0, ax1 - ax0, ay1 - ay0); }
+        // (the faint fine rays over it are gone: ~900 full-size blended rays a frame for 5.5% texture were the main cost behind x4's stutter)
+        g.setTransform(B); g.globalAlpha = 1;
+        g.beginPath(); g.roundRect(px0, top, pw, phh, rr0); g.strokeStyle = `rgba(140,255,190,${0.08 * on})`; g.lineWidth = 6; g.stroke(); g.strokeStyle = `rgba(170,255,205,${0.4 * on})`; g.lineWidth = 1.3; g.stroke();
+      }
+      {   // Big moment +: the build-up along the edges, the hit's ring, the strings singing, the afterglow's motes
+        const eo3 = (x) => 1 - (1 - Math.max(0, Math.min(1, x))) ** 3, T = ms / 1000;
+        if (preK > 0) { const e = preK * preK;
+          for (const y of [top, bot]) for (const x0 of [px0, px1]) { const xh = x0 + (curX - x0) * e, lq = g.createLinearGradient(x0, 0, xh, 0); lq.addColorStop(0, acss(mood.c, 0)); lq.addColorStop(1, acss(mood.c, 0.55 * preK)); g.fillStyle = lq; g.fillRect(Math.min(x0, xh), y - 1, Math.abs(xh - x0), 2); arcadeSoft(g, xh, y, 10 + 14 * preK, [255, 255, 255], 0.6 * preK); }
+          arcadeSoft(g, curX, (top + bot) / 2, 40 + 70 * preK, mood.c, 0.2 * preK); }
+        if (bigOn && bigAge < 1.1) { const a = bigAge / 1.1, r = eo3(a) * W * 1.1, cy = (top + bot) / 2;
+          g.strokeStyle = acss(mood.c, 0.35 * (1 - a) ** 2); g.lineWidth = 12 * (1 - a) + 1; g.beginPath(); g.ellipse(curX, cy, r * 0.93, r * 0.56, 0, 0, 7); g.stroke();
+          g.strokeStyle = `rgba(240,245,255,${0.55 * (1 - a) ** 2})`; g.lineWidth = 1.5 + 4 * (1 - a); g.beginPath(); g.ellipse(curX, cy, r, r * 0.6, 0, 0, 7); g.stroke(); }
+        if (bigK > 0.01) for (let s = 0; s < n; s++) { const y = sy(s), c3 = crgb(s), a = bigK * (0.22 + 0.35 * beat), sq = g.createLinearGradient(px0, 0, px1, 0);
+          sq.addColorStop(0, acss(c3, 0)); sq.addColorStop(0.12, acss(c3, a * 0.5)); sq.addColorStop(cp, acss(c3, a)); sq.addColorStop(0.9, acss(c3, a * 0.4)); sq.addColorStop(1, acss(c3, 0));
+          g.fillStyle = sq; g.fillRect(px0, y - 2.5, pw, 5); g.globalAlpha = 0.45; g.fillRect(px0, y - 9, pw, 18); g.globalAlpha = 1; }
+        if (afterK > 0) for (let i = 0; i < 40; i++) { const u = (i * 0.618) % 1, ph = (afterAge * 0.25 + i * 0.137) % 1, x = px0 + pw * u + Math.sin(ph * 6 + i) * 10, y = bot - (bot - top + H * 0.15) * ph;
+          arcadeSoft(g, x, y, 6, i % 3 ? mood.c : [255, 240, 220], afterK * Math.sin(Math.PI * ph) * 0.7); }
+      }
+      if (bigK > 0.01) {
+        // (Surge, the arcs along the edges, is gone from big moments: at x4 the aurora grows out of the board's edge instead, below)
+        // Flare: stars on the cursor's ends and long thin streaks along both edges, breathing on the beat
+        const hit = Math.max(0, 1 - bigAge / 0.6) ** 2, br = bigK * (0.35 + 0.25 * beat) + hit;
+        for (const y of [top - 6, bot + 6]) {
+          q = g.createLinearGradient(px0, 0, px1, 0); q.addColorStop(0, acss(mood.c, 0)); q.addColorStop(cp - 0.25, acss(mood.c, 0.05 * br)); q.addColorStop(cp, `rgba(255,255,255,${Math.min(0.9, 0.45 * br)})`); q.addColorStop(cp + 0.45, acss(mood.c, 0.06 * br)); q.addColorStop(1, acss(mood.c, 0));
+          g.fillStyle = q; g.fillRect(px0, y - 1, pw, 2); g.globalAlpha = 0.35; g.fillRect(px0, y - 4, pw, 8); g.globalAlpha = 1;
+          arcadeSoft(g, curX, y, 30 + 40 * hit, mood.c, 0.5 * br); arcadeSoft(g, curX, y, 10, [255, 255, 255], Math.min(1, 0.8 * br));
+          const sl = 18 + 30 * hit; g.strokeStyle = `rgba(255,255,255,${Math.min(0.8, 0.5 * br)})`; g.lineWidth = 1; g.beginPath();
+          g.moveTo(curX, y - sl); g.lineTo(curX, y + sl); g.moveTo(curX - sl * 0.5, y - sl * 0.5); g.lineTo(curX + sl * 0.5, y + sl * 0.5); g.moveTo(curX + sl * 0.5, y - sl * 0.5); g.lineTo(curX - sl * 0.5, y + sl * 0.5); g.stroke();
+        }
+      }
+      if (bigAge >= 0 && bigAge < 1.6 && bigK > 0.01) for (let i = 0; i < 46; i++) {   // Embers: the burst of sparks out of the cursor as it comes in
+        const ang = (i / 46) * Math.PI * 2 + hs(i, 0) * 0.4, v = (180 + 260 * Math.abs(hs(i * 3, 0))) * (Math.abs(Math.sin(ang)) < 0.35 ? 1.4 : 0.8), tt = bigAge;
+        const x = curX + Math.cos(ang) * v * tt, y = (top + bot) / 2 + Math.sin(ang) * v * tt * 0.6 + 200 * tt * tt, a = Math.max(0, 1 - tt / 1.6) ** 1.4;
+        if (y < top - H * 0.3 || y > bot + H * 0.3) continue;
+        g.strokeStyle = acss(i % 3 ? mood.c : [255, 240, 220], a * 0.9); g.lineWidth = 1.6; g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.cos(ang) * v * 0.03, y - (Math.sin(ang) * v * 0.6 + 400 * tt) * 0.03); g.stroke();
+      }
+      g.restore();
+    }
     // The cursor is the multiplier (user: "I would like to incorporate the multiplier into the board"; it was a ring by the
     // score): it fills from the bottom in the multiplier's colour as the streak builds toward the next level (full and
     // glowing at x4), with a badge on top showing 1x-4x that pops when the multiplier goes up.
@@ -6211,10 +6562,12 @@
       if (ck > 0) { g.beginPath(); g.moveTo(curX, cTop); g.lineTo(curX, cBot); g.strokeStyle = acss(mood.c, 0.6 * ck); g.lineWidth = 3; g.stroke(); }
       const pop = cnt ? 1 + 0.22 * ck : 1 + 0.25 * Math.max(0, 1 - (ms - arcadeBoard.sweepAt) / 300), bw = 40 * pop, bh = 24 * pop, by = cTop - 18, gr = 12 * (1 - ck);
       if (cnt) { g.beginPath(); g.roundRect(curX - bw / 2 - gr, by - bh / 2 - gr, bw + 2 * gr, bh + 2 * gr, bh / 2 + gr); g.strokeStyle = acss(mood.c, 0.6 * ck); g.lineWidth = 1.2; g.stroke(); }
+      if (cnt) {                                         // only the count-in now: the multiplier sits under the scoreboard's ring
       g.beginPath(); g.roundRect(curX - bw / 2, by - bh / 2, bw, bh, bh / 2); g.fillStyle = encOn ? 'rgba(30,22,6,.94)' : 'rgba(9,10,15,.92)'; g.fill();
       g.strokeStyle = acss(mood.c, cnt ? 0.5 + 0.5 * ck : mult === 1 && !encOn ? 0.45 : 0.95); g.lineWidth = 1.4; g.stroke();
       g.font = `700 ${Math.round(14 * pop)}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = cnt ? '#f5f5f7' : acss(mood.c, mult === 1 && !encOn ? 0.75 : 1);
       g.fillText(cnt ? String(cnt) : `${encOn ? mult * 2 : mult}×`, curX, by + 1);
+      }
     }
     if (landF > 0) {                                     // a landing: a ring of light opening from the cursor, its column swelling
       const la = 1 - landF, my = (trackT + trackB) / 2; arcadeSoft(g, curX, my, trackH * (0.45 + 0.4 * la), mood.c, 0.3 * landF);
@@ -6238,11 +6591,11 @@
       const eq = g.createLinearGradient(0, trackT - pad, 0, trackB + pad); eq.addColorStop(0, acss(mood.c, 0)); eq.addColorStop(0.5, acss(mood.c, 0.9 * (1 - op))); eq.addColorStop(1, acss(mood.c, 0));
       g.fillStyle = eq; g.fillRect(ex - 1, trackT - pad + 14 * (1 - ope), 2, phh); arcadeSoft(g, ex, (trackT + trackB) / 2, trackH * 0.5, mood.c, 0.25 * (1 - op));
     }
-    if (op <= 0) { g.fillStyle = acss(mood.c, 0.7); g.fillRect(curX - 1, trackT - pad + 14, 2, phh); }   // before it opens: just the cursor's line
-    // the song's done: the board dims behind its moment (below)
-    const ending = game.on && !game.pr && plan && !(intro && introEl < intro.lead + 1) && game.next >= notes.length && (t > plan.lastEnd + 0.5 || game.songEnded) ? (arcadeBoard.ending ||= { at: ms, fc: game.judged > 0 && game.hits === game.judged && !game.grade.includes('Messy'), score: game.score, val: starsFor(game.score, game.units || notes.length) }) : null;
-    const endEl = ending ? (ms - ending.at) / 1000 : -1;
-    if (ending) { g.fillStyle = `rgba(5,6,10,${0.6 * Math.min(1, endEl / 0.9)})`; g.fillRect(0, 0, W, H); }
+    if (ending) { g.fillStyle = `rgba(6,7,11,${0.5 * Math.max(0, Math.min(1, (endEl - 1.8) / 0.5))})`; g.fillRect(0, 0, W, H); }   // the rest goes dark
+    if (op <= 0) {                                       // before it opens / once closed: just the cursor's line
+      g.fillStyle = acss(mood.c, ending ? 0.95 : 0.7); g.fillRect(curX - 1, trackT - pad + 14, 2, phh);
+      if (ending) arcadeSoft(g, curX, (trackT + trackB) / 2, trackH * 0.45, mood.c, 0.22);
+    }
 
     // ---- the plaque: a record as its emblem and the score, centred over the track; the latest call on the right ----
     // (from the mockup, user: "Yes, put them in"): records instead of stars (the 5 star levels as Bronze / Silver / Gold /
@@ -6253,41 +6606,106 @@
     if (tier !== arcadeBoard.tier) { if (tier > (arcadeBoard.tier ?? 0)) arcadeBoard.tierAt = ms; arcadeBoard.tier = tier; }
     // the card's hand-over: the last two count-in beats (the cover flips into the record; the score comes in over 30-65%)
     const xk = intro ? Math.max(0, Math.min(1, (introEl - (intro.lead - 2 * intro.B)) / (2 * intro.B))) : 1, eo = (x) => 1 - (1 - Math.max(0, Math.min(1, x))) ** 3;
-    const hudA = (intro && introEl < intro.lead + 0.5 ? eo((xk - 0.3) / 0.35) : 1) * (ending ? 1 - Math.min(1, Math.max(0, (endEl - 0.3) / 0.5)) : 1);
+    const hudA = (intro && introEl < intro.lead + 0.5 ? eo((xk - 0.3) / 0.35) : 1) * (ending ? 1 - Math.min(1, Math.max(0, (endEl - 0.2) / 0.7)) : 1);
     const meterV = enc ? encoreMeter(t) : 0, ready = !!enc && !enc.on && meterV >= 0.999;
     if (!game.pr) {                                      // practice: no score (laid out while hidden too: the card flips to where its record goes)
       g.save(); g.globalAlpha = hudA;
       // A fixed width, so the group stays put as the score grows (user: "the score at the top is shifting left to right"; it
       // was centred on its current width): room for the widest score this song can reach and the longest tier name.
-      const R0 = 26, ym = trackT - pad - (enc ? 60 : 48), widest = Math.round(perfectScore(game.units || notes.length) * 1.5).toLocaleString().replace(/\d/g, '8');
-      g.font = `200 48px ${GAME_FONT}`; const sw = Math.max(g.measureText(sc).width, g.measureText(widest).width);
-      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; const label = tier ? `${tname} RECORD` : tname, lw = Math.max(...ARCADE_TIERS.map(([nm], i) => g.measureText(i ? `${nm} RECORD` : nm).width)) + 22; g.letterSpacing = '0px';
-      const w = 2 * R0 + 20 + Math.max(sw, lw), left = (hl + hr) / 2 - w / 2, tx = left + 2 * R0 + 20;
-      if (!(intro && xk < 0.92)) drawRecord(g, left + R0, ym, R0, val, ms / 1000, (arcadeBoard.tierAt ?? -1e9) / 1000);   // waits for the flipped cover to land
-      // the score, and the tier under it (ENCORE READY, pulsing, while the meter's full)
-      const sq = g.createLinearGradient(0, ym - 34, 0, ym + 4); sq.addColorStop(0, '#ffffff'); sq.addColorStop(1, '#c3c9d2');
-      g.font = `200 48px ${GAME_FONT}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = sq; g.fillText(sc, tx, ym + 4);
-      const ly = ym + 20; g.fillStyle = ready ? acss(ENCORE_GOLD, 0.65 + 0.35 * Math.sin(ms / 1000 * 7)) : tier ? mt[1] : 'rgba(245,245,247,.35)'; g.fillRect(tx, ly - 0.5, 14, 1);
-      g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.4px'; g.textBaseline = 'middle'; g.fillText(ready ? 'ENCORE READY' : label, tx + 22, ly); g.letterSpacing = '0px';
-      // The Encore meter as the plaque's last row (user: "I like the bar under the score"): two slim segments, one per phrase,
-      // under the score's column; glowing when full and while Encore drains it.
-      const mw = Math.max(sw, lw), my = ym + 36;
-      arcadeBoard.plaque = { rx: left + R0, ry: ym, r: R0, mx: tx, mw, my };
+      // The scoreboard (arcade.html, user: "I think this scoreboard looks a lot better", 2026-11-08), replacing the plaque and the
+      // cursor's badge: the record in the middle of a tilted ring like a planet's. The ring is the multiplier: ten segments, one per
+      // note toward the next (the newest with a glowing head), a level-up flashing it, a miss draining what was lit in red, at x4
+      // lit all round, shimmering, with dust circling; the x tag sits under it and the streak is printed on the record's label (the
+      // record shows only its tier: no progress on it). Beside it the score as a hologram in the record's metal, counting up to each
+      // new total, and under the score the records as a lit path (the ladder: earned ones in their metal, the next filling like a
+      // pie, the track between them filling toward it). The Encore meter is the last row. A dark halo behind it all so it reads
+      // over the x4 aurora. Laid out for the widest score the song can reach, so it doesn't shift.
+      const T = ms / 1000, R1 = 28, RX = 64, RY = 21, ROT = -0.2, IN = 0.6, SP = 30, LR = 9.5, ym = trackT - pad - (enc ? 74 : 62);
+      const widest = Math.round(perfectScore(game.units || notes.length) * 1.5).toLocaleString().replace(/\d/g, '8');
+      g.font = `200 50px ${GAME_FONT}`; const sw = Math.max(g.measureText(sc).width, g.measureText(widest).width), ladW = 4 * SP + 2 * LR;
+      const mw = Math.max(sw, ladW), w = RX * 2 + 24 + mw, left = (hl + hr) / 2 - w / 2, rcx = left + RX, rcy = ym - 4, tx = left + RX * 2 + 24;
+      const m4 = mult === 4, mcol = encOn ? ENCORE_GOLD : argb(MULT_COLORS[mult]),   // its own colour per level (user: "the multiplier doesnt change color": the mood follows the song's cover below x4)
+       mc2 = acss(amix(mcol, [255, 255, 255], 0.35), 1);
+      const lvl = (ms - (arcadeBoard.sweepAt ?? -1e9)) / 1000, lit = m4 ? 10 : game.streak % 10, popR = 1 + 0.2 * Math.max(0, 1 - lvl / 0.3);
+      { const gx0 = left - 34, gx1 = left + w + 40, hrx = (gx1 - gx0) / 2; g.save(); g.translate((gx0 + gx1) / 2, rcy + 10); g.scale(1, 0.27);   // the halo
+        const hq = g.createRadialGradient(0, 0, 0, 0, 0, hrx); hq.addColorStop(0, 'rgba(3,4,10,.8)'); hq.addColorStop(0.6, 'rgba(3,4,10,.5)'); hq.addColorStop(1, 'rgba(3,4,10,0)'); g.fillStyle = hq; g.fillRect(-hrx, -hrx, hrx * 2, hrx * 2); g.restore(); }
+      if (game.streak < (arcadeBoard.ringPrev ?? 0) && arcadeBoard.ringPrev % 10 > 0 && !m4) arcadeBoard.ringDrain = { at: ms, n: arcadeBoard.ringPrev % 10 };   // a miss: drain what was lit
+      arcadeBoard.ringPrev = game.streak;
+      const drain = arcadeBoard.ringDrain, drA = drain ? (ms - drain.at) / 550 : 9;
+      const P = (th, k) => { const ex = Math.cos(th) * RX * k, ey = Math.sin(th) * RY * k; return [rcx + ex * Math.cos(ROT) - ey * Math.sin(ROT), rcy + ex * Math.sin(ROT) + ey * Math.cos(ROT)]; };
+      const band = (t0, t1) => { g.beginPath(); const nn = Math.max(2, Math.ceil((t1 - t0) / 0.06)); for (let k = 0; k <= nn; k++) { const [x, y] = P(t0 + (t1 - t0) * k / nn, 1); k ? g.lineTo(x, y) : g.moveTo(x, y); }
+        for (let k = nn; k >= 0; k--) { const [x, y] = P(t0 + (t1 - t0) * k / nn, IN); g.lineTo(x, y); } g.closePath(); };
+      const S0 = Math.PI, SEG = Math.PI * 2 / 10, GAP = 0.035;                       // segments from the left, over the top, round the front
+      const half = (lo, hi) => {
+        band(lo, hi); const bq = g.createLinearGradient(0, rcy - RY, 0, rcy + RY); bq.addColorStop(0, 'rgba(22,26,40,.85)'); bq.addColorStop(1, 'rgba(8,10,18,.9)'); g.fillStyle = bq; g.fill();
+        for (let k = 0; k < 10; k++) { const a0 = S0 + k * SEG + GAP, a1 = S0 + (k + 1) * SEG - GAP; for (const off of [0, -Math.PI * 2]) {
+          const b0 = Math.max(lo, a0 + off), b1 = Math.min(hi, a1 + off); if (b1 <= b0) continue;
+          const on = k < lit, dr = drA < 1 && k < drain.n, flash = lvl >= 0 && lvl < 0.45; if (!on && !dr && !flash) continue; band(b0, b1);
+          if (flash) g.fillStyle = `rgba(255,255,255,${0.85 * (1 - lvl / 0.45)})`;
+          else if (dr && !on) g.fillStyle = `rgba(248,113,113,${0.8 * (1 - drA)})`;
+          else g.fillStyle = acss(amix(mcol, [255, 255, 255], k === lit - 1 && !m4 ? 0.35 : 0), 0.9 * (m4 ? 0.75 + 0.25 * Math.sin(T * 4 - k * 0.63) : 1));
+          g.fill(); } }
+        g.beginPath(); const nn = Math.ceil((hi - lo) / 0.06); for (let k = 0; k <= nn; k++) { const [x, y] = P(lo + (hi - lo) * k / nn, 1); k ? g.lineTo(x, y) : g.moveTo(x, y); } g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 1; g.stroke();
+      };
+      if (mult > 1 || encOn) arcadeSoft(g, rcx, rcy, RX * 1.5 * popR, mcol, 0.13 + 0.08 * beat);
+      if (lvl >= 0 && lvl < 0.9) { const k = lvl / 0.9; g.strokeStyle = acss(mcol, 0.7 * (1 - k) ** 2); g.lineWidth = 2 + 3 * (1 - k); g.beginPath(); g.ellipse(rcx, rcy, RX * (1 + k * 1.2), RY * (1 + k * 1.2), ROT, 0, 7); g.stroke(); }   // a level-up pulse
+      half(Math.PI, Math.PI * 2);                                                     // the back of the ring, behind the record
+      if (!(intro && xk < 0.92)) {                                                    // (waits for the flipped cover to land)
+        drawRecord(g, rcx, rcy, R1, tier, T, (arcadeBoard.tierAt ?? -1e9) / 1000);    // just its tier: the progress is the ladder
+        const lr = R1 * 0.42; g.beginPath(); g.arc(rcx, rcy, lr, 0, 7); g.fillStyle = 'rgba(8,9,14,.9)'; g.fill(); g.strokeStyle = acss(amix(mcol, [255, 255, 255], 0.4), 0.8); g.lineWidth = 1; g.stroke();   // the streak on its label
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 ${game.streak > 99 ? 9 : 11}px ${GAME_FONT}`; g.fillStyle = '#f5f5f7'; g.fillText(String(game.streak), rcx, rcy + 0.5);
+      }
+      half(0, Math.PI);                                                               // the front, over it
+      if (lit > 0 && !m4) { const [hx, hy] = P(S0 + lit * SEG - GAP, (1 + IN) / 2); arcadeSoft(g, hx, hy, 12, amix(mcol, [255, 255, 255], 0.4), 0.8); }   // the newest segment's head
+      if (m4) { const [lx, ly2] = P(T * 1.4, (1 + IN) / 2); arcadeSoft(g, lx, ly2, 16, [235, 245, 255], 0.5); const dp = new Path2D(), df = new Path2D();   // light running round, dust circling
+        for (let k = 0; k < 40; k++) { const th = T * 0.5 + k * Math.PI * 2 / 40, [dx, dy] = P(th, (IN + (1 - IN) * ((k * 0.37) % 1)) * 1.06); (Math.sin(th) > 0 ? df : dp).rect(dx - 0.8, dy - 0.8, 1.6, 1.6); }
+        g.fillStyle = 'rgba(235,245,255,.3)'; g.fill(dp); g.fillStyle = 'rgba(235,245,255,.75)'; g.fill(df); }
+      { const low = Math.hypot(RX * Math.sin(ROT), RY * Math.cos(ROT)), ty2 = rcy + low + 9, th2 = 21 * popR, txt = `${encOn ? mult * 2 : mult}×`;   // the multiplier, under the ring
+        g.font = `700 ${Math.round(13 * popR)}px ${GAME_FONT}`; const tw2 = Math.max(38 * popR, g.measureText(txt).width + 18); g.beginPath(); g.roundRect(rcx - tw2 / 2, ty2 - th2 / 2, tw2, th2, th2 / 2);
+        g.fillStyle = encOn ? 'rgba(30,22,6,.96)' : 'rgba(6,7,12,.97)'; g.fill(); g.strokeStyle = mc2; g.lineWidth = 1.4; g.stroke(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = mc2; g.fillText(txt, rcx, ty2 + 0.5); }
+      // the score: a hologram in the record's metal (outline, glow, faint scanlines, a slight flicker), counting up to each total
+      arcadeBoard.disp = game.score < (arcadeBoard.disp ?? 0) ? game.score : (arcadeBoard.disp ?? 0) + (game.score - (arcadeBoard.disp ?? 0)) * Math.min(1, dt * 9);
+      if (Math.abs(game.score - arcadeBoard.disp) < 1) arcadeBoard.disp = game.score;
+      const shown = Math.round(arcadeBoard.disp).toLocaleString(), hc = tier ? amix(argb(mt[1]), [255, 255, 255], 0.1) : [200, 210, 225], fk = 0.88 + 0.12 * Math.sin(T * 23) * Math.sin(T * 7.3);
+      g.font = `200 50px ${GAME_FONT}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; const shw = g.measureText(shown).width;
+      g.save(); g.globalAlpha *= fk; g.fillStyle = acss(hc, 0.1); g.fillText(shown, tx, rcy + 8); g.lineJoin = 'round';   // the glow as wide faint strokes, not shadowBlur (slow; stutter)
+      g.strokeStyle = acss(hc, 0.12); g.lineWidth = 7; g.strokeText(shown, tx, rcy + 8); g.strokeStyle = acss(hc, 0.28); g.lineWidth = 3.5; g.strokeText(shown, tx, rcy + 8);
+      g.strokeStyle = acss(amix(hc, [255, 255, 255], 0.4), 1); g.lineWidth = 1.1; g.strokeText(shown, tx, rcy + 8); g.restore();
+      g.save(); g.globalAlpha *= 0.12 * fk; g.fillStyle = acss(hc, 1); for (let yy = rcy - 32; yy < rcy + 10; yy += 3) g.fillRect(tx, yy, shw, 1); g.restore();
+      // the ladder: all five records as a path (the one you're on bigger, glowing)
+      { const ly = rcy + 27, frac = tier >= 5 ? 1 : val - tier, flp = Math.max(0, 1 - (ms - (arcadeBoard.tierAt ?? -1e9)) / 500), xs = [0, 1, 2, 3, 4].map((k) => tx + LR + k * SP);
+        const disc = (x, y, r, m, pie, rim) => { g.save(); g.translate(x, y); g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = 'rgba(10,11,17,.95)'; g.fill();
+          if (m) { const q = g.createLinearGradient(-r, -r, r, r); q.addColorStop(0, m[0]); q.addColorStop(0.5, m[1]); q.addColorStop(1, m[2]); g.beginPath(); if (pie < 1) { g.moveTo(0, 0); g.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pie); g.closePath(); } else g.arc(0, 0, r, 0, 7); g.fillStyle = q; g.fill();
+            g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 0.5; g.beginPath(); g.arc(0, 0, r * 0.62, 0, 7); g.stroke(); }
+          g.beginPath(); g.arc(0, 0, r - 0.5, 0, 7); g.strokeStyle = rim; g.lineWidth = 1; g.stroke(); g.fillStyle = '#050506'; g.beginPath(); g.arc(0, 0, Math.max(1, r * 0.16), 0, 7); g.fill(); g.restore(); };
+        for (let k = 1; k < 5; k++) { const xa = xs[k - 1] + LR + 3, xb = xs[k] - LR - 3; g.beginPath(); g.roundRect(xa, ly - 1, xb - xa, 2, 1); g.fillStyle = 'rgba(255,255,255,.12)'; g.fill();   // the track
+          const f = k < tier ? 1 : k === tier ? frac : 0; if (f > 0) { const q = g.createLinearGradient(xa, 0, xb, 0); q.addColorStop(0, ARCADE_TIERS[k][1][1]); q.addColorStop(1, ARCADE_TIERS[k + 1][1][1]); g.beginPath(); g.roundRect(xa, ly - 1, (xb - xa) * f, 2, 1); g.fillStyle = q; g.fill(); if (k === tier) arcadeSoft(g, xa + (xb - xa) * f, ly, 6, argb(ARCADE_TIERS[k + 1][1][1]), 0.8); } }
+        for (let k = 1; k <= 5; k++) { const m = ARCADE_TIERS[k][1], got = k <= tier, nxt = k === tier + 1, cur = k === tier, pop = cur ? flp : 0, r = LR * (cur ? 1.15 : 1) * (1 + 0.35 * pop), cx4 = xs[k - 1];
+          if (cur) arcadeSoft(g, cx4, ly, r * 2.2, argb(m[1]), 0.22 + 0.4 * pop); if (nxt && frac > 0) arcadeSoft(g, cx4, ly, r * 1.9, argb(m[1]), 0.12 + 0.2 * frac);
+          disc(cx4, ly, r, got || nxt ? m : null, got ? 1 : frac, got ? 'rgba(255,255,255,.4)' : nxt ? acss(argb(m[1]), 0.45 + 0.3 * Math.sin(T * 3) ** 2) : acss(argb(m[1]), 0.28));
+          if (got) { g.save(); g.beginPath(); g.arc(cx4, ly, r, 0, 7); g.clip(); g.translate(cx4, ly); g.rotate(T * 0.8 + k); const q = g.createLinearGradient(-r * 0.25, -r, r * 0.25, -r); q.addColorStop(0, 'rgba(255,255,255,0)'); q.addColorStop(0.5, 'rgba(255,255,255,.4)'); q.addColorStop(1, 'rgba(255,255,255,0)');
+            g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r * 1.4, -Math.PI / 2 - 0.35, -Math.PI / 2 + 0.35); g.closePath(); g.fillStyle = q; g.fill(); g.restore(); }
+          if (got && k === 5) for (let j = 0; j < 3; j++) { const a2 = T * 0.7 + j * 2.1, tw = Math.max(0, Math.sin(T * 4 + j * 1.7)), sx = cx4 + Math.cos(a2) * r * 1.25, sy3 = ly + Math.sin(a2) * r * 1.25, z = 2.2 * tw;
+            g.fillStyle = `rgba(255,255,255,${tw})`; g.beginPath(); g.moveTo(sx, sy3 - z); g.lineTo(sx + z * 0.3, sy3); g.lineTo(sx, sy3 + z); g.lineTo(sx - z * 0.3, sy3); g.closePath(); g.fill(); } } }
+      // The Encore meter, the last row: two slim segments, one per phrase; ENCORE READY beside it, pulsing, while it's full
+      const my = rcy + 46;
+      arcadeBoard.plaque = { rx: rcx, ry: rcy, r: R1, mx: tx, mw, my };
       if (enc) for (let i = 0; i < 2; i++) {
         const segW = (mw - 5) / 2, x0 = tx + i * (segW + 5), f = Math.max(0, Math.min(1, meterV * 2 - i));
         g.beginPath(); g.roundRect(x0, my - 1.5, segW, 3, 1.5); g.fillStyle = 'rgba(255,255,255,.1)'; g.fill();
         if (f > 0) { const mq = g.createLinearGradient(x0, 0, x0 + segW, 0); mq.addColorStop(0, '#c2700c'); mq.addColorStop(1, '#fcd572'); g.save(); g.beginPath(); g.roundRect(x0, my - 1.5, Math.max(3, segW * f), 3, 1.5);
-          g.fillStyle = mq; g.shadowColor = '#f59e0b'; g.shadowBlur = encOn || ready ? (ready ? 8 + 6 * Math.sin(ms / 1000 * 7) : 12) : 4; g.fill(); g.restore(); }
+          g.fillStyle = mq; g.shadowColor = '#f59e0b'; g.shadowBlur = encOn || ready ? (ready ? 8 + 6 * Math.sin(T * 7) : 12) : 4; g.fill(); g.restore(); }
       }
+      if (ready) { g.font = `600 10px ${GAME_FONT}`; g.letterSpacing = '2.4px'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = acss(ENCORE_GOLD, 0.65 + 0.35 * Math.sin(T * 7)); g.fillText('ENCORE READY', tx + mw + 12, my); g.letterSpacing = '0px'; }
       g.restore();
     }
     // Hits scroll with the board (user: "can we also put the hit indicator underneath the line?", then "improve the look of the
     // hit indicator ... more interesting", "it's so fast that you can't really even read it" and "maybe scroll the hits along with
     // the board as you play?"; was one call at the right edge): under the board each judged note gets its tag, born at the
     // cursor with a pop and carried off left with the tab, fading over 2.5 s. PERFECT gold (a shine as it's born), GOOD silver,
-    // MESSY amber, MISS red (a shake); where notes come too fast for a word, a dot in its colour. A chord gets one tag.
+    // MESSY violet (was amber, too like PERFECT's gold: user "the messy indicator looks like the perfect one"), MISS red (a shake); where notes come too fast for a word, a dot in its colour. A chord gets one tag.
     if (game.on && !game.pr) {
-      const ty = cBot + 24, TAG = { Perfect: [[252, 211, 77], 'PERFECT'], Good: [[226, 232, 240], 'GOOD'], Messy: [[251, 191, 36], 'MESSY'], miss: [[248, 113, 113], 'MISS'] };
+      const ty = cBot + 24, TAG = { Perfect: [[252, 211, 77], 'PERFECT'], Good: [[226, 232, 240], 'GOOD'], Messy: [[196, 161, 255], 'MESSY'], miss: [[248, 113, 113], 'MISS'] };
       g.save(); g.font = `800 11px ${GAME_FONT}`; g.letterSpacing = '1.5px'; g.textAlign = 'center'; g.textBaseline = 'middle';
       let edge = Infinity, lastT = Infinity;
       for (let k = Math.min(notes.length, game.next + 2) - 1; k >= 0 && k >= game.next - 80; k--) {
@@ -6330,6 +6748,39 @@
         g.beginPath(); g.moveTo(-nw / 2 - 14, -14); g.lineTo(-nw / 2 - 14 - ext, -14); g.moveTo(nw / 2 + 14, -14); g.lineTo(nw / 2 + 14 + ext, -14); g.stroke();
         g.font = `600 10px ${GAME_FONT}`; g.letterSpacing = '3px'; g.fillStyle = 'rgba(245,245,247,.75)'; g.fillText('NOTE STREAK', 0, 16); g.letterSpacing = '0px'; g.restore();
       }
+    }
+    // The song's progress under the board (mockup results.html › In game, user: "Under board"): the song as a slim line, each
+    // bar you've played in how it went (gold all Perfect, white clean, violet messy, red a miss), the Encore phrases still
+    // ahead in gold, a bright head where you are, the time either side. Not in practice (its own timeline).
+    if (game.on && !game.pr && plan && hudA > 0.01) {
+      const P = arcadeBoard.prog?.res === game.result && arcadeBoard.prog.notes === notes ? arcadeBoard.prog
+        : (arcadeBoard.prog = { res: game.result, notes, upto: 0, per: plan.bars.map(() => ({ n: 0, perf: 0, messy: 0, miss: 0 })) });
+      const bars = plan.bars, barOf = (x) => { let lo = 0, hi = bars.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (bars[m] <= x + 1e-3) lo = m; else hi = m - 1; } return lo; };
+      for (; P.upto < game.next && P.upto < notes.length; P.upto++) {
+        const k = P.upto, r = game.result[k]; if (!r || (game.lead && game.lead[k] !== k)) continue;
+        const b = P.per[barOf(notes[k][0])]; b.n++;
+        if (r === 'miss') b.miss++; else if (game.grade[k] === 'Messy') b.messy++; else if (game.grade[k] === 'Perfect') b.perf++;
+      }
+      const dur = duration() || bars[bars.length - 1] || 1, pw2 = (hr - hl) * 0.64, px0 = hl + (hr - hl) * 0.18, x = (s) => px0 + (Math.max(0, Math.min(dur, s)) / dur) * pw2;
+      const py = Math.min(cBot + 126, H - 26), ph = 4, now = Math.max(0, t);
+      let a = hudA;
+      const mAge = (ms - (arcadeBoard.mileAt ?? -1e9)) / 1000;   // a short window: the streak moment over it, it steps back
+      if (arcadeBoard.mileN > 0 && mAge >= 0 && mAge < 1.6 && py < Math.min(cBot + 84, H - 22) + 26) a *= 0.25;
+      g.save(); g.globalAlpha = a;
+      g.fillStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.roundRect(px0, py, pw2, ph, ph / 2); g.fill();
+      g.save(); g.beginPath(); g.roundRect(px0, py, pw2, ph, ph / 2); g.clip();
+      P.per.forEach((b, i) => {
+        const b0 = bars[i], b1 = Math.min(now, bars[i + 1] ?? dur); if (b0 >= now) return;
+        g.fillStyle = !b.n ? 'rgba(245,245,247,.3)' : b.miss ? 'rgba(242,123,123,.9)' : b.messy ? 'rgba(196,161,255,.9)' : b.perf === b.n ? 'rgba(246,216,120,.95)' : 'rgba(245,245,247,.8)';
+        g.fillRect(x(b0), py, Math.max(0.5, x(b1) - x(b0) + 0.5), ph);
+      });
+      g.shadowColor = 'rgba(246,216,120,.8)'; g.shadowBlur = 6; g.fillStyle = 'rgba(246,216,120,.85)';
+      for (const ph2 of plan.phrases) { if (ph2.b <= now) continue; const a0 = Math.max(ph2.a, now); g.fillRect(x(a0), py, x(ph2.b) - x(a0), ph); }
+      g.restore();
+      g.fillStyle = '#fff'; g.shadowColor = acss(mood.c, 0.95); g.shadowBlur = 10; g.fillRect(x(now) - 1, py - 4, 2, ph + 8); g.shadowBlur = 0;
+      g.font = `300 12px ${GAME_FONT}`; g.fillStyle = 'rgba(245,245,247,.6)'; g.textBaseline = 'middle';
+      g.textAlign = 'right'; g.fillText(fmtTime(now), px0 - 12, py + ph / 2); g.textAlign = 'left'; g.fillText(fmtTime(dur), px0 + pw2 + 12, py + ph / 2);
+      g.restore();
     }
     game.bursts = game.bursts.filter((b) => ms - b.at < 700);
     // (no big 3-2-1 over the board: the cursor's badge counts, also after a pause)
@@ -6393,33 +6844,16 @@
       }
       g.restore();
     }
-    // The song's done (user picked the ending moment): SONG COMPLETE, or FULL COMBO with a band of gold light and twinkles,
-    // over the dimmed board, the score counting up with its record; then See results (a click or Space; by itself after 6 s).
-    if (ending) {
-      const ba = endEl - 0.2, fc = ending.fc, cy = (trackT + trackB) / 2 - 30, a = Math.max(0, Math.min(1, ba / 0.3));
-      if (ba > 0) {
-        if (fc && ba < 1.1) { const u = eo2(ba / 1.1), sx = L - 56 + (pw + 80) * u, w = W * 0.14, fq = g.createLinearGradient(sx - w, 0, sx + w, 0); fq.addColorStop(0, 'rgba(253,224,140,0)'); fq.addColorStop(0.5, `rgba(255,247,220,${0.35 * (1 - u)})`); fq.addColorStop(1, 'rgba(253,224,140,0)'); g.fillStyle = fq; g.fillRect(sx - w, trackT - pad, w * 2, phh); }
-        g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-        const label = fc ? 'FULL COMBO' : 'SONG COMPLETE'; g.font = `300 32px ${GAME_FONT}`; g.letterSpacing = '12px'; const tw = g.measureText(label).width - 12;
-        if (fc) { const gq = g.createLinearGradient(0, cy - 28, 0, cy + 2); gq.addColorStop(0, '#fff7dc'); gq.addColorStop(1, '#f5b13a'); g.fillStyle = gq; g.shadowColor = 'rgba(245,158,11,.55)'; } else { g.fillStyle = '#f5f5f7'; g.shadowColor = 'rgba(0,0,0,.6)'; }
-        g.shadowBlur = 22; g.fillText(label, W / 2 + 6, cy); g.shadowBlur = 0; g.letterSpacing = '0px';
-        const ext = eo2(ba / 0.7) * 150; g.strokeStyle = fc ? 'rgba(253,224,140,.7)' : 'rgba(245,245,247,.45)'; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(W / 2 - tw / 2 - 20, cy - 11); g.lineTo(W / 2 - tw / 2 - 20 - ext, cy - 11); g.moveTo(W / 2 + tw / 2 + 20, cy - 11); g.lineTo(W / 2 + tw / 2 + 20 + ext, cy - 11); g.stroke();
-        if (ba > 0.4) {
-          const shown = Math.round(ending.score * eo2((ba - 0.4) / 1.3)), vv = ending.val * eo2((ba - 0.4) / 1.3), tr = recordTier(vv);
-          g.globalAlpha = a * Math.min(1, (ba - 0.4) / 0.3); const nq = g.createLinearGradient(0, cy + 24, 0, cy + 76); nq.addColorStop(0, '#fff'); nq.addColorStop(1, '#c3c9d2');
-          g.font = `200 60px ${GAME_FONT}`; g.fillStyle = nq; g.fillText(shown.toLocaleString(), W / 2, cy + 80);
-          if (tr) { g.font = `600 10.5px ${GAME_FONT}`; g.letterSpacing = '2.6px'; g.fillStyle = ARCADE_TIERS[tr][1][1]; g.fillText(`${ARCADE_TIERS[tr][0]} RECORD`, W / 2 + 1.3, cy + 106); g.letterSpacing = '0px'; }
-        }
-        if (fc && ba > 0.3) for (let i = 0; i < 16; i++) {   // twinkles round FULL COMBO
-          const ang = i * 2.4, rr = tw * 0.5 + 30 + (i * 37) % 90, x = W / 2 + Math.cos(ang) * rr * 1.3, y = cy - 14 + Math.sin(ang) * rr * 0.45, z = 2 + (i % 3) * 1.5;
-          g.globalAlpha = a * Math.max(0, Math.sin(ms / 1000 * 3 + i * 1.7)) * 0.9; g.fillStyle = '#fff7dc';
-          g.beginPath(); g.moveTo(x, y - z * 2); g.lineTo(x + z * 0.4, y - z * 0.4); g.lineTo(x + z * 2, y); g.lineTo(x + z * 0.4, y + z * 0.4); g.lineTo(x, y + z * 2); g.lineTo(x - z * 0.4, y + z * 0.4); g.lineTo(x - z * 2, y); g.lineTo(x - z * 0.4, y - z * 0.4); g.closePath(); g.fill();
-        }
-        if (ba > 2) { g.globalAlpha = Math.min(1, (ba - 2) / 0.4); g.font = `600 13px ${GAME_FONT}`; const bw = g.measureText('See results').width + 44; g.beginPath(); g.roundRect(W / 2 - bw / 2, cy + 132, bw, 36, 18); g.fillStyle = '#f5f5f7'; g.fill(); g.fillStyle = '#0a0b10'; g.textBaseline = 'middle'; g.fillText('See results', W / 2, cy + 150.5); }
-        g.restore();
-      }
-      if (endEl > 6 && !ending.left) { ending.left = true; setTimeout(() => endGame(), 0); }
+    // The song's done: the board dims and the results follow (user: "can we remove the see results popop and go straight to
+    // the results?"; it was SONG COMPLETE / FULL COMBO with the score counting up, then See results after 2 s, by itself at 6 s).
+    // Then the results open out from that line (the fader black under them at once, while the game screen goes; the
+    // board is dark by then).
+    if (ending && endEl > 2.5 && !ending.left) {
+      ending.left = true;
+      const fd = $('#fader'), r = cv.getBoundingClientRect();
+      $('#game-dlg').style.setProperty('--res-x', `${r.left + curX}px`);
+      fd.style.transition = 'none'; fd.classList.add('on');
+      setTimeout(() => { endGame(); fd.style.transition = ''; setTimeout(() => fd.classList.remove('on'), 1200); }, 0);
     }
   }
 
@@ -7261,7 +7695,7 @@
       made: Date.now(), song: game.song, title: cur?.song.title, artist: cur?.song.artist, version: cur?.version.id,
       source: d.source, tuning: d.tuning, open: playOpens(d, true), strings: playNames(d, tun.strings, true), virtual_drop: virtualDropOn(d),   // (saved after the game ends)
       timing: gameTiming, windows: TIMINGS[gameTiming], miss_after: MISS_AFTER, pitch_wait: PITCH_WAIT, difficulty: gameDiff,
-      input_calibration: inputCalibration, line_sync: syncMs / 1000, output_delay: outputDelay(), shift: player.shift,
+      input_calibration: inputCalibration, listen_boost: listenBoost(), line_sync: syncMs / 1000, output_delay: outputDelay(), shift: player.shift,
       input_latency: input.stream?.getAudioTracks()[0].getSettings().latency || 0, instrument, channel: inputChannel(),
       sample_rate: ctx.sampleRate, first_frame: check.firstFrame, finished, score: game.score, hits: game.hits, judged: game.judged, best_streak: game.best,
       // frames: [ctx time, tab time (the game's clock), song position, level dB, newest-20-ms dB,
@@ -7291,6 +7725,11 @@
   const GUITAR = { open: [40, 45, 50, 55, 59, 64], strings: ['E', 'A', 'D', 'G', 'B', 'e'] };
   const samePitch = (heard, written) => heard === written || (instrument === 'guitar' && (heard - written) % 12 === 0);
   const VOLUME_KEY = 'track-splitter-monitor-volume';   // Hear myself boost, dB
+  // Listening boost (user: "it also helps if I turn up the gain, but then I get bad distortion"): a gain in front of what the
+  // game listens to (pitch, chords, strums), in floating point so it can't clip; the gates, the hold's quiet line and plucks
+  // then behave as with more gain on the interface, while the knob stays where it sounds clean. The meter and "Too loud"
+  // show the input before it. Hear myself, recordings and game checks' audio don't go through it. dB, 0-24.
+  const BOOST_KEY = 'encore-listen-boost', listenBoost = () => Math.max(0, Math.min(24, Number(pref(BOOST_KEY)) || 0));
   const monitorGain = () => 10 ** (Number($('#input-volume').value) / 20) * state.volume;   // the boost, under the master
   const pref = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
   const setPref = (key, value) => { try { localStorage.setItem(key, value); } catch { /* not kept */ } };
@@ -7404,7 +7843,7 @@
     input.stream?.getTracks().forEach((t) => t.stop());
     input.source?.disconnect();
     input.mon?.close();
-    Object.assign(input, { stream: null, source: null, analyser: null, chordAn: null, fluxAn: null, fluxPrev: null, mon: null, monIn: null, monTone: [], monOut: null, recent: [], note: null, lane: null });
+    Object.assign(input, { stream: null, source: null, listenGain: null, analyser: null, chordAn: null, fluxAn: null, fluxPrev: null, mon: null, monIn: null, monTone: [], monOut: null, monTap: null, recent: [], note: null, lane: null });
   }
   async function openInput(deviceId) {
     closeInput();
@@ -7419,18 +7858,21 @@
     input.source.connect(split);
     const channels = input.stream.getAudioTracks()[0].getSettings().channelCount;
     $('#input-mono').classList.toggle('hidden', channels !== 1);   // known to be one channel
-    connectChannel(split, input.analyser);
+    input.listenGain = ctx.createGain();
+    input.listenGain.gain.value = 10 ** (listenBoost() / 20);
+    connectChannel(split, input.listenGain);
+    input.listenGain.connect(input.analyser);
     // Chords (guitar): a longer slice, ~170 ms (`heardNotes`).
     input.chordAn = ctx.createAnalyser();
     input.chordAn.fftSize = ctx.sampleRate > 50000 ? 16384 : 8192;
     input.chordBuf = new Float32Array(input.chordAn.fftSize);
-    connectChannel(split, input.chordAn);
+    input.listenGain.connect(input.chordAn);
     // Strums (guitar game): how much the spectrum rose since the reading before (~43 ms slices).
     input.fluxAn = ctx.createAnalyser();
     input.fluxAn.fftSize = ctx.sampleRate > 50000 ? 4096 : 2048;
     input.fluxAn.smoothingTimeConstant = 0;
     input.fluxSpec = new Float32Array(input.fluxAn.frequencyBinCount);
-    connectChannel(split, input.fluxAn);
+    input.listenGain.connect(input.fluxAn);
     await setMonitor($('#input-monitor').checked);
     const buf = new Float32Array(input.analyser.fftSize);
     input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly
@@ -7455,9 +7897,9 @@
   async function setMonitor(on) {
     const token = input.monToken = (input.monToken || 0) + 1;   // a newer call (off, or on again) wins
     input.mon?.close();
-    input.mon = input.monIn = input.monOut = null;
+    input.mon = input.monIn = input.monOut = input.monTap = null;
     input.monTone = [];
-    if (!on || !input.stream) return;
+    if (!on || !input.stream) { recWireBass(); return; }
     // The smallest buffer the browser allows (latencyHint 0 s; 'interactive' is a little
     // larger), at the input's own sample rate so nothing is resampled on the way (user:
     // "there's lag from when I play and hear my bass"). Direct Monitor on the
@@ -7490,13 +7932,115 @@
     pre.gain.value = 0.25;
     clip.curve = softClipCurve();
     out.connect(pre).connect(clip).connect(m.destination);
+    input.monTap = m.createMediaStreamDestination(); clip.connect(input.monTap);   // what Hear myself plays, for a screen recording
     input.mon = m;
     applyTone();
     await m.resume();
+    recWireBass();
     const late = Math.round(((m.baseLatency || 0) + (m.outputLatency || 0) + (input.stream.getAudioTracks()[0].getSettings().latency || 0)) * 1000);
     $('#input-monitor-row').title = `Plays your bass through the app, about ${late} ms late. The interface's Direct Monitor has no delay at all.`;
     $('#input-monitor-late').textContent = `~${late} ms${input.monShift && virtualDropOn() ? ' (+~30-50 on drop D notes)' : ''} · Direct Monitor: none`;
   }
+
+  // ---------- Screen recording ----------
+  // (user: "I would like to be able to record my games with the entire screen and both the song and my input", "when I record
+  // my screen, all I hear is my bass. I also want to hear the song too", "record my entire usage while I have recording
+  // enabled, not just during the song"; the Mac's own screen recording takes one microphone, the Scarlett, and not what the
+  // computer plays; "this isnt very safe cause chrome could randomly start recording my screen" -> Encore as its own app,
+  // desktop/): REC (`#rec-btn`, every Encore screen, only in the Encore app) records Encore's own window with the app's sound and the
+  // bass until it's clicked again, sending the video to the server in 2 s pieces; it's saved
+  // in ~/Movies/Encore as an MP4. The app's sound waits `inputCalibration` (the bass reaches the app that much after the song
+  // it was played to), so they line up. The bass is what Hear myself plays when it's on (the tone match, the boost), else the
+  // input itself at Hear myself's volume; it's rewired whenever the input or Hear myself changes (`recWireBass`).
+  const recBtn = $('#rec-btn');   // kept: it moves into dialogs, which may rebuild their contents (`recOnTop` puts it back)
+  const screenRec = { on: false, rec: null, recA: null, display: null, dest: null, delay: null, bass: null, raw: null, id: '', name: '', queue: Promise.resolve(), started: 0, timer: 0, saving: false };
+  function recWireBass() {
+    if (!screenRec.on) return;
+    try { screenRec.bass?.disconnect(); } catch { /* gone with its context */ }
+    try { if (screenRec.raw) input.source?.disconnect(screenRec.raw); } catch { /* not connected */ }
+    screenRec.bass = screenRec.raw = null;
+    if (!input.stream) return;
+    if (input.monTap) screenRec.bass = ctx.createMediaStreamSource(input.monTap.stream);
+    else {
+      const split = ctx.createChannelSplitter(2), vol = ctx.createGain(), pre = ctx.createGain(), clip = ctx.createWaveShaper();
+      input.source.connect(split); connectChannel(split, vol); vol.gain.value = monitorGain(); pre.gain.value = 0.25; clip.curve = softClipCurve();
+      vol.connect(pre).connect(clip); screenRec.bass = clip; screenRec.raw = split;
+    }
+    screenRec.bass.connect(screenRec.dest);
+  }
+  function showRecBtn() {
+    const b = recBtn, on = screenRec.on, secs = on ? Math.floor((performance.now() - screenRec.started) / 1000) : 0;
+    b.classList.toggle('on', on); b.disabled = screenRec.saving;
+    b.querySelector('span').textContent = screenRec.saving ? 'SAVING…' : on ? `REC ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : 'REC';
+  }
+  async function startScreenRec() {
+    let display;
+    // The Encore app answers with its own window (desktop/main.js): no picker, no screen permission, nothing else on screen
+    try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: false }); }
+    catch (err) { toast(`Couldn’t record (${err.message}).`, 'error'); return; }
+    ctx.resume().catch(() => {});                     // (not awaited: it can wait for a click that already happened)
+    // the song and the bass add up past full scale (a first test peaked at 0 dB): a limiter on the recording only
+    const dest = ctx.createMediaStreamDestination(), mix = ctx.createDynamicsCompressor(), delay = ctx.createDelay(2);
+    mix.threshold.value = -6; mix.knee.value = 6; mix.ratio.value = 12; mix.attack.value = 0.003; mix.release.value = 0.25;
+    const trim = ctx.createGain(); trim.gain.value = 0.6;   // the compressor adds its own make-up gain (still peaking at 0 dB without this)
+    mix.connect(trim).connect(dest);
+    delay.delayTime.value = Math.max(0, Math.min(1.5, inputCalibration));
+    appOut.connect(delay).connect(mix);
+    // Two recorders, the picture (H.264 in WebM: the server copies it into the MP4 as it is) and the sound: in the app one
+    // recorder with both put out nothing, and an MP4 recorder only at the end, not in pieces
+    const vType = ['video/webm;codecs=h264', 'video/webm;codecs=vp9', 'video/webm'].find((x) => MediaRecorder.isTypeSupported(x)) || '';
+    let start;
+    try { start = await postJSON(`/api/recording/start?h264=${vType.includes('h264') ? 1 : 0}`, {}); }
+    catch (err) { toast(`Couldn’t start recording (${err.message}).`, 'error'); display.getTracks().forEach((t) => t.stop()); appOut.disconnect(delay); return; }
+    const rec = new MediaRecorder(new MediaStream(display.getVideoTracks()), { ...(vType ? { mimeType: vType } : {}), videoBitsPerSecond: 8000000 });
+    const recA = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 192000 });
+    Object.assign(screenRec, { on: true, rec, recA, display, dest: mix, delay, id: start.id, name: start.name, started: performance.now(), queue: Promise.resolve(), failed: false, stopped: 0 });
+    const send = (track) => (e) => {
+      if (!e.data.size) return;
+      const id = screenRec.id;
+      screenRec.queue = screenRec.queue.then(() => fetch(`/api/recording/${id}/chunk?track=${track}`, { method: 'POST', body: e.data })).then((r) => { if (!r.ok) screenRec.failed = true; }, () => { screenRec.failed = true; });
+    };
+    rec.ondataavailable = send('video'); recA.ondataavailable = send('audio');
+    rec.onstop = recA.onstop = () => { if (++screenRec.stopped === 2) finishScreenRec(); };
+    display.getVideoTracks()[0].addEventListener('ended', () => stopScreenRec());   // the browser's own Stop sharing
+    recWireBass();
+    rec.start(2000); recA.start(2000);
+    screenRec.timer = setInterval(showRecBtn, 1000); showRecBtn();
+    toast('Recording Encore with its sound and your bass. Click REC again to stop.');
+  }
+  function stopScreenRec() { for (const r of [screenRec.rec, screenRec.recA]) if (r && r.state !== 'inactive') r.stop(); }
+  async function finishScreenRec() {
+    const { id, display, delay } = screenRec;
+    clearInterval(screenRec.timer);
+    display?.getTracks().forEach((t) => t.stop());
+    try { appOut.disconnect(delay); } catch { /* already */ }
+    try { screenRec.bass?.disconnect(); if (screenRec.raw) input.source?.disconnect(screenRec.raw); } catch { /* gone */ }
+    Object.assign(screenRec, { on: false, rec: null, recA: null, display: null, bass: null, raw: null, saving: true }); showRecBtn();
+    await screenRec.queue;
+    try {
+      const r = await postJSON(`/api/recording/${id}/finish`, {});
+      const t = el('div', { className: 'toast', textContent: `Saved: Movies › Encore › ${r.name}${screenRec.failed ? ' (a piece went missing on the way)' : ''}` });
+      const show = el('button', { className: 'toast-act', type: 'button', textContent: 'Show in Finder' });
+      show.addEventListener('click', () => api(`/api/recording/reveal?path=${encodeURIComponent(r.path)}`, { method: 'POST' }).catch((err) => toast(err.message, 'error')));
+      t.append(show); $('#toasts').append(t); setTimeout(() => t.remove(), 12000);
+    } catch (err) { toast(`The recording couldn’t be saved (${err.message}).`, 'error'); }
+    screenRec.saving = false; showRecBtn();
+  }
+  recBtn.addEventListener('click', () => (screenRec.on ? stopScreenRec() : startScreenRec()));
+  // REC sits in the top layer (a popover) so it shows above dialogs too; while a modal dialog is open (pause, settings,
+  // results) it's moved inside it, as everything outside a modal dialog can't be clicked, and shown again on top. Only in
+  // Encore (body.arcade).
+  function recOnTop() {
+    const b = recBtn, host = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).pop() || document.body;
+    try {
+      if (b.parentElement !== host) host.append(b);
+      if (b.matches(':popover-open')) b.hidePopover();
+      if (document.body.classList.contains('arcade') && window.encoreApp) b.showPopover();   // only in the Encore app (desktop/), which records its own window
+    } catch { /* no popovers: under dialogs */ }
+  }
+  new MutationObserver((ms) => { if (!recBtn.isConnected || ms.some((m) => (m.target === document.body && m.attributeName === 'class') || (m.target.tagName === 'DIALOG' && m.attributeName === 'open'))) recOnTop(); })
+    .observe(document.body, { attributes: true, attributeFilter: ['class', 'open'], subtree: true, childList: true });
+  recOnTop();
 
   // Match the song's tone (user: "automatically pick up the sound of the bass in a song
   // and make that as an effect so you have the same tone"): the server compares the
@@ -8055,11 +8599,12 @@
     input.analyser.getFloatTimeDomainData(buf);
     let peak = 0;
     for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
-    // In dB like the interface's own meters (-60 to 0 dBFS), so a quiet input still shows.
-    const db = 20 * Math.log10(peak + 1e-9);
-    $('#input-level').style.width = `${Math.max(0, Math.min(100, ((db + 60) / 60) * 100))}%`;
-    $('#input-level-box').title = peak > 0.98 ? 'Too loud: turn the gain down on the interface'
-      : peak > 0.003 ? `Your bass is coming in (${Math.round(db)} dB)` : 'Nothing coming in: play a note';
+    // In dB like the interface's own meters (-60 to 0 dBFS), so a quiet input still shows; the meter is the input itself,
+    // before the listening boost (`db`, after it, is what the game goes by).
+    const db = 20 * Math.log10(peak + 1e-9), inPeak = peak / (input.listenGain?.gain.value || 1), inDb = 20 * Math.log10(inPeak + 1e-9);
+    $('#input-level').style.width = `${Math.max(0, Math.min(100, ((inDb + 60) / 60) * 100))}%`;
+    $('#input-level-box').title = inPeak > 0.98 ? 'Too loud: turn the gain down on the interface'
+      : inPeak > 0.003 ? `Your bass is coming in (${Math.round(inDb)} dB)` : 'Nothing coming in: play a note';
     // Ghost notes with the hands off the strings (user): background noise and mains hum
     // (60 Hz sits between A#1 and B1) were read as notes. Three guards:
     // - a noise gate 10 dB above the input's own quiet level (the 20th percentile of the
@@ -8151,7 +8696,9 @@
       else if (game.started && !game.paused) {
         if (player.offset === 0) {                        // the song ended (its end resets the position)
           // every note played on the Arcade board: its "song complete" moment plays first (and ends the game itself)
-          if (game.enc && game.next >= (tabView.data?.notes.length || 0)) game.songEnded = true; else endGame();
+          // (user: "can we clean up the ending? it still shows the board with the notes": when the song ended with its last notes
+          // still inside their window, this went straight to endGame, skipping the closing, with the tab's view behind the results)
+          if (game.enc) { missRest(); game.songEnded = true; } else endGame();
         }
         else pauseGame();                                 // paused (Space): the pause menu
       }
@@ -8932,7 +9479,7 @@
   function thunk() {                                   // a muted string thud: filtered noise + a low knock
     const t0 = ctx.currentTime, out = ctx.createGain();
     out.gain.setValueAtTime(0.0001, t0); out.gain.exponentialRampToValueAtTime(0.35, t0 + 0.005); out.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
-    out.connect(ctx.destination);
+    out.connect(appOut);
     const noise = ctx.createBuffer(1, Math.round(ctx.sampleRate * 0.15), ctx.sampleRate), data = noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter();
@@ -9199,7 +9746,7 @@
           const grade = Math.abs(pluck.t - notes[k][0]) < perfect ? 'Perfect' : 'Good', at = performance.now(), before = multiplier();
           const top = Math.max(...game.members[k].map((j) => notes[j][2]));   // PERFECT!/GOOD once, over the chord
           for (const j of game.members[k]) {
-            game.result[j] = 'hit'; game.hitAt[j] = now; game.grade[j] = grade;
+            game.result[j] = 'hit'; game.hitAt[j] = now; game.grade[j] = grade; game.dt[j] = pluck.t - notes[k][0];
             game.laneHit[notes[j][2]] = now; game.laneHitMs[notes[j][2]] = at;
             game.bursts.push({ s: notes[j][2], at, perfect: grade === 'Perfect', messy: false, k: j, label: notes[j][2] === top, dt: pluck.t - notes[k][0] });
           }
@@ -9269,7 +9816,7 @@
         } else if (pitch !== null && match) {
           messy = heldWrong(pluck.t + 0.01, match[0]);
         }
-        game.result[k] = 'hit'; game.hitAt[k] = now;
+        game.result[k] = 'hit'; game.hitAt[k] = now; game.dt[k] = pluck.t - ns;
         game.grade[k] = messy ? 'Messy' : Math.abs(pluck.t - ns) < perfect ? 'Perfect' : 'Good';
         checkEvent({ e: 'hit', k, at: now, pluck: pluck.t, soft: !!pluck.soft, grade: game.grade[k] });
         game.laneHit[notes[k][2]] = now;
@@ -9326,22 +9873,47 @@
     // game checks a quarter of holds lost their pitch 0.2 s+ before the end, mostly unclear readings as the note
     // faded or the hand moved on; held to the end 261 of 431 -> 349 with this).
     // A held bass double stop is one hold (on its first note, as long as its longest), kept by either of its notes or an octave.
-    const hold = game.hold || (game.hold = {});
+    // Holds "still ending way too early" and "when I play two held notes at the same time, only the last played one is
+    // registered" (2026-11-08; replayed on the game checks: 77% of holds kept to the end, the rest lost to the held note's
+    // own overtones read as another note, to another note you'd hit and were holding too, or to the note fading just under the
+    // gate before its end): the octave and octave-and-a-fifth count as the note (HOLD_HARM); another hit note still ringing
+    // keeps it; another pitch or silence has to last HOLD_WAIT; the last part counts only if it was heard going into it
+    // (HOLD_FRESH). Replayed: 94% kept, and a made-up let-go halfway (silence or a wrong note) still loses 98% within 0.12 s.
+    const hold = game.hold || (game.hold = {}), ringing = [];
+    for (let j = Math.max(0, game.next - 12); j < game.next && j < notes.length; j++) {
+      if (game.result[j] === 'hit' && notes[j][0] - 0.05 <= now && now < notes[j][1]) { const p = pitchOfNote(j); if (p !== null) ringing.push([j, p]); }
+    }
     for (let k = Math.max(0, game.next - 8); k < game.next + 4 && k < notes.length; k++) {
       if (game.members && !game.strums && game.lead[k] !== k) continue;
       const chord = !game.strums && game.members?.[k], ks = chord || [k], ns = notes[k][0], ne = Math.max(...ks.map((j) => notes[j][1])), pitch = pitchOfNote(k);
-      const pitches = ks.map(pitchOfNote).filter((x) => x !== null), its = (m) => m !== null && (chord ? pitches.some((x) => (m - x) % 12 === 0) : m === pitch);
+      const pitches = ks.map(pitchOfNote).filter((x) => x !== null);
+      const its = (m) => m !== null && (chord ? pitches.some((x) => (m - x) % 12 === 0) : m === pitch || HOLD_HARM.includes(m - pitch));
       if (game.result[k] !== 'hit' || ne - ns <= 0.4 || now <= ns + 0.15 || now >= ne || !pitches.length) continue;
-      const h = hold[k] || (hold[k] = { last: null, lost: false, done: false });
+      const h = hold[k] || (hold[k] = { last: null, lost: false, done: false, otherAt: null, quietAt: null, refDb: -100, refT: 0 });
       if (h.lost) continue;
-      const finishing = now >= ne - Math.min(HOLD_GRACE, 0.25 * (ne - ns));
+      // A long note's last stretch (a quarter of it, 0.3 s or more, at most 0.4) up to its end or the next note, whichever
+      // comes first, can be let go: you lift to move on (the game checks: long notes let go a median 0.29 s before their end,
+      // up to ~1 s on the longest; kept 49% -> 78%, a let-go halfway still lost). Shorter notes: HOLD_GRACE as before.
+      let nx = Infinity; for (let j = k + 1; j < notes.length; j++) if (notes[j][0] - ns >= 0.03) { nx = notes[j][0]; break; }
+      const ee = Math.min(ne, nx), len = ee - ns;
+      const finishing = now >= (len >= 1 ? ee - Math.min(Math.max(HOLD_LEAVE, 0.25 * len), 0.4 * len) : ne - Math.min(HOLD_GRACE, 0.25 * (ne - ns)));
       if (!h.done) {
-        if (its(heardNow)) h.last = now;
-        const quiet = (input.freshDb ?? -100) <= GATE_DB, other = heardNow !== null && !its(heardNow);
+        const sib = heardNow !== null && ringing.some(([j, p]) => !ks.includes(j) && (heardNow - p) % 12 === 0);   // another note you're holding
+        const db = input.freshDb ?? -100;
+        if (its(heardNow) || sib) { h.last = now; h.refDb = db; h.refT = now; }
+        // Still ringing though its pitch can't be read (user: "Is there any way to improve the sustain so those hold longer?":
+        // EVOLVE's 0:37 note rang at a steady -22 dB to the mute, but the pitch reader gave nothing for its last 0.6 s): no
+        // reading, no pluck since, and the level within HOLD_RING of the last clear reading (less a fade of HOLD_FADE a second;
+        // a mute falls well below it). Replayed: long notes kept 78% -> 83%; a made-up mute still loses 98% of them.
+        else if (heardNow === null && h.last !== null && db > GATE_DB && db >= h.refDb - HOLD_RING - HOLD_FADE * (now - h.refT)
+                 && !game.plucks.some((p) => !p.soft && p.t > ns + 0.15 && p.t <= now)) h.last = now;
+        const q = db <= GATE_DB, o = heardNow !== null && !its(heardNow) && !sib;
+        h.quietAt = q ? (h.quietAt ?? now) : null; h.otherAt = o ? (h.otherAt ?? now) : null;
+        const quiet = q && now - h.quietAt >= HOLD_WAIT, other = o && now - h.otherAt >= HOLD_WAIT;
         if (h.last === null ? now - ns > 0.4 : (other || quiet || now - h.last > HOLD_GAP)) {
-          if (!finishing || h.last === null) { h.lost = true; continue; }
+          if (!finishing || h.last === null || now - h.last > HOLD_FRESH) { h.lost = true; checkEvent({ e: 'hold', k, at: now, kept: false, why: h.last === null ? 'never' : other ? 'other' : quiet ? 'quiet' : 'gap' }); continue; }
         }
-        if (finishing && h.last !== null) h.done = true;
+        if (finishing && h.last !== null && now - h.last <= HOLD_FRESH) { h.done = true; checkEvent({ e: 'hold', k, at: now, kept: true }); }
         if (h.last === null) continue;
       }
       addScore(2 * multiplier(), now);
@@ -9349,7 +9921,7 @@
     }
     encoreTick(now);
   }
-  const HOLD_GAP = 0.25, HOLD_GRACE = 0.2;
+  const HOLD_GAP = 0.25, HOLD_GRACE = 0.25, HOLD_WAIT = 0.1, HOLD_FRESH = 0.12, HOLD_HARM = [12, -12, 19, 24], HOLD_LEAVE = 0.3, HOLD_RING = 6, HOLD_FADE = 6;
 
   async function startGame() {
     if (game.on) { pauseGame(); return; }
@@ -9401,7 +9973,7 @@
     $('#tg-song').append(state.current.song.title, el('span', { textContent: `${state.current.song.artist} · ${DIFFS[gameDiff][0]}` }));
 
     Object.assign(game, { on: true, started: false, score: 0, streak: 0, best: 0, hits: 0, judged: 0, next: firstNote,
-                          result: new Array(tabView.data.notes.length).fill(null), hitAt: [], grade: [], laneHit: {}, plucks: [], heard: [],
+                          result: new Array(tabView.data.notes.length).fill(null), hitAt: [], grade: [], dt: [], laneHit: {}, plucks: [], heard: [],
                           bursts: [], sparks: [], sustain: {}, hold: {}, laneHitMs: {}, laneTapMs: {}, multAt: 0, milestone: null, recent: [], goAt: null,
                           laneMissMs: {}, mistakes: [], streakLost: null, wrongAt: 0, tuneLog: {},
                           prevDb: -100, lastMidi: null, song: tabView.song, source: tabView.data.source, paused: false,
@@ -9418,6 +9990,7 @@
     game.intro = null; game.songEnded = false;
     game.enc = arcadeMoments ? (() => { const plan = encorePlan(tabView.data); return { plan, st: plan.phrases.map((p) => (p.ks[0] < firstNote ? 'skip' : null)), meter: 0, on: null, bonus: 0, doneAt: {}, endAt: -1e9, endBonus: 0 }; })() : null;
     Object.assign(arcadeBoard, { big: 0, encK: 0, ending: null, pal: null, mood: null });
+    document.body.classList.remove('board-closed');
     songPalette(state.current.song).then((p) => { if (game.on) arcadeBoard.pal = p; });   // the board's colours from the cover
     document.body.classList.add('game-on');
     document.body.classList.toggle('practice', !!game.pr);
@@ -9470,6 +10043,15 @@
 
   // results: false when the game ends because you left it (closed the tab, turned the
   // input off, picked another song): it just ends, without the results box.
+  // The song ended with notes not judged yet (the last ones still inside their window): they count as misses, so the ending plays.
+  function missRest() {
+    const notes = tabView.data?.notes || [];
+    for (; game.next < notes.length; game.next++) {
+      if (game.result[game.next]) continue;
+      game.result[game.next] = 'miss'; game.judged++; game.streak = 0;
+      for (const j of game.members?.[game.next] || []) game.result[j] = 'miss';
+    }
+  }
   function endGame(results = true) {
     if (!game.on) return;
     arcadeBoard.ending = null; game.intro = null;
@@ -9489,7 +10071,10 @@
     if (player.playing) pause();
     if (practiced) return;                               // practice keeps no score: straight back to song select
     if (check.on) finishCheck(game.started ? played : null, finished);
-    if (!game.started || !results) return;              // stopped during the countdown, or left
+    // The tab's own view (put back above) stays hidden under the results until they close (user: "when the board closes, it
+    // reappears again with notes on it")
+    document.body.classList.add('board-closed');
+    if (!game.started || !results) { document.body.classList.remove('board-closed'); return; }   // stopped during the countdown, or left
     const total = game.units || played?.notes.length || 0;   // a guitar chord counts once
     const key = bestKey(game.song, game.source);
     let bests = {};
@@ -9506,7 +10091,7 @@
     // passes; a finished run shows its progress toward the next tier as the ring, and how many points that is.
     const recVal = finished ? Math.min(5, starsFor(game.score, total)) : 0;
     $('#game-stars').classList.toggle('hidden', !finished);
-    const recCanvas = recordEl(0, 190, false), recName = el('div', { className: 'game-record-name' });
+    const recCanvas = recordEl(0, 150, false), recName = el('div', { className: 'game-record-name' });
     $('#game-stars').replaceChildren(recCanvas, recName);
     $('#game-stars').setAttribute('aria-label', recordTier(recVal) ? `${ARCADE_TIERS[recordTier(recVal)][0].toLowerCase()} record` : 'no record yet');
     const nextTier = recordTier(recVal);
@@ -9516,33 +10101,161 @@
     $('#game-title').textContent = song?.title || 'Results';
     $('#game-artist').textContent = song?.artist || '';
     $('#game-diff').textContent = `${DIFFS[gameDiff][0]} · ${gameTiming[0].toUpperCase()}${gameTiming.slice(1)} timing${finished ? '' : ' · stopped early'}`;
-    const target = game.score, began = performance.now();
+    const target = game.score, began = performance.now() + 1100;   // once the results have opened and the record is in
+    const fc = finished && game.judged > 0 && game.hits === game.judged && !game.grade.includes('Messy');   // was the ending moment's FULL COMBO
     let recTier = 0, recPopAt = -9;
+    $('#game-dlg').classList.remove('res-on');
     const count = () => {
-      const now = performance.now(), k = Math.min(1, (now - began) / 1600), e = 1 - (1 - k) ** 3, v = recVal * e;
+      const now = performance.now(), k = Math.min(1, Math.max(0, (now - began) / 1600)), e = 1 - (1 - k) ** 3, v = recVal * e;
       $('#game-score').textContent = Math.round(target * e).toLocaleString();
       if (finished) {
         if (recordTier(v) > recTier) { recTier = recordTier(v); recPopAt = now / 1000; }
         paintRecord(recCanvas, v, now / 1000, recPopAt);
-        recName.textContent = recordName(v); recName.style.color = recordColor(v);
+        recName.textContent = `${fc && k >= 1 ? 'Full combo · ' : ''}${recordName(v)}`; recName.style.color = recordColor(v);
       }
       $('#game-next').classList.toggle('on', k >= 1);
+      if (k >= 1 && !$('#game-dlg').classList.contains('res-on')) { $('#game-dlg').classList.add('res-on'); resRun.shownAt = now; drawResRun(); }
       if ((finished && $('#game-dlg').open) || k < 1) requestAnimationFrame(count);   // the reflection keeps turning while it shows
     };
     count();
     $('#game-best').textContent = !finished ? `Not saved: you stopped early${before ? ` · your best ${before.toLocaleString()}` : ''}`
       : game.score > before ? (before ? `New best! (was ${before.toLocaleString()})` : 'Your first score for this song') : `Your best: ${before.toLocaleString()}`;
     $('#game-best').classList.toggle('new', finished && game.score > before);
-    $('#game-acc').textContent = `${game.judged ? Math.round((game.hits / game.judged) * 100) : 0}%`;
-    $('#game-hits').textContent = `${game.hits} of ${game.judged}`;
+    $('#game-acc').innerHTML = `${game.judged ? Math.round((game.hits / game.judged) * 100) : 0}<small>%</small>`;
+    $('#game-hits').textContent = `${game.hits} of ${game.judged} notes`;
     $('#game-streak').textContent = String(game.best);
+    prepResRun(played);
     $('#game-note').textContent = [finished ? '' : `Stopped at ${fmtTime(currentTime())}: the song has ${total} notes.`, tuningVerdict()].filter(Boolean).join(' ');
     setDlgCover($('#game-dlg'));
+    resultsSky();
     $('#game-art').replaceChildren(...(song ? [coverEl(song)] : []));
     $('#game-dlg').showModal();
+    $('#game-dlg').addEventListener('close', () => document.body.classList.remove('board-closed'), { once: true });
     renderTabHead();                                     // "Your best" next to Start
   }
   $('#tab-game').addEventListener('click', startGame);
+  // Stay in space: the results open over the galaxy the board was drawn on (its painted sky, dimmed); the guitar's 2D board
+  // and the tab view keep the cover's glow.
+  function resultsSky() {
+    const dlg = $('#game-dlg'), GX = arcadeBoard.galaxy, sky = arcadeOn && GX && !(game.members && game.strums) && gameView !== 'tab';
+    dlg.classList.toggle('over-sky', !!sky); if (!sky) return;
+    let c = dlg.querySelector('.res-sky'); if (!c) { c = el('canvas', { className: 'res-sky' }); dlg.prepend(c); }
+    c.width = GX.sky.width; c.height = GX.sky.height; const x = c.getContext('2d'); x.drawImage(GX.sky, 0, 0);
+    const w = c.width, h = c.height, q = x.createRadialGradient(w * 0.5, h * 0.45, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.7); q.addColorStop(0, 'rgba(4,5,10,.38)'); q.addColorStop(1, 'rgba(4,5,10,.7)'); x.fillStyle = q; x.fillRect(0, 0, w, h);
+  }
+  // The results' run (mockup design/game-mockups/results.html, Split + Bars): a column per bar of music, its height the notes,
+  // stacked Perfect / Good / Messy / Miss; Encore phrases gold under it; hover for the bar. Where it slipped: the 3 stretches
+  // that lost most notes under 75% clean (a good bar or two inside joins them; under 6 notes ignored), each with Practice
+  // (Practice looped there, `arcade.prLoop`). Timing: every hit against the beat (`game.dt`), the Perfect window gold.
+  const RES_COL = { Perfect: '#f6d878', Good: '#d9dee5', Messy: '#c4a1ff', miss: '#f27b7b' }, RES_ORDER = ['Perfect', 'Good', 'Messy', 'miss'];
+  const resRun = { bars: [], per: [], spots: [], dts: [], phrases: [], dur: 1, hover: -1, shownAt: 0 };
+  function prepResRun(d) {
+    const notes = d?.notes || [], bars = practiceBars(), dur = duration() || bars[bars.length - 1] || 1;
+    const barOf = (t) => { let lo = 0, hi = bars.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (bars[m] <= t + 1e-3) lo = m; else hi = m - 1; } return lo; };
+    const per = bars.map(() => ({ n: 0, ok: 0, c: { Perfect: 0, Good: 0, Messy: 0, miss: 0 } })), c = { Perfect: 0, Good: 0, Messy: 0, miss: 0 }, dts = [];
+    notes.forEach((n, k) => {
+      if (game.lead && game.lead[k] !== k) return;      // a chord counts once
+      const r = game.result[k]; if (!r) return;           // not reached (stopped early)
+      const cat = r === 'miss' ? 'miss' : game.grade[k] || 'Good', p = per[barOf(n[0])];
+      c[cat]++; p.c[cat]++; p.n++; if (cat === 'Perfect' || cat === 'Good') p.ok++;
+      if (r === 'hit' && Number.isFinite(game.dt[k])) dts.push(game.dt[k]);
+    });
+    const spots = [];
+    let s0 = -1;
+    for (let b = 0; b <= per.length; b++) {
+      const bad = b < per.length && per[b].n && per[b].ok / per[b].n < 0.75;
+      if (bad && s0 < 0) s0 = b;
+      if (!bad && s0 >= 0) { spots.push({ a: s0, b: b - 1 }); s0 = -1; }
+    }
+    for (let i = spots.length - 1; i > 0; i--) if (spots[i].a - spots[i - 1].b <= 3) spots[i - 1].b = spots.splice(i, 1)[0].b;
+    for (const sp of spots) { const ps = per.slice(sp.a, sp.b + 1); sp.n = ps.reduce((a, p) => a + p.n, 0); sp.ok = ps.reduce((a, p) => a + p.ok, 0); sp.lost = sp.n - sp.ok; }
+    resRun.spots = spots.filter((sp) => sp.n >= 6).sort((x, y) => y.lost - x.lost).slice(0, 3).sort((x, y) => x.a - y.a);
+    let phrases = [];
+    try { phrases = !game.strums && d?.lines?.length ? encorePlan(d).phrases : []; } catch { /* no phrases */ }
+    const from = bars[Math.max(0, per.findIndex((p) => p.n))] ?? 0, to = bars[per.findLastIndex((p) => p.n) + 1] ?? dur;
+    phrases = phrases.filter((ph) => ph.a >= from - 0.05 && ph.b <= to + 0.05);   // only where you played (a later start, stopped early)
+    Object.assign(resRun, { bars, per, dts, phrases, dur, hover: -1 });
+    $('#game-perfect').textContent = c.Perfect; $('#game-good').textContent = c.Good; $('#game-messy').textContent = c.Messy; $('#game-miss').textContent = c.miss;
+    $('#game-axis').replaceChildren(...Array.from({ length: 7 }, (_, i) => el('span', { textContent: fmtTime((dur * i) / 6) })));
+    const label = (sp) => (sp.a === sp.b ? `Bar ${sp.a + 1}` : `Bars ${sp.a + 1}–${sp.b + 1}`), can = arcadeOn && !!arcade.song;
+    const weak = [el('span', { className: 'res-label', textContent: resRun.spots.length ? 'Where it slipped' : 'Nothing slipped' })];
+    if (!resRun.spots.length) weak.push(el('div', { className: 'res-spot', textContent: 'Every bar at 75% or better' }));
+    for (const sp of resRun.spots) {
+      const row = el('div', { className: 'res-spot' }, el('i'), el('span', {}, label(sp), el('em', { textContent: `${fmtTime(bars[sp.a])} · ${Math.round((sp.ok / sp.n) * 100)}% clean` })));
+      if (can) row.append(el('button', { type: 'button', className: 'btn', textContent: 'Practice', onclick: () => practiceSpot(sp) }));
+      row.onmouseenter = () => { resRun.hot = sp; drawResRun(); }; row.onmouseleave = () => { resRun.hot = null; drawResRun(); };
+      weak.push(row);
+    }
+    $('#game-weak').replaceChildren(...weak);
+    const worst = [...resRun.spots].sort((x, y) => y.lost - x.lost)[0];
+    $('#game-practice').classList.toggle('hidden', !can || !worst);
+    if (worst) { $('#game-practice').textContent = `Practice ${label(worst).toLowerCase()}`; $('#game-practice').onclick = () => practiceSpot(worst); }
+    const ms = dts.length ? Math.round((dts.reduce((a, b) => a + b, 0) / dts.length) * 1000) : 0;
+    $('#game-res-timing').classList.toggle('hidden', dts.length < 5);
+    $('#game-tim-txt').innerHTML = `${Math.abs(ms) < 8 ? 'Right on the beat' : ms < 0 ? 'A touch early' : 'A touch late'} <em>· average ${ms > 0 ? '+' : ms < 0 ? '−' : ''}${Math.abs(ms)} ms</em>`;
+    resRun.mean = ms / 1000;
+    $('#game-run').classList.toggle('hidden', !c.Perfect && !c.Good && !c.Messy && !c.miss);
+    drawResRun();
+  }
+  function practiceSpot(sp) {                            // Practice looped on those bars (startPractice picks it up)
+    $('#game-dlg').close();
+    arcade.mode = 'practice'; arcade.prLoop = [sp.a, sp.b + 1];
+    arcadePlay();
+  }
+  function fitCanvas(cv) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    return [g, w, h];
+  }
+  function drawResRun() {
+    if (!$('#game-dlg').open || !$('#game-dlg').classList.contains('res-on')) return;
+    const { bars, per, dur, phrases } = resRun, [g, w, h] = fitCanvas($('#game-run-cv')), x = (t) => (t / dur) * w;
+    const k = Math.min(1, (performance.now() - resRun.shownAt) / 1400), upto = dur * (1 - (1 - k) ** 2), base = h - 14, top = 8;
+    const maxN = Math.max(4, ...per.map((p) => p.n));
+    for (const ph of phrases) { g.fillStyle = 'rgba(246,216,120,.5)'; g.fillRect(x(ph.a) + 1, base + 6, Math.max(1, x(ph.b) - x(ph.a) - 2), 2); }
+    for (const sp of resRun.spots) {
+      g.fillStyle = resRun.hot === sp ? 'rgba(242,123,123,.16)' : 'rgba(242,123,123,.07)';
+      g.fillRect(x(bars[sp.a]) - 1, top - 4, x(bars[sp.b + 1] ?? dur) - x(bars[sp.a]) + 2, base - top + 8);
+    }
+    per.forEach((p, b) => {
+      if (!p.n || bars[b] > upto) return;
+      const x0 = x(bars[b]), bw = Math.max(1, x(bars[b + 1] ?? dur) - x0 - 2), hh = (base - top) * (p.n / maxN);
+      let y = base;
+      g.globalAlpha = resRun.hover < 0 || resRun.hover === b ? 0.9 : 0.45;
+      for (const o of RES_ORDER) { if (!p.c[o]) continue; const sh = (hh * p.c[o]) / p.n; g.fillStyle = RES_COL[o]; g.fillRect(x0 + 1, y - sh, bw, sh - 0.5); y -= sh; }
+      g.globalAlpha = 1;
+    });
+    g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(0, base, w, 1);
+    if (resRun.hover >= 0) { const xm = (x(bars[resRun.hover]) + x(bars[resRun.hover + 1] ?? dur)) / 2; g.fillStyle = 'rgba(255,255,255,.7)'; g.fillRect(xm - 0.5, top - 4, 1, base - top + 4); }
+    // Timing: each hit's dot (within ±100 ms), the Perfect window, the average
+    if (resRun.dts.length >= 5) {
+      const [t, tw, th] = fitCanvas($('#game-tim-cv')), R = 0.1, tx = (dt) => tw / 2 + (Math.max(-R, Math.min(R, dt)) / R) * (tw / 2), mid = th / 2, perfect = TIMINGS[gameTiming][2];
+      t.fillStyle = 'rgba(255,255,255,.1)'; t.fillRect(0, mid, tw, 1);
+      t.fillStyle = 'rgba(246,216,120,.12)'; t.fillRect(tx(-perfect), 4, tx(perfect) - tx(-perfect), th - 8);
+      t.fillStyle = 'rgba(255,255,255,.5)'; t.fillRect(tw / 2 - 0.5, 2, 1, th - 4);
+      resRun.dts.forEach((d, i) => { const yy = mid + ((((i * 2654435761) >>> 0) % 1000) / 1000 - 0.5) * (th - 14);
+        t.fillStyle = Math.abs(d) < perfect ? 'rgba(246,216,120,.55)' : 'rgba(217,222,229,.4)'; t.beginPath(); t.arc(tx(d), yy, 1.3, 0, 7); t.fill(); });
+      t.fillStyle = '#fff'; t.shadowColor = '#fff'; t.shadowBlur = 8; t.fillRect(tx(resRun.mean) - 1, 1, 2, th - 2); t.shadowBlur = 0;
+      t.font = `600 9px ${getComputedStyle(document.body).fontFamily}`; t.fillStyle = 'rgba(245,245,247,.34)'; t.textBaseline = 'bottom';
+      t.textAlign = 'left'; t.fillText('EARLY', 0, th); t.textAlign = 'right'; t.fillText('LATE', tw, th);
+    }
+    if (k < 1) requestAnimationFrame(drawResRun);
+  }
+  $('#game-run-cv').addEventListener('mousemove', (e) => {
+    const cv = e.currentTarget, r = cv.getBoundingClientRect(), t = ((e.clientX - r.left) / r.width) * resRun.dur, bars = resRun.bars;
+    let b = 0; while (b + 1 < bars.length && bars[b + 1] <= t) b++;
+    const p = resRun.per[b], tip = $('#game-run-tip');
+    if (!p) return;
+    resRun.hover = b; drawResRun();
+    tip.innerHTML = `<b>Bar ${b + 1}</b> · ${fmtTime(bars[b])} · ${p.n ? `${p.ok} of ${p.n} clean${p.c.miss ? ` · ${p.c.miss} missed` : ''}` : 'no notes'}`;
+    tip.style.opacity = 1;
+    const pr = cv.parentElement.getBoundingClientRect();
+    tip.style.left = `${Math.min(pr.width - tip.offsetWidth, Math.max(0, e.clientX - pr.left + 14))}px`;
+    tip.style.top = `${cv.offsetTop - 34}px`;
+  });
+  $('#game-run-cv').addEventListener('mouseleave', () => { resRun.hover = -1; $('#game-run-tip').style.opacity = 0; drawResRun(); });
+  window.addEventListener('resize', () => drawResRun());
 
   // Tab / Game sections, and the More menu (the less-used tab controls).
   function setSection(section) {
@@ -9673,7 +10386,10 @@
   async function startPractice() {
     const pr = game.pr;
     game.started = true;                                 // there's no "didn't start" in practice
-    practiceReset(Math.max(player.offset, playRange().start));   // from the first sound (or the test start)
+    const want = arcade.prLoop, bars = practiceBars();   // Practice on the results: looped on those bars
+    arcade.prLoop = null;
+    if (want) { const a = Math.max(0, Math.min(want[0], bars.length - 2)); Object.assign(pr, { loop: [a, Math.max(a + 1, Math.min(want[1], bars.length - 1))], loopN: 1, loops: [] }); }
+    practiceReset(want ? bars[pr.loop[0]] : Math.max(player.offset, playRange().start));   // from the first sound (or the test start)
     if (pr.want !== 100) await practiceSpeed(pr.want, false);
     renderPractice();
     practiceGo();
@@ -10042,6 +10758,7 @@
     $('#gs-monitor').checked = $('#input-monitor').checked;
     $('#gs-tone').checked = toneOn();
     $('#gs-monvol').value = $('#input-volume').value; setFill($('#gs-monvol')); $('#gs-monvol-db').textContent = `+${$('#gs-monvol').value} dB`;
+    $('#gs-boost').value = String(listenBoost()); setFill($('#gs-boost')); $('#gs-boost-db').textContent = listenBoost() ? `+${listenBoost()} dB` : 'Off';
     $('#gs-volume').value = $('#mix-song').value; setFill($('#gs-volume')); $('#gs-volume-pct').textContent = `${$('#gs-volume').value}%`;
     $('#gs-master').value = $('#volume').value; setFill($('#gs-master')); $('#gs-master-pct').textContent = `${$('#gs-master').value}%`;
     $('#settings-dlg').showModal();
@@ -10078,6 +10795,10 @@
   $('#gs-speed').addEventListener('dblclick', (e) => { e.target.value = '1'; relay(e.target, '#hw-speed', 'input'); showSpeed(); });
   $('#gs-monitor').addEventListener('change', (e) => { $('#input-monitor').checked = e.target.checked; $('#input-monitor').dispatchEvent(new Event('change')); });
   $('#gs-tone').addEventListener('change', (e) => { setToneOn(e.target.checked); $('#gs-monitor').checked = $('#input-monitor').checked; });
+  $('#gs-boost').addEventListener('input', (e) => {
+    const v = Number(e.target.value); setPref(BOOST_KEY, String(v)); setFill(e.target); $('#gs-boost-db').textContent = v ? `+${v} dB` : 'Off';
+    if (input.listenGain) input.listenGain.gain.value = 10 ** (v / 20);
+  });
   $('#gs-monvol').addEventListener('input', (e) => { relay(e.target, '#input-volume', 'input'); $('#gs-monvol-db').textContent = `+${e.target.value} dB`; });
   $('#gs-volume').addEventListener('input', (e) => { relay(e.target, '#mix-song', 'input'); $('#gs-volume-pct').textContent = `${e.target.value}%`; });
   $('#gs-master').addEventListener('input', (e) => { relay(e.target, '#volume', 'input'); $('#gs-master-pct').textContent = `${e.target.value}%`; });
@@ -10392,7 +11113,7 @@
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.frequency.value = accent ? 1760 : 1175;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.06);
+    o.connect(g).connect(appOut); o.start(t); o.stop(t + 0.06);
   }
   async function startCalibration() {
     await ctx.resume();
@@ -11013,6 +11734,7 @@
     const v = gameVersion(song, songInstrument(song) === 'guitar');
     if (!v || game.on) return;
     const audio = new Audio(`/api/audio?version=${encodeURIComponent(v.id)}&part=without`);
+    if (screenRec.on) try { ctx.createMediaElementSource(audio).connect(appOut); } catch { /* plays on its own, unrecorded */ }   // so the recording has it
     const p = arcade.preview = { song: song.id, audio, timer: 0 };
     const loud = Math.min(1, 0.75 * state.volume * state.songVolume);
     audio.volume = 0;
@@ -11283,6 +12005,22 @@
     requestAnimationFrame(() => { fly.remove(); art.style.visibility = ''; });   // after the board has drawn its own
     setTimeout(() => document.body.classList.remove('arc-handoff', 'arc-handoff-out'), 100);
   }
+  // Into the song, Jump (arcade.html › Into the song, user's pick 2026-11-08; it faded through black to the loading screen): the
+  // picked cover shrinks into a bright point in the middle of the screen while the rest of song select goes, a flash, then the
+  // loading screen; the galaxy makes a hyperspace jump as the board starts (jumpOnOpen).
+  async function jumpOut() {
+    const card = [...document.querySelectorAll('#arc-carousel .arc-car-card')].find((c) => c.dataset.song === arcade.song?.id);
+    if (!card || matchMedia('(prefers-reduced-motion: reduce)').matches) { await fadeTo(true); return () => fadeTo(false); }
+    const r = card.getBoundingClientRect(), dx = innerWidth / 2 - (r.left + r.width / 2), dy = innerHeight / 2 - (r.top + r.height / 2), out = [];
+    for (const e of [...document.querySelectorAll('#arc-select > *')].filter((e) => !e.contains(card)).concat([...document.querySelectorAll('#arc-carousel .arc-car-card')].filter((c) => c !== card)))
+      out.push(e.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }));
+    const shrink = card.animate([{ transform: 'none', filter: 'brightness(1)' }, { transform: `translate(${dx}px, ${dy}px) scale(.03)`, filter: 'brightness(5)' }], { duration: 700, easing: 'cubic-bezier(.45, 0, .6, 1)', fill: 'forwards', composite: 'add' });   // (a strong ease-in barely moved it for half its time)
+    await shrink.finished;
+    let fl = $('#arc-jump-flash'); if (!fl) { fl = el('div', { id: 'arc-jump-flash' }); document.body.append(fl); }
+    const flash = fl.animate([{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: 520, easing: 'ease-out' });
+    await sleep(120);
+    return () => { shrink.cancel(); out.forEach((a) => a.cancel()); return flash.finished; };   // once the loading screen is up
+  }
   async function arcadePlay() {
     const song = arcade.song;
     if (!song || arcade.busy || !song.tabs?.[arcade.instrument]) return;
@@ -11294,7 +12032,7 @@
     try {
       if (!input.analyser) await connectInput();
       if (!input.analyser) return;                       // openInputBar said why
-      await fadeTo(true); showLoading(song); loading = true; fadeTo(false);
+      const back = await jumpOut(); showLoading(song); loading = true; back();
       setTabInstrument(song.id, arcade.instrument);
       if (state.current?.song.id !== song.id) await loadVersion(song, gameVersion(song, arcade.instrument === 'guitar'));
       if (tabView.song === song.id && tabView.instrument !== arcade.instrument) tabView.data = null;   // the other instrument's tab
@@ -11307,7 +12045,7 @@
       arcade.busy = false;
       // Games with the intro card hand over from the loading screen (flyCover); the others fade through black.
       const art = $('#arc-load-art .arc-cover'), hand = !!art && arcade.instrument !== 'guitar' && arcade.mode !== 'practice' && gameView !== 'tab';
-      if (hand) flyCover(art); else await fadeTo(true);  // (flyCover measures the cover before startGame hides the loading screen)
+      if (hand) { flyCover(art); arcadeBoard.jumpOnOpen = true; } else await fadeTo(true);  // (flyCover measures the cover before startGame hides the loading screen)
       const started = startGame();
       if (!hand) setTimeout(() => fadeTo(false), 120);   // the board fades in under the count-in
       await started;
@@ -11613,9 +12351,22 @@
   state.libReady = true;
 
   // Results: Songs goes back to song select (Close too: it's where the game started).
-  $('#game-songs').addEventListener('click', () => $('#game-dlg').close());
+  // Songs folds the results into the middle line and the song's cover rises back into the carousel from it (Fold).
+  $('#game-songs').addEventListener('click', async () => {
+    const dlg = $('#game-dlg'); if (dlg.classList.contains('folding')) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { dlg.close(); return; }
+    dlg.classList.add('folding'); await sleep(500); arcade.foldIn = true; dlg.close(); dlg.classList.remove('folding');
+  });
   $('#game-dlg').addEventListener('close', async () => {
     if (!arcadeOn || game.on) return;
+    if (arcade.foldIn) {
+      arcade.foldIn = false; renderSelect(); viewEl().focus();
+      const card = [...document.querySelectorAll('#arc-carousel .arc-car-card')].find((c) => c.dataset.song === arcade.song?.id);
+      card?.animate([{ transform: `translateY(${innerHeight * 0.5 - (card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2)}px) scale(.2)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+        { duration: 650, easing: 'cubic-bezier(.2, .8, .2, 1)', composite: 'add' });
+      for (const e of [...document.querySelectorAll('#arc-select > *')].filter((e) => !card || !e.contains(card))) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 450, delay: 250, fill: 'backwards' });
+      return;
+    }
     await fadeTo(true);
     renderSelect();
     viewEl().focus();
@@ -11717,6 +12468,7 @@
     submit: async () => {
       pause();
       await postJSON('/api/quit', {});
+      if (window.encoreApp) { window.encoreApp.quit(); return; }   // the Encore app closes too
       document.body.innerHTML = '<div class="empty" style="height:100vh;display:grid;place-items:center;font-family:var(--arc-font)"><div><h2 style="font-weight:300">Encore has stopped</h2><p>You can close this window.</p></div></div>';
     },
   }));
@@ -11782,9 +12534,19 @@
   // app opens without it (user: "have the Encore launcher start Track Splitter first").
   let installPrompt = null;
   const standalone = () => matchMedia('(display-mode: standalone)').matches;
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (arcadeOn && !standalone()) $('#arc-icon').classList.remove('hidden'); });
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (arcadeOn && !standalone() && !window.encoreApp) $('#arc-icon').classList.remove('hidden'); });
   window.addEventListener('appinstalled', () => { $('#arc-icon').classList.add('hidden'); toast('Encore is installed: open it from Applications, Launchpad or the Dock.'); });
+  // On a Mac, Install makes the Encore app (desktop/make-app.sh: its own window; user: "make this into its own app"); elsewhere Chrome's.
+  const onMac = /Mac/.test(navigator.platform);
+  if (onMac && !window.encoreApp) $('#arc-icon').classList.remove('hidden');
+  if (window.encoreApp) $('#arc-icon').classList.add('hidden');
   async function installEncore() {
+    if (onMac) {
+      const b = $('#arc-icon'), was = b.textContent; b.disabled = true; b.textContent = 'Making the Encore app…';
+      try { await postJSON('/api/encore-app', {}); toast('Encore is in your Applications folder: open it from there (keep it in the Dock).'); }
+      catch (err) { toast(err.message, 'error'); }
+      b.disabled = false; b.textContent = was; return;
+    }
     postJSON('/api/shortcut', { game: true }).catch(() => {});   // the helper that starts Track Splitter for it
     if (installPrompt) { installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; }
     else toast('To install: in Chrome, click the install icon at the right of the address bar on the Encore screen.', 'error');
@@ -11819,7 +12581,7 @@
     $('#game-songs').classList.remove('hidden');
     arcade.sort = ['recent', 'title', 'artist'].includes(pref(ARC_SORT_KEY)) ? pref(ARC_SORT_KEY) : 'recent';
     $('#arc-restart').classList.toggle('hidden', !info.restart_needed);
-    $('#arc-icon').classList.toggle('hidden', !installPrompt || standalone());   // shown when Chrome can install it
+    $('#arc-icon').classList.toggle('hidden', !!window.encoreApp || (!onMac && (!installPrompt || standalone())));   // a Mac: the Encore app (not inside it); elsewhere when Chrome can install it
     let place = null;
     try { place = JSON.parse(sessionStorage.getItem(ARC_PLACE_KEY)); } catch { /* none */ }
     if (place?.screen === 'select') {                    // back where you were before a refresh

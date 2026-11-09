@@ -3,6 +3,9 @@
 __pycache__/
 *.pyc
 
+# Electron, downloaded by desktop/make-app.sh for the Encore app
+.electron/
+
 # Created when the app runs
 track-splitter.log
 output/
