@@ -194,6 +194,7 @@ standard, drop D, half step down, 5-string, with a suggestion) and saves
   `rePluck`, soft pitch-change) plus the note's own pitch read after it; messy notes,
   wrong notes (`checkWrong`), too-soft plucks, tuning check (`tuneCheck`). Game checks
   record runs to `<library>/.game-checks/` for `static/check.html`.
+- Bass input listening off the drawing thread: AudioWorklet ring + 20 ms steps at their real time (`startTap`, `input.lag`); see NOTES.md.
 - Bass input listening (`listen`, YIN `pitchOf`, noise gate `input.floorDb`, Listening boost `input.listenGain` / `encore-listen-boost`), string
   detection (`stringFeatures`, `#strcal-dlg`) and timing calibration (`#calib-dlg`,
   `inputCalibration`); both calibrations also saved to `<library>/.calibration.json`.

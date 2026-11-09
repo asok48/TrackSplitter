@@ -3537,6 +3537,22 @@ progessing the new one, just do a ring on the outside").
   93 ms. The analyser window is 4096 samples (~85 ms), so most late ticks still see the attack, but late ones are timed late.
   Waiting on a game check from the Encore app on the user's Mac to compare; moving listening off the main thread (an
   AudioWorklet) would remove the link to drawing entirely.
+  - Committed first (user: "should we commit what we have first?"): 710fce8, everything before the listening change.
+  - Moved (user: "Yes, move it"): an AudioWorklet (`TAP_JS`, `startTap`) copies the listened input (after the listening boost,
+    where the analyser reads) into a 65,536-sample ring as it arrives (512-sample messages); every 10 ms the page reads each
+    20 ms step that has come in, in order, from the ring (a 4096-sample window ending at the step), with `input.lag` = how long
+    ago that step was played (its frame on the page's clock from the quickest message arrivals, `perfMin`), which listen's
+    `nowMs`, gameListen / practiceListen's `now`, calibListen and the game check's frames take off their clocks. The readings
+    and rules are unchanged, so the timing calibration still holds. A backlog over 0.5 s (a hidden window) skips to now.
+    Without AudioWorklet the old analyser timer runs.
+  - Tested with a simulated bass (a low A plucked every 500 ms) while the page was blocked for 60 ms every 150 ms: new, 57
+    plucks, every interval 400-600 ms, 500 ms average, spread 4.9 ms, reading steps p95 27 ms; old (the committed page), 67
+    plucks (10 false), 10 intervals way off, spread 20 ms, readings p95 70 ms / worst 93 ms. Not yet played with the real bass.
+  - Played (EVOLVE 21:09, real bass, vs this morning's 10:13 / 10:14): hits 95% (98 / 94); Perfect 78% of hits (39 / 29%);
+    plucks within 50 ms of their note 78% (39 / 29%); middle half -43 to +5 ms (-68..+55, -75..+63); median -13 ms (+23, +25),
+    so the old calibration (set while plucks were stamped late) is now slightly early: re-calibrating is optional. 14 of 16
+    misses were plucks heard with another pitch read (an octave low at 1:25, a semitone flat at 0:50; 0:11.5 and 1:13.2 missed
+    in all three games); 2 had no pluck. Reading steps median 21.9 ms, worst 42.
 
 ## Open ideas / to do
 

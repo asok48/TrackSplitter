@@ -7838,8 +7838,57 @@
   const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
   const noteName = (m) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
 
+  // Listening off the drawing (user: "it seems like hit registration has gotten worse", then "Yes, move it"): reading the bass
+  // ran every 20 ms on the thread that also draws, so a heavy frame made a reading late; the analyser only holds the newest
+  // ~85 ms, so a late reading timed a pluck late, or its attack had moved out of the newest 20 ms it looks at. Now an
+  // AudioWorklet copies the input, sample for sample, into a ring as it arrives (input.ring), and every 10 ms the page reads
+  // each 20 ms step that has come in since, in order, each at the moment it was played (input.lag: how long ago that was,
+  // which listen / gameListen / practiceListen / calibListen take off their clocks). A late timer now only means a short
+  // backlog read with the right times. The readings themselves are unchanged. Without AudioWorklet: the old analyser timer.
+  const TAP_JS = `class EncoreTap extends AudioWorkletProcessor {
+    constructor() { super(); this.buf = new Float32Array(512); this.n = 0; }
+    process(inputs) { const ch = inputs[0] && inputs[0][0]; if (!ch) return true;
+      let i = 0; while (i < ch.length) { const k = Math.min(ch.length - i, 512 - this.n); this.buf.set(ch.subarray(i, i + k), this.n); this.n += k; i += k;
+        if (this.n === 512) { this.port.postMessage({ end: currentFrame + i, d: this.buf }); this.buf = new Float32Array(512); this.n = 0; } }
+      return true; } }
+  registerProcessor('encore-tap', EncoreTap);`;
+  let tapModule = null;
+  async function startTap(buf) {
+    if (!ctx.audioWorklet) return false;
+    try { tapModule ||= ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([TAP_JS], { type: 'text/javascript' }))); await tapModule; }
+    catch { tapModule = null; return false; }
+    if (!input.listenGain) return false;                 // (closed while the module loaded)
+    const RING = 1 << 16, sr = ctx.sampleRate, step = Math.round(sr * 0.02);
+    Object.assign(input, { ring: new Float32Array(RING), ringEnd: 0, nextStep: 0, perfOff: [], lag: 0 });
+    const node = input.tap = new AudioWorkletNode(ctx, 'encore-tap', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+    const sink = input.tapSink = ctx.createGain(); sink.gain.value = 0;   // (pulled by the graph: a silent path to the output)
+    input.listenGain.connect(node); node.connect(sink); sink.connect(ctx.destination);
+    node.port.onmessage = (e) => {
+      const { end, d } = e.data, R = input.ring; if (!R) return;
+      for (let i = 0; i < d.length; i++) R[(end - d.length + i) & (RING - 1)] = d[i];
+      input.ringEnd = end;
+      // when each sample frame arrived, on the page's clock: the quickest arrivals of the last ~2 s (the rest waited on the page)
+      const off = performance.now() - (end / sr) * 1000; input.perfOff = [...input.perfOff.slice(-170), off];
+      if (input.perfOff.length % 10 === 1) input.perfMin = Math.min(...input.perfOff);
+    };
+    input.timer = setInterval(() => {
+      const R = input.ring; if (!R || !input.ringEnd) return;
+      if (!input.nextStep || input.ringEnd - input.nextStep > sr * 0.5) input.nextStep = input.ringEnd;   // start, or after a long stall (a hidden window): from now
+      while (input.nextStep <= input.ringEnd) {
+        const end = input.nextStep, n = buf.length;
+        for (let i = 0; i < n; i++) buf[i] = R[(end - n + i) & (RING - 1)];
+        input.lag = Math.max(0, (performance.now() - ((end / sr) * 1000 + (input.perfMin ?? 0))) / 1000);
+        listen(buf, true);
+        input.nextStep += step;
+      }
+      input.lag = 0;
+    }, 10);
+    return true;
+  }
   function closeInput() {
     clearInterval(input.timer);
+    input.tap?.disconnect(); input.tapSink?.disconnect(); if (input.tap) input.tap.port.onmessage = null;
+    input.tap = null; input.tapSink = null; input.ring = null; input.lag = 0;
     input.stream?.getTracks().forEach((t) => t.stop());
     input.source?.disconnect();
     input.mon?.close();
@@ -7875,7 +7924,7 @@
     input.listenGain.connect(input.fluxAn);
     await setMonitor($('#input-monitor').checked);
     const buf = new Float32Array(input.analyser.fftSize);
-    input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly
+    if (!(await startTap(buf))) input.timer = setInterval(() => listen(buf), 20);   // every 20 ms: the game reacts quickly (the old way, without AudioWorklet)
     // The input sometimes stopped (user: "bass randomly cut off, I had to change my input
     // and back"): when the stream ends or stays muted, open the same input again.
     const track = input.stream.getAudioTracks()[0], stream = input.stream;
@@ -8594,9 +8643,9 @@
              shown: sure.length / results.length, sureRight: sure.length ? sure.filter((r) => r.ok).length / sure.length : 0 };
   }
 
-  function listen(buf) {
+  function listen(buf, tapped = false) {
     if (!input.analyser) return;
-    input.analyser.getFloatTimeDomainData(buf);
+    if (!tapped) input.analyser.getFloatTimeDomainData(buf);   // (tapped: filled from input.ring for one 20 ms step)
     let peak = 0;
     for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
     // In dB like the interface's own meters (-60 to 0 dBFS), so a quiet input still shows; the meter is the input itself,
@@ -8611,7 +8660,7 @@
     //   last ~10 s of readings with no pluck in the 1.5 s before; -50 dBFS at least);
     // - a note must be within 40 cents of a real one (hum is ~50 cents off both);
     // - the note shown needs a pluck to start it (below).
-    const nowMs = performance.now();
+    const nowMs = performance.now() - (input.lag || 0) * 1000;   // when this reading was played (input.lag: a backlog's age)
     if (nowMs - (input.pluckAt || -1e9) > 1500) {
       input.quiet = [...(input.quiet || []).slice(-499), db];
       if (input.quiet.length % 25 === 0) { const q = [...input.quiet].sort((a, b) => a - b); input.floorDb = q[Math.floor(q.length * 0.2)]; }
@@ -8668,7 +8717,7 @@
     input.hfHist = [...hfHist.slice(-1), hfDb];
     input.clicked = clicked && !plucked;
     input.freshDb = freshDb;                            // the game's pluck loudness
-    if (input.stringDue && performance.now() >= input.stringDue) { input.stringDue = 0; readString(buf, raw); }
+    if (input.stringDue && nowMs >= input.stringDue) { input.stringDue = 0; readString(buf, raw); }
     // The note shown (and checked for wrong notes) needs 5 readings in a row (~100 ms)
     // to agree: a played note rings that long, a thud from a hand on the strings dies
     // away sooner. Hits are judged sooner: a pluck plus one clear reading (`raw`).
@@ -8686,7 +8735,7 @@
     if (shown !== null && shown !== input.shownMidi && nowMs - (input.pluckAt || -1e9) > 700) shown = null;
     input.shownMidi = shown;
     if (!isGuitar()) showNote(shown);
-    if (check.on) check.frames.push([+ctx.currentTime.toFixed(4), +tabTime().toFixed(4), +currentTime().toFixed(4), +db.toFixed(1), +freshDb.toFixed(1),
+    if (check.on) check.frames.push([+(ctx.currentTime - (input.lag || 0)).toFixed(4), +(tabTime() - (input.lag || 0) * player.rate).toFixed(4), +(currentTime() - (input.lag || 0) * player.rate).toFixed(4), +db.toFixed(1), +freshDb.toFixed(1),
                                      +gateDb.toFixed(1), hz ? +hz.toFixed(2) : 0, raw, steady ?? null, plucked ? 1 : 0, newPitch ? 1 : 0, shown, +hfDb.toFixed(1), clicked ? 1 : 0]);
     if (calib.on) { calibListen(db); return; }
     if (!game.on && timingShown && tabView.section === 'tab' && tabView.data && player.playing) practiceListen(db, steady ?? null, raw, plucked || clicked, newPitch, rePluck);
@@ -9559,7 +9608,7 @@
   }
 
   function gameListen(db, midi, raw, fresh, newPitch, rePluck = 0) {
-    const now = tabTime();
+    const now = tabTime() - (input.lag || 0) * player.rate;   // the moment this reading was played (a backlog's are older)
     // Plucks: an attack (the newest 20 ms jumping up, `fresh`; or the input jumping up
     // from silence, or by PLUCK_DB within 40 ms), or a new pitch (two clear readings:
     // hammer-ons, slides, and plucks the level misses). Times nudged back for the
@@ -11005,7 +11054,7 @@
   let timingShown = pref(TIMING_SHOW_KEY) === '1';
   const practice = { plucks: [], heard: [], prevDb: -100, lastMidi: null, judged: new Set(), labels: [], offsets: [], lastT: 0, marks: new Map() };
   function practiceListen(db, midi, raw, fresh, newPitch, rePluck = 0) {
-    const now = tabTime();
+    const now = tabTime() - (input.lag || 0) * player.rate;
     if (Math.abs(now - practice.lastT) > 1) { practice.plucks = []; practice.heard = []; practice.judged.clear(); practice.marks.clear(); }   // jumped elsewhere
     practice.lastT = now;
     const fix = inputCalibration;                        // same plucks and pitches as the game (gameListen)
@@ -11133,7 +11182,7 @@
     requestAnimationFrame(drawCalibration);
   }
   function calibListen(db) {
-    const now = calibNow();
+    const now = calibNow() - (input.lag || 0);
     const before = Math.min(calib.prevDb, calib.prevDb2);
     calib.prevDb2 = calib.prevDb; calib.prevDb = db;
     if ((db > GATE_DB && before <= GATE_DB) || db - before > PLUCK_DB) {
