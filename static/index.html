@@ -4426,6 +4426,15 @@
   // picked for one tab doesn't re-finger another.
   const tuningPrefKey = (song, source, which = tabView.instrument) => (which === 'guitar' ? `${song}|guitar`
     : source && source !== 'auto' ? `${song}|${source}` : song);
+  // The tuning picked for a song's tab as the loaders ask for it (`source` = the one requested, imported by default). The
+  // server shows the draft for "imported" when there's no imported tab (and the imported one for "mine" with no draft), and
+  // picks used to be saved under the source shown, so the other's key is the fallback (2026-11-10, user: "when I edit a draft
+  // and put it into standard tuning, it reverts it back when I go to play": saved as "song|mine", read as "song|imported").
+  const tuningPref = (song, source, which = tabView.instrument) => {
+    const p = tabPrefs(), other = { imported: 'mine', mine: 'imported' }[source];
+    return p[tuningPrefKey(song, source, which)] || (other && which !== 'guitar' && p[tuningPrefKey(song, other, which)]) || '';
+  };
+  const pickedPrefKey = (song) => tuningPrefKey(song, sourcePrefs()[song] || 'imported');   // where a pick is saved: the key the loaders read
   function saveTabPref(song, tuning) {
     try { localStorage.setItem(TAB_PREFS, JSON.stringify({ ...tabPrefs(), [song]: tuning })); } catch { /* not kept */ }
   }
@@ -4498,7 +4507,7 @@
     $('#tab-title').textContent = `${song.title} · ${which} tab`;
     // "standard~original" / "standard~mine": an imported tab's tuning and which version
     // (the original or the user's, from Other ways to play / Make repeats match).
-    const [pick, version] = (tuning || tabPrefs()[tuningPrefKey(song.id, sourcePrefs()[song.id] || 'imported')] || '').split('~');
+    const [pick, version] = (tuning || tuningPref(song.id, sourcePrefs()[song.id] || 'imported', which)).split('~');
     try {
       const data = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${version ? `&version=${version}` : ''}${splitParam(song.id)}`
         + `&source=${sourcePrefs()[song.id] || 'imported'}&instrument=${which}`);   // an imported tab wins when there is one
@@ -7731,7 +7740,7 @@
   setSync(syncMs);   // show the saved setting
   $('#tab-remake').addEventListener('click', makeTab);
   $('#tab-tuning').addEventListener('change', (e) => {
-    saveTabPref(tuningPrefKey(tabView.song, tabView.data?.source), e.target.value);
+    saveTabPref(pickedPrefKey(tabView.song), e.target.value);
     if (e.target.value.split('~')[0] !== 'half-down' && isRaised(tabView.song)) { setRaised(tabView.song, false); reloadAudio(); }   // raising only fits half step down
     loadTab(e.target.value);
   });
@@ -7997,7 +8006,7 @@ $('#import-form').addEventListener('submit', async (e) => {
       const which = { instrument: tabView.instrument, tuning };
       await postJSON('/api/tab/repeats', key === undefined ? { song: tabView.song, lower, ...which } : { song: tabView.song, key, map, easiest, ...which });
       // A choice made is seen: the tab switches to the user's version of this tuning.
-      if (tuning) saveTabPref(tuningPrefKey(tabView.song, tabView.data.source), `${tuning}~mine`);
+      if (tuning) saveTabPref(pickedPrefKey(tabView.song), `${tuning}~mine`);
       await loadTab();
       showRepeats();
     } catch (err) { toast(err.message, 'error'); }
@@ -8114,6 +8123,7 @@ $('#import-form').addEventListener('submit', async (e) => {
     const open = d.tunings.find((x) => x.key === d.tuning).open, want = pickedNotes().map((k) => ({ t: d.notes[k][0], pitch: open[d.notes[k][2]] + d.notes[k][3] }));
     const carry = async () => {
       setSource(tabView.song, 'mine');
+      saveTabPref(pickedPrefKey(tabView.song), d.tuning);   // the draft keeps the tuning it was made in (the game reads it back)
       await loadTab(d.tuning);
       const nd = tabView.data, no = nd.tunings.find((x) => x.key === nd.tuning)?.open || [];
       tabView.selected = null;
@@ -10683,6 +10693,7 @@ $('#import-form').addEventListener('submit', async (e) => {
     const start = async () => {
       await postJSON('/api/tab/draft', { song: tabView.song, source: d.source, split: !!d.split });
       setSource(tabView.song, 'mine');
+      saveTabPref(pickedPrefKey(tabView.song), d.tuning);   // in the tuning it was shown in
       toast(edit ? `Editing a copy of this tab (your draft). Double-click a string to add a note, pick ${GRIDS[32]} in the grid for faster runs.`
                  : 'Draft started. Open Bass input and Record (Add notes) to play over it.');
       await refreshLibrary();
@@ -13801,7 +13812,7 @@ $('#import-form').addEventListener('submit', async (e) => {
       if (!song.tabs?.[which]) return { ...std, label: 'Standard (no tab yet)' };
       try {
         const source = which === 'guitar' ? 'imported' : sourcePrefs()[song.id] || 'imported';
-        const [pick] = (tabPrefs()[tuningPrefKey(song.id, source, which)] || '').split('~');
+        const [pick] = tuningPref(song.id, source, which).split('~');
         const d = await api(`/api/tab?song=${encodeURIComponent(song.id)}${pick ? `&tuning=${pick}` : ''}${splitParam(song.id)}&source=${source}&instrument=${which}`);
         const t = d.tunings.find((x) => x.key === d.tuning);
         if (!t?.open) return std;
@@ -14151,7 +14162,7 @@ $('#import-form').addEventListener('submit', async (e) => {
   // The tab as the tab view would show it (its source and tuning), as a Guitar Pro 5 file.
   function libGp5(song) {
     const which = lib.inst, source = which === 'guitar' ? 'imported' : sourcePrefs()[song.id] || 'imported';
-    const [pick] = (tabPrefs()[tuningPrefKey(song.id, source, which)] || '').split('~');
+    const [pick] = tuningPref(song.id, source, which).split('~');
     const a = el('a', { href: `/api/tab/gp5?song=${encodeURIComponent(song.id)}&source=${source}&instrument=${which}${pick ? `&tuning=${pick}` : ''}`, download: '' });
     document.body.append(a); a.click(); a.remove();
     toast('Saving the tab as a Guitar Pro file (in your Downloads).');

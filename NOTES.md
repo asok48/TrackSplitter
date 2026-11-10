@@ -1967,6 +1967,17 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
   samples; sustained strumming sometimes flashes an add9/6 from the attack; acoustic
   body resonance can put a false low bass note in (Dsus2 heard as Asus4).
 
+- Draft's tuning kept for the game (2026-11-10, user: "when I edit a draft and put it into standard tuning, it reverts it
+  back when I go to play", "for amsterdam, I changed the draft to standard and want to use that"). Amsterdam's imported tab
+  is in a custom tuning, so its draft was saved with no tuning (`mine["tuning"]` None) and, with no pick, `get_tab` shows it
+  in the automatic tab's suggestion (drop D). The first fix made the draft (`draftForFix`) and showed it in standard (the pick
+  on the imported tab), but that pick was only saved as "song|imported"; Play's `loadTab()` read "song|mine", found
+  nothing and got drop D. Now a new draft saves the tuning it was shown in (`draftForFix`, `startDraft`), picks are saved
+  under the key the loaders read (`pickedPrefKey`: the requested source, not the one shown, as the server swaps imported
+  and mine when one is missing), and the loaders (`loadTab`, `songTuning`, `libGp5`) read through `tuningPref`, which
+  falls back from imported to mine and back, so picks saved the old way still count. Tested on a library copy with
+  Amsterdam in the user's state (draft chosen, standard saved only for the imported tab): the song-select tuner reads
+  Standard and the game asks for and gets the draft in standard (568 notes); without a pick the server still says drop D.
 ## UI (static/index.html)
 
 - Sidebar: All songs, artists (hover ... -> rename/merge, delete; + New artist; drop a
