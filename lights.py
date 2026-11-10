@@ -9,7 +9,9 @@ All on 10 ms steps of the mono mix (22.05 kHz):
 - level: loudness 0-1 between the song's quiet 10% and loud 2%, smoothed (~0.2 s), sent at 20 a second.
 - big moments: the level jumping 0.15+ from the 2 s before to the 1 s after, into a part louder than 60% of the song
   (a chorus or drop coming in), strongest first, 15 s apart, one per 30 s of song at most, on the kick that starts it;
-  plus full stops: a loud hit with near silence 0.6-2 s later (12 dB+ down: Flower Power Madness's last hit at 3:12.3).
+  plus full stops: a loud hit with near silence 0.6-2 s later (12 dB+ down: Flower Power Madness's last hit at 3:12.3);
+  then a second pass filling the gaps: the same jump into a part louder than 45% (or any 0.25+ jump), or the 4 s after
+  0.1+ louder than the 4 s before (a part building in), from 6 s on.
 - accents: a kick and a crash together, both among the song's strongest; and stabs: a loud hit surging 5 dB+ over
   the 0.4 s before and falling 6 dB+ in the 0.15-0.4 s after, on 150 ms averages (the band hitting together and
   stopping: Flower Power Madness's ending 3:03-3:05).
@@ -70,7 +72,8 @@ def _hits(e, gap):
 
 # The detection's settings (tools/lights_tune.py tries others against the user's ratings from the light check page).
 BIG = {"jump": 0.15, "loud_pct": 0.6, "gap": 15.0, "per_s": 30.0,   # big moments: loudness jump, into the top 40%, 15 s apart, 1 per 30 s
-       "stop_db": 12.0, "stab_fall": 6.0, "stab_rise": 5.0}         # full stops; stabs: fall after / surge over before (dB)
+       "stop_db": 12.0, "stab_fall": 6.0, "stab_rise": 5.0,         # full stops; stabs: fall after / surge over before (dB)
+       "loud2": 0.45, "sure_jump": 0.25, "long": 0.1, "long_w": 1.2, "from": 6.0}   # the second pass (gaps): see decide
 
 
 def song_cues(mix, settings=None):
@@ -155,6 +158,30 @@ def decide(f, settings=None):
         elif peak - win(i + 15, i + 40) >= P["stab_fall"] and peak - win(i - 40, i - 5) >= P["stab_rise"] and all(abs(x_ - a) > 0.3 for a in accent[-3:]):
             accent.append(x_)
     big += [s for s in stops if all(abs(b - s) >= 4 for b in big)]
+
+    # A second pass fills the gaps (user, 2026-11-10: "it feels like there should be big moments in places where there
+    # arent"; Hysteria had 2, Reset Me none): into a part louder than 45% of the song (a band coming in early is quieter
+    # than the song's end: Hysteria's at 0:20, 0.14 -> 0.47, was under the 60% bar), or any part on a 0.25+ jump; or a
+    # part stepping up over ~4 s each side (0.1+, the 4 s before against the 4 s after: a chorus building in, Hysteria's
+    # second at 1:50). Not in the first 6 s (the song starting); its onset is where the short jump peaks within 1.5 s.
+    # Only adds: every moment above stays (the user's rated yes on ABBA at 0:38.6 among them).
+    ploud = np.sort(level)[int(n * P["loud2"])]
+    mean2 = lambda a, b: mean(max(0, a), min(n, b))
+    cands = []
+    for i in range(max(200, int(P["from"] * 100)), n - 100, 5):
+        js, jl = mean(i, i + 100) - mean(i - 200, i - 20), mean2(i + 20, i + 400) - mean2(i - 400, i - 20)
+        if (mean2(i, i + 300) > ploud or js > P["sure_jump"]) and (js > P["jump"] or jl > P["long"]):
+            cands.append((max(js, jl * P["long_w"]), i))
+    cands.sort(reverse=True)
+    for _, i in cands:
+        k0 = max(range(max(200, i - 150), min(n - 100, i + 150), 5), key=lambda k: mean(k, k + 100) - mean(k - 200, k - 20))
+        at = k0 * 0.01
+        if len(karr):
+            k = karr[np.argmin(np.abs(karr - at))]
+            if abs(k - at) < 0.3:
+                at = float(k)
+        if len(big) < int(np.ceil(n / (P["per_s"] * 100))) and all(abs(b - at) >= P["gap"] for b in big):
+            big.append(at)
     r = lambda v: [round(float(t), 3) for t in sorted(v)]
     return {"kick": r(kick), "snare": r(snare), "level": [round(float(v), 3) for v in level[::5]],   # 20 a second
             "big": r(big), "accent": r(accent)}

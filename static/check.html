@@ -79,7 +79,8 @@ let run = null, F = null, view = { pxs: 260, t0: 0, t1: 1, sel: null }, ac = nul
 async function api(path) { const r = await fetch(path); if (!r.ok) throw new Error(`${r.status}`); return r; }
 
 async function loadList() {
-  const { checks } = await (await api('/api/game-checks')).json();
+  // (Free play's checks are kept alongside, kind "free-play": no song or judging to show here)
+  const checks = (await (await api('/api/game-checks')).json()).checks.filter((c) => c.title !== 'Free play');
   if (!checks.length) { document.querySelector('.wrap').innerHTML = '<div class="empty">No game checks yet. In the app, open Game settings, turn on “Record games for checking”, and play a game.</div>'; return; }
   $('#runs').replaceChildren(...checks.map((c) => Object.assign(document.createElement('option'), {
     value: c.id, textContent: `${c.id.slice(0, 16)} · ${c.title || ''} · ${c.hits ?? '?'}/${c.judged ?? '?'} · ${c.timing || ''}${c.finished ? '' : ' (stopped)'}` })));

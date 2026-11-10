@@ -745,6 +745,41 @@ notes as [start, end, string, fret]; other tunings are fingered on first request
   the riff repeats).
 - Crowded notes: each fret number shrinks by its own room to its neighbours (down to
   55%), so fast passages don't overlap while the rest stay full size.
+- Benchmark against the imported tabs (2026-11-09, `tools/tab_bench.py`; user: the automatic tabs are "way off",
+  wants them "much more accurate"). Each of the 39 imported tabs is the right answer for its song; the automatic
+  tab is made the app's way (`app.auto_notes`, split version as the page shows it) from the "(bass only)" track,
+  with learning (`app.fit_learning`: settings, note models, fingering costs) fitted on the other half of the songs,
+  so every song is scored held out. Counted only inside the tab's bars (gaps skipped) and where the stem isn't
+  silent (`without_silence`). `prepare` caches the decoded audio + Basic Pitch output (~1 min), `learn` the two
+  folds' learning (~35 min, the app's own leave-one-out checks), `run` ~2 min. Before (held out, 29,573 tab notes):
+
+  | | found | real | F1 | any octave F1 | timing | fingering (found / tab's own pitches) |
+  |---|---|---|---|---|---|---|
+  | built-in, no learning | 61.1% | 51.0% | 0.556 | 0.664 | 16 ms | 63.6% / 63.3% |
+  | learned (the app now) | 62.1% | 68.2% | 0.650 | 0.703 | 16 ms | 69.1% / 71.3% |
+
+  Biggest error classes (learned): missed with nothing heard there 3959, repeated plucks heard as one held note
+  3861, octave 1499; shown but wrong: 50-150 ms from the tab's note 2323, octave 1728, the same note twice 1484.
+  Fingering misses are mostly the same pitch one string over (E7 vs A2): taste, per song.
+  No tab is transposed (pitch offset 0 dominant on all 39). Octave errors are mostly a note read an octave high:
+  real notes have little at f/2 and 3f/2 (~-35 / -25 dB vs f), octave-high ones have one of them strong; the
+  built-in `_fix_octaves` needs both, so it misses many (LoveCop: f/2 -4.5 dB but 3f/2 -21). A logistic on those
+  ratios gets 91.8% of notes in the right octave held out vs 83.6% for the rule; the learned octave model is
+  already at ~92%, so this matters only without imported tabs.
+  Missed notes are mostly not silent to Basic Pitch: onset activation median 0.52 (threshold 0.6), frame
+  activation on, 0.14-0.25 s after the tab's previous note (fast repeated notes).
+  Tried, all held out, none kept (F1 with built-in detection + per-fold note models = 0.660):
+  octave features max/sum of f/2 and 3f/2: 0.661; onset threshold 0.4 / 0.45 / 0.5 with the keep model filtering:
+  0.632-0.661; extra re-pluck points at the onset activation's peaks inside a note: 0.633 (doubled notes);
+  a hidden layer (16 tanh) in the three note models: 0.663; distance to the beat grid in the keep model: 0.662;
+  every PLUCK_CUT / KEEP_CUT 0.3-0.5 x onset 0.4-0.6: 0.638-0.663 (current values best); a small temporal conv
+  net on Basic Pitch's outputs + the stem's band energies trained on the tabs (two folds, ~100k weights):
+  0.571 (fitted its 20 training songs, didn't carry over). One finding: the learned detection settings hurt once
+  the note models are on (0.650 learned vs 0.660 built-in + models): the setting search scores detection alone.
+  Part of what's left is the reference: scored within 70 / 100 ms instead of 50 the same notes give F1 0.695 /
+  0.714 (sync wobble in the imported tabs); song F1 correlates 0.43 with the import's sync quality, and the
+  weakest songs (I Love My Friends 0.18, Look What Happened 0.44, Welcome to the DCC 0.47) have the weakest
+  syncs (0.42, 0.37, 0.60). The user then chose to make recorded takes a 1:1 of their playing instead (see My tab).
 
 ## Imported tabs (tabimport.py)
 
@@ -987,6 +1022,34 @@ downloading; Songsterr's GP download is a paid feature); the user brings the fil
   group no longer exists (the bars grouped differently after a re-sync) was passed on as is. `unify_rules` now sends such
   a choice to the group with a bar playing exactly those pitches, like the older choices, or drops it. Checked on a copy
   of the song: /api/tab (imported, standard) and /api/tab/repeats return 200, and the game plays it.
+- Tempo fit (2026-11-08, user: "gimme gimme gimme's imported tab is off with the song"; IMPORT_RULES 13): the .gp is
+  120 bpm (2.0 s bars), the song 119.3 (2.01 s), but `_tempo_fit` chose 1.07x, so every bar was 7% long and the
+  Viterbi pulled the next one back up to 0.1 s (bars 2.25, 1.96, 2.24, ...; the 4 s stretches needed shifts of
+  -0.5 to +0.5 s). The fit's histogram took offsets between every pair of notes and only its top bin; on octave 8ths
+  that's evenly spread, and the tab is ~45 s longer than the song's bass part (it enters at ~19 s, ends ~189 s), so one
+  start lines up only a section, and 0.5% off the right ratio drifts a second over the tab. Now `_tempo_fit(same_pitch=True)`
+  takes offsets only between notes of the same pitch and tries its 5 highest peaks (>= 0.1 s apart, `TEMPO_PEAKS`):
+  1.0055x, 175 notes on a heard note (was 48). That alone lost a little on 3 of 39 tabs (I Love My Friends 29 -> 25%,
+  Number Of The Beast 65 -> 64, Pink Slip 81 -> 79), so `_sync_timed` places the bars with both fits (`place(scale)`)
+  and keeps the better path score. Tried and dropped: also searching around the tab's tempo / the beat tracker's
+  (not needed for Gimme; cost I Love My Friends 29 -> 21%).
+  Measured against an independent YIN pitch track of each song's bass stem (share of synced notes whose first 40-200
+  ms is on the tab's pitch, octave errors counted as misses): Gimme 36% -> 58% (most of what's left is the checker
+  hearing the low octave ring under the high one; from 0:24 on nearly every note matches), Helena 74 -> 75, Save
+  Yourself 79 -> 80, the other 36 the same within a note or two; library total 74.8 -> 75.3%. Through the app on a
+  copy: Gimme re-synced on open in ~3 s, quality 0.71 -> 0.79, bars 1.95-2.08 s.
+  A draft started from the old sync keeps the old timing (its `base` is a copy): restart it from the tab.
+- Notes where the song has no bass (2026-11-09, user: the song "starts early again on the imported tab", then
+  "notes before the bass"; IMPORT_RULES 14): measured against the bass track, Gimme's tab was on time from 0:19 to
+  the end (median 3 ms from the heard notes, attacks best at 0 s); the problem was its intro (a run at 0:09, notes
+  at 0:13) placed where the bass track is at -80 dB. `_sync_timed` scores a bar placed in silence 0 while leaving
+  it out costs SYNC_SKIP, so leading bars always went before the bass's entry. The heard notes can't tell
+  silence from a quiet fade-in (Gimme's riff starts 0:18.9 at -45 to -65 dB; heard notes from 0:22.5), so
+  `without_silence` uses the stem's own level: notes where it is SILENT_DB (50) below its loud parts (1 s average)
+  are left out. Library: 9 of 39 tabs had such notes, all in -64 to -97 dB stretches (Amsterdam 13 single notes in
+  a bassless 140-176 s, Welcome to the DCC, stops in Baby / I Love My Friends, Helena, Freakshow, You Only Live
+  Once, No You Girls). Gimme 699 -> 679 notes, first at 0:18.9; Cry Baby Cry unchanged. A draft started from the
+  old tab keeps the intro notes (start it again from the tab).
 
 ## Guitar tabs (imported)
 
@@ -1576,6 +1639,126 @@ with the band.
   isn't flagged: the take over the import's gap said "Only 11% matches" (105 of 141 notes
   where the draft had none; 44% where it had notes) at -15.6 dB from the Scarlett's
   instrument input (Input 2).
+- Easier to read (2026-11-09, user picked "hard to read": what's yours vs the tab's, where you are, what changed). Seen
+  on a copy with a take waiting: the two Lines used about a third of the height (strings 30 / 18 px apart), the notes a
+  take would replace were small red struck-out numbers, nothing said which bar or time a line was, and nothing said what
+  the colours meant. Now: Lines grow to fill spare room (up to 1.5x, `buildSlots`, after the shrink-to-fit); bar numbers
+  over each bar and the time at each line's start (`.bar-no`, `d.barNo`; Lines and Whole tab); replaced notes as red
+  dashed boxes with the number struck through, a little above their string; the new-take box has a key ("new from this
+  take" green, "it replaces" red, `.tr-key`). Checked with screenshots at 1400x850.
+- Takes changing what you didn't play (2026-11-09, user picked "takes mess it up": "recording a take changes things you
+  didn't want changed"). Replayed the user's Replace takes and sorted every draft note each removed: most were the
+  same note played a little off the tab's timing, snapped onto the next 16th ("moved"); some genuinely different notes
+  (Look What Happened's B1s for the tab's E1s, kept); and the rest of a bar after the user stopped mid-bar (Look What
+  Happened's six E1s from 0:54.2: `played_spans` took whole bars). Now (MINE_RULES 8):
+  `played_spans` runs from each run's first note (a 32nd before) to an 8th after its last; and in a gridded Replace, a
+  played note within LOOSE_TIMING (0.1 s) of the same note in the draft takes the draft's exact time (not snapped again:
+  the draft's grid can sit ~10 ms off an imported tab's notes), and a take note identical to the draft's leaves the
+  draft's own note in place (the review counted those as removed + added). Look What Happened's take: removed 28 -> 20
+  (moved 4 -> 0, after-the-end 6 -> 0). A take recorded through /api/tab/record on a copy of Gimme (its bass track
+  0:18-0:30, 16ths): removed 36 -> 18, added 26 -> 9; what's left there is notes the separated track's transcription
+  missed (the quiet fade-in), which a clean Scarlett take hears better (the user's real takes had 2 such notes in all).
+  Left: a draft note in a run that the take's transcription didn't hear is still removed.
+- Fixing single notes (2026-11-09, user: the tab editor "is just difficult to work with", picked "fixing single
+  notes"): a wrong fret meant deleting the note and double-clicking one in (which takes the nearest fret on that
+  string in the line). Now a selected draft note shows a bar (`#note-edit`): "A string, fret 5 · 0:18", − + (a fret,
+  ⇧↑ ⇧↓), ↑ ↓ (the same note on the next string), ◀ ▶ (a grid step, ← →), and typing a number sets the fret (1 or 2
+  waits 0.7 s for a second digit, 10-24; `typeFret`); Tab / ⇧Tab walk to the next / previous note. The note stays
+  selected after each change, undo and double-click add (`tabView.reselect`, so a new note's fret can be typed
+  straight away). `POST /api/tab/mine/change` {start, pitch, to_pitch, string, tuning} (`change_mine`): another pitch
+  = `removed` + a `hand` note (a hand note just changes pitch; changing back drops both, the original returns), the
+  string in `places` [start, pitch, string, tuning], pinned by `mine_places` (after the imported tab's
+  `import_places`) when fingering. The page always sends the string, so a changed note stays where it was put.
+  Undo (`kind: 'change'`) changes it back. Tested on a copy (Gimme draft): fret +2, other string, back (hand /
+  removed empty again, 659 notes), kept through `redo_mine`; on the page: 3, 1-2 -> 12, ↑, →, ⇧↑, ⌘Z, Tab, the ↓
+  button, double-click add selected. A note only in a take waiting for review can't be changed (Keep or Discard
+  first). Not tried with the real app's mouse / keyboard.
+- Show what I play (2026-11-09, user: "a way to play and just see what would show up without actually editing the
+  tab"): a switch under Show my timing (`#played-show`, `encore-show-played`) runs the take's live notes
+  (`liveListen`) whenever the song plays, with nothing recorded or saved. Moving the song by more than 1 s (or a
+  loop going round) clears them, so a second pass doesn't draw over the first; `clearLive` wipes every line's
+  marks (Whole tab only redraws the lines near the playhead, so earlier ones kept theirs). Lines and Whole tab
+  only. Tested with a simulated bass on a copy: 17 notes in 8 s at the riff's positions, no requests to save.
+- Free play (2026-11-09, user: "just play my bass and see live what I'm playing, to test detection", then "make it
+  look like the game"): a full screen (`#free-dlg`, `openFreePlay`) from the Bass input drawer's Tools (`#input-free`)
+  and Encore's title (`#arc-free`, under Calibrate strings). No song needed (one may play too), nothing saved, no takes.
+  Notes found like `liveListen`'s (a pluck / new pitch / re-pluck onset, then two agreeing readings) but timed by the
+  clock (`freeListen`, `freeAdd`, from `listen()` after the calibration check); `free.notes` keeps the last 60 s.
+  String: `input.string` when sure (readString lands ~115 ms after the pluck, so it usually re-places the note just
+  after it appears: the lane flares and the keycap moves); otherwise where that pitch was played in the last 4 s, else
+  the fret nearest the median of recent frets (3 to start). Strings as readString reads them (`freeTuning`: the open
+  tab's tuning, else standard; guitar: GUITAR). Drawn as the Arcade board (`drawFreePlay`: the Galaxy from
+  `makeGalaxy` with drifting stars, lanes, strings by gauge with windings, a still cursor at 80% with its light
+  column; notes come off it and glide left over `FREE_SPAN` 4.5 s): keycaps with a solid rim = string heard, dashed
+  = guessed; a repeat of the same fret within 0.7 s is the game's echo diamond; held notes a glass tube. Above it the
+  note now big (`#free-note`, dim once it stops ringing), its string/fret and a Heard / Guessed chip; below, how many
+  of the last 10 had the string heard, or a note that strings aren't calibrated. Clear, Calibrate strings, Close
+  (Esc too). Tested on a library copy (port 7871) with `getUserMedia` replaced by `.bass-recordings/take-20261023-233357.flac`
+  channel 2, no song loaded, from both entry points: notes and strings shown live (e.g. E0, F#1 E2, G1 E3, B1 A2,
+  C2 A3, E2 A7 heard). It also shows detection slips: the E-string 5th fret (A1) was heard as the open A string
+  throughout, and a few octave readings (E3 at G9) for a moment at segment ends. The pane logs "An unknown error
+  occurred when fetching the script" from the service worker (`/encore-sw.js`, already there; not this change).
+  - Wrong strings (user: "the notes played don't tab to the notes I'm playing at all", "it always wants to go to the
+    string below"): measured on the labelled string tests with their saved calibration (full: every string, frets 0-12,
+    8 each, self-check 96%, margin 2). The live read (window ending 0.115 s after the pluck) was right for 61% of slow
+    notes and 80% of fast 8ths; almost every miss goes to the next higher string (slow 41 of 41, fast 57 of 59): E5-E12
+    read as A0-A7, A8-A12 as D, D5-D12 as G. Reading at 0.215 s: slow 91% (95 of 105), fast unchanged (79%); with
+    STRING_SURE 13 as the margin, 98% / 86% right of half / 60% of notes. Weak spots at 0.215 s on fast 8ths: E5-E12,
+    A10-A12, D10-D12.
+  - Second look (user: "yes, add it"): Free play reads the string again 215 ms after a pluck (`input.lateDue`,
+    `freeLateRead`; the analyser then holds 0.13-0.215 s of the note). Sure (the calibration's margin): the note goes
+    on that string; not sure and it disagrees with the first look: it goes there as a guess (dashed); otherwise the first
+    look stands. A pluck before 215 ms (fast notes) skips it. The first look's features stay the note's `v` (the
+    calibration's samples are first-look reads); checks also keep `first_look` and `v2`. The game, readout and takes are
+    unchanged. Measured live in the page on a library copy, notes matched to the labelled plucks: slow test (first 88 s)
+    right string 42 -> 52 of 55, of the notes marked heard 36/45 -> 50/52; fast 8ths (first 90 s) 97 -> 99 of 144
+    (heard 76/113 both): the first look is right there as often, and Teach mode is what can help them.
+  - Checks / teach mode (user: "teach mode first", "maybe play an 8 bar measure and I say what is wrong", "if I could
+    leave notes on it, would that help?"): Record a check (`#free-rec`, `freeRecord`) records the input with the game
+    check's recorder (`startCheck`; `check.frames` fill as in a game) while notes show as usual, up to
+    `FREE_CHECK_MAX` 90 s; Stop (`freeStop`) freezes it: the board shows `FREE_VIEW` 5 s at a time (slider
+    `#free-scroll`, or scroll sideways), every note a keycap. Clicking one opens `#free-pop` (`openFreePop`): Played on
+    (every place of that pitch; picking the shown one marks it right), Wrong note, Didn't play this, a note on it.
+    Clicking an empty spot adds a missed note (string, fret, note). Fixed notes ring green with the shown place faint
+    under a dashed line, wrong / not played red, a dot for a note left. Below: a comment for the whole check, "Teach
+    the string calibration from my fixes" (on) and "The notes I didn't mark are right" (off). Save (`freeSave`)
+    posts to `/api/game-checks` (no server change): `<library>/.game-checks/<date> Free play/` with input.flac and
+    run.json (kind "free-play"; per note start/end in the audio, midi, shown / played [string, fret], heard, mark,
+    comment, v; missed; comment; frames). `readString` now keeps what it read (`input.stringRead`: midi, features,
+    time) so each note carries its features (`v`, ~80% of notes; legato notes without a pluck have none and can't
+    teach). Teaching (`freeTeach`) adds fixed / right-marked notes (all unmarked too when ticked) to the calibration's
+    samples (`from: "free-play"`, in its standard-tuning strings), recomputes right / margin with `checkStrings`,
+    refits `stringModel` and keeps it like a calibration (`keepCalibration`; the library keeps the replaced one under
+    "previous"). check.html skips Free play checks (no song or judging to show). Esc closes the popover, and doesn't
+    throw away a check with marks. Tested on the library copy with the fast take from 11 s (E5 8ths shown as A0): 37
+    notes in 12 s; 3 put on E5 (one with a note), the E3/G9 blip marked not played, a missed E5 added; saved: 12.0 s
+    FLAC, run.json with 600 frames and 30 of 37 notes with features; calibration 256 -> 259 samples (self-check
+    96% -> 95%, margin 2) in the browser and the library copy.
+- Skipped notes in takes (2026-11-09, user: "half the notes I play are skipped"): on the Gimme take (Replace,
+  44 s), a plain attack detector found ~127 plucks and the take had 86 notes. Traced stage by stage: the model
+  heard most of them; `drop_ringing_octaves` deleted plucked octaves (the D2-D3 8ths riff: the low D is muted as
+  the high one is plucked, so the bass gets no louder below 400 Hz and the high D looked like a ringing string).
+  Now a note the model heard plucked (its onset activation >= 0.7 for that pitch) stays unless the bass fades by
+  2.5 dB+ there. Gimme 86 -> 94 notes (6 D3/D2s, a G2... back), Cry Baby Cry +1 real note, the other 6 takes
+  unchanged (their strays were onset < 0.5, or 3-13 dB quieter). Left: ~10 short gaps, mostly mute/fret noise at
+  note ends; a G2 heard as G1 a few times (an undertone rule in `_one_at_a_time`; changing it only shifted notes
+  ~50 ms and swapped some octaves the wrong way, so it stayed). MINE_RULES 7 redoes kept takes; a take waiting
+  for review keeps its old notes (record it again).
+- Live notes while recording (2026-11-08, user: "I really want to be able to play and see what I am actually playing.
+  Right now, I sort of have to guess"): the take's notes only showed after the server transcribed it. Now while a take
+  records, each note heard goes on the tab at once (`liveListen` in `listen`, `liveAdd`, drawn by `liveMarks` in Lines
+  and Whole tab; not the Highway or Scroll). A note = a pluck / pick click / new pitch / re-pluck (as the game and Show my
+  timing find them), then two agreeing pitch readings within PITCH_WAIT; a second find within 0.12 s is the same note
+  (a different pitch then corrects it: the attack blurs the first readings). Timed like Show my timing (`tabTime`,
+  `input.lag`, `inputCalibration`) and snapped to the draft's grid (`snapBeat`, the tab's bars as shown) as the take
+  will be. A tab note of that pitch within half a step gets a green ring (`.note.heard`); anything else is an amber fret
+  number (`.live`), placed: the string calibration's when sure (not when the song is raised) > where the tab plays that
+  pitch within 4 s > where you just played it > the fret nearest the median fret of the tab's notes within 4 s.
+  Following only the notes just played crept up the neck (Gimme's D2s came out E10, its D3s D12, not A5 / G7). Live
+  notes clear when the tab loads again (the take's review) and at the next Record. Tested with a simulated Scarlett (the
+  song's bass-only track at -10 dB) on a copy of Gimme: 13-18 notes in 8-9 s at the riff's positions (A5, A7, A8, D7,
+  G10, G14), cleared when the review loaded, 14 in 6 s in Whole tab. Few green rings in that test: the fake input isn't
+  on the song's clock and that draft predates the sync fix. Not yet tried on the real bass.
 - Playback: the player's 4th mode "My bass" (shown when `song.my_bass`) = without +
   `/api/audio?part=mine` (`my_bass()`: all takes on the song timeline as one float WAV,
   later takes win, pitch-moved if recorded at another `shift`; each take scaled to the
@@ -1590,7 +1773,154 @@ with the band.
   a stand-in take sent 0.25 s off was realigned to 6 ms. The user tried the real
   Scarlett and said it seems to work.
 
-## Guitar chords (input drawer)
+- Takes as a 1:1 of what was played (2026-11-09; user, after the automatic-tab benchmark plateaued: "maybe instead of
+  trying to automate the tabs, we make the recording better. It should be a 1:1 of what I play", and "increasing string
+  note detection would help a lot too to make sure fretted notes show on the right string"). `tools/take_bench.py`
+  scores `take_notes` against the labelled string tests in `.bass-recordings` (string-test-onsets.json: every pluck's
+  time, string, fret) and against the user's real takes over songs with an imported tab (the tab's notes in the take's
+  stretch, the take's overall lag removed; approximate: the user may play something else). The fast test's labels
+  turned out to cover only some plucks (the take has steady 8ths ~0.2 s apart with clear attacks where the labels mark
+  6 in 3 s), so it counts for "found" only.
+  - Plucks: on the user's Scarlett takes a held note's level wobbles ~10 times a second (+-4 dB as it rings) and Basic
+    Pitch's onsets follow it: the slow string test (105 plucks, ~2 s apart) came out as 327 notes, one held note as up
+    to ~10. A real pluck jumps 10-30 dB within ~10 ms with a click; the wobble rises ~2 dB per 10 ms without one.
+    `tab.take_plucks` (`PLUCK`): level over the next 12 ms minus the lowest of the 40 ms before, whole band + 0.6 x above
+    1 kHz, > 21 dB, within 20 dB of the take's loud parts, 90 ms apart, and at least 0.65 x the median of the plucks
+    within 1.5 s (noise between slow plucks reached about half of theirs). `tab.notes_on_plucks`: Basic Pitch says which
+    notes; a long note is split at plucks inside it, same-pitch pieces touching without a pluck are joined, a new pitch
+    without a pluck stays (hammer-ons, slides). Replaces `TAKE_SPLIT` (onset-peak splits of notes up to E2).
+    Swept: rise 18-30 x relative 0-0.85: higher rises cleaned the slow test (0.86 at 30) but found 45% of the fast
+    8ths and lost Cry Baby Cry's re-plucks (0.81 -> 0.72). Before -> after (F1, same pitch within 50 ms):
+    slow test 0.435 -> 0.667 (shown 327 -> 186 for 105), fast test found 81% -> 77%, Cry Baby Cry takes 0.371 -> 0.447
+    and 0.772 -> 0.809, Fireman & Dancer 0.726 -> 0.755, Amsterdam (21 notes) 0.208 -> 0.235; the two junk takes
+    (Cry Baby Cry take 3, Wow! Wow! Wow!: every note under ADD_MIN_AMP) stay ~0. All real takes 0.558 -> 0.588.
+  - Strings: takes were fingered by the hand model (or the imported tab's place), never by what was heard. The page's
+    string detection, ported (`tab.string_features` / `fit_strings` / `string_scores`, same maths as stringFeatures /
+    fitStrings / stringScores) and fitted to the user's saved calibration (`app.string_model`, 256 plucks, self-check
+    96%). Read 0.1-0.2 s into the note (the live readout reads 0.03-0.115 s; a recording can wait): slow test right
+    60% -> 87%, fast 78% -> 77%. `tab.heard_strings` keeps notes beating the next place by `STRING_SURE` 13 (slow 96%
+    right of half the notes, fast 86% of 60%); `app.take_strings` stores them per take (`strings`: [song time, song
+    pitch, string], the waiting take's too, refreshed by `take_new` when drafts are remade) and `mine_places` pins them
+    (after the imported tab's places, before the user's own picks; matched within LOOSE_TIMING, as takes may move onto
+    the grid). The fingering then leans every pitch toward where those notes are played. Whole takes vs their imported
+    tab's strings, fingering alone -> with heard strings: Cry Baby Cry 80 -> 97% and 82 -> 85%, Fireman & Dancer
+    69 -> 92% (margin 0, pinning everything: 85 / 63 / 89%; margin 18: 98 / 88 / 88%). On the labelled tests (positions
+    jumping around the neck on purpose) 44 -> 59% and 53 -> 69%. Without a calibration nothing changes.
+  - MINE_RULES 9 remakes kept drafts from their takes. On a copy of Fireman & Dancer: draft remade in 2.5 s, the take 184
+    notes (99 with a string heard), 93% of its notes on the imported tab's string.
+  - Direct Monitor (user asked): it helps the player's timing (no delay, unlike Hear myself) but doesn't change the take,
+    which is the same dry input either way; with it on, Hear myself off.
+  - Left: the take's notes still come from Basic Pitch's pitches, so the "nothing heard" misses on real takes (~230 of
+    925, mostly fast notes) stay; a re-pluck detector driven note finder (pitch read per pluck) is the next step.
+
+- Fixing wrong strings fast (2026-11-09, user: notes "moving strings" ruin a tab, "the main issue I've seen from AI
+  generated tabs"; "making fixing tabs easier would significantly help ... even if after the fact, in a way that is fast
+  and easy"; "I want to make this complete, so I don't want it to be slow"; "add a help section ... a modal with steps").
+  Before, a note's string was changed one note at a time, only in the draft (Edit first). Now, in Lines / Whole tab, on
+  any bass tab: pick notes (`tabView.multi`, drawn `.picked`): double-click a note for its run (`selectRun`: the notes
+  either side on the same string, each within 0.75 s of the next, up to a note on another string (struck-together ones
+  skipped), within the line it's on; a double-click is also caught as two clicks on the same note within 400 ms in
+  `noteClick`, as each click redraws); drag a box from empty space (`boxSelect`, `.sel-box`; ⇧ adds); ⇧-click adds or
+  removes one. `#sel-bar` says how many, with ↑ string / ↓ string, Clear and ?. ↑ ↓ (`moveStrings`) puts every picked note
+  on the next string at the same pitch; ones that can't go there stay (a toast counts them); nothing movable: a toast and
+  no draft. One request, `POST /api/tab/mine/strings` ({song, tuning, moves: [{start, pitch, string}]}, kept in `places`
+  like change_mine; app.py, its own block after change_mine), and one Undo (kind "strings", the old strings back); the
+  notes stay picked so another ↑ ↓ moves them on. Then `findRepeats` (runs of 3+): the same pitches on the same strings
+  with the same spacing (each within 80 ms) elsewhere, not overlapping; `#fix-more`: "The same notes are on the same strings
+  at N other places" with Fix those too (one request, one Undo), Show them (picks them) and No. On the automatic or an
+  imported tab the first move makes the draft (`draftForFix`, the picked notes found again by time and pitch; with a draft
+  already, asks: use it, or start again from this tab). Encore's tab colours hid the selected note's red; now shown. Help:
+  `#fix-help-dlg` (steps: pick, move, fix everywhere, undo), from "Fix strings?" over the tab and ? in both bars.
+  Whole tab clicks on a line seek the song; a box drag's click doesn't. `paintPicked` updates classes without redrawing
+  (Whole tab redraws only near the playhead). Tested on a library copy (port 7871): The Feast and The Famine's draft, a run
+  of 16 A-string notes -> E (2->7, 0->5, 5->10) with one ↓, "1-2 other places" offered, Fix those too moved 16 more, Undo
+  put each back exactly; Outside (imported, no draft): open E with ↑: "can't", no draft; an E5/E8 run with ↑ made the draft
+  and moved them to A0/A3 (open Es stayed). The run then picked 335 notes (the intro is 24 bars on one string): runs now
+  stop at the line's ends (6 notes there).
+- The tab editor as a game (2026-11-09, user: "making the tab editor almost like a game would make it easier to use").
+  Four ideas mocked up in `design/game-mockups/editor.html` (a made-up 16-bar riff with slipped bars; playable): 1 Fix as
+  it plays (the song scrolls, a slipped run lights amber, ↓ ↑ fixes it, runs-fixed counter), 2 Arcade editor (the board
+  stopped: pick, slide, F fixes repeats, a strip of the song's bars), 3 Play to fix (play the bar; notes played on another
+  string show dashed blue, Enter takes yours), 4 Clean tab (a ring of how clean the tab is, N to the next problem). The
+  user: "I like the idea of the arcade one". Ideas 1 and 4 need the app to guess which runs slipped (the mockup knows).
+- Arcade editor, built: "Fix on the board" over the tab (`#tab-board-edit`) opens `#ed-dlg` (game-screen full): the
+  Galaxy (`makeGalaxy`), the board in the game's colours (lanes, strings by gauge, bar lines and numbers), 2 bars at a time
+  (`#ed-zoom`: 1 / 2 / 4), keycaps (`edCap`) for every note. It drives the tab view's machinery: picks are `tabView.multi`
+  (click; a second click within 400 ms = the run, `selectRun(k, range)` within the bars in view; drag a box; ⇧ adds),
+  ↑ ↓ = `moveStrings` (so the draft is made on the first fix, one request, one Undo), F = `fixRepeats` (the #fix-more
+  handler, now a function), ⌘Z = `undoEdit` (now awaits its reload). Moved notes slide to their string with a hop and a
+  green ring (`edSlide`, by time + pitch, so it survives the draft being made) and keep a green rim (`ed.moved`: the string
+  they started on; `edPrune` drops ones Undo put back). Under the board: what's picked, the repeats offer ("Same notes at N
+  other places · Fix all F"); a strip of every bar (moved green, offered repeats amber, the view framed, the song's position;
+  click to go there). Space plays the song, the board following it; ← → move along; Esc unpicks, then closes. "Fix those
+  too" no longer leaves every fixed note picked (`applyMoves(..., keepPicked)`; its Undo neither). Tested on the library
+  copy: The Feast and The Famine, bars 31-32: a run of four A2s (stopping at an E7 in between) -> E7 with ↓, "18 other
+  places" amber in the strip, F fixed them (green), ⌘Z took the 18 back and a second the run; bar 35's E run with ↑ ->
+  A0/A2 with G1s staying, ⌘Z back; Esc unpicked then closed; console clean apart from the service worker / no microphone.
+- Copying bars (user: DISCIPLE "is missing the first two bars, I want to copy the first two bars in the front"): its
+  imported tab (a .gp5) starts at 3.72 s, the bass at 0.73 s (the automatic tab hears the same riff twice before), and
+  the draft has no bars before 3.72 s. The board editor's grid now reaches back to the song's start (`edEdges`: bars of
+  the tab's first bars' length, `tabLead`, in front while they fit), and Lines / Whole tab add those bars once notes sit
+  there (`layoutLines`). ⌘C (`edCopy`) keeps the picked notes by bar (start and length as fractions of their bar, string,
+  fret); ⌘V (`edPaste`) puts them in from the first bar on screen, stretched to those bars, via /api/tab/mine/add then
+  /api/tab/mine/strings (same strings), one Undo (kind "fill"); the first paste on a tab that isn't the draft makes it /
+  asks to use the song's draft (`draftForFix`). Tested on a copy of DISCIPLE: ← to bars 1-2 (the intro), bars 3-4 boxed
+  (14 notes), ⌘C, ←, ⌘V, "Use my draft": 14 notes at 0.745-3.564 s on the tab's strings (heard 0.73-3.52, within 20-40
+  ms), the tab view's first line "1 · 0:00" with them; ⌘Z took them out (638 notes again).
+- Board editor from the keyboard (user: "it worked really well ... I just wish it was faster to use. Lots of clicking and
+  scrolling between pages", "I want to just use my keyboard to fix tabs", "and see more than 2 bars at once"): B in the
+  tab view opens it; Tab / ⇧Tab pick the next / previous run and bring it on screen (`edRuns`: a double-click's runs over
+  the song, up to a screen of bars, single notes skipped; `edNextRun`); ⇧→ / ⇧← one note more / fewer at the pick's end
+  (`edGrow`; nothing picked: the first note on screen); Space with notes picked plays from their bar; ← → a bar at a time
+  (was a page), the trackpad / wheel too (50 px a bar), the board gliding there (`ed.pos` eased to `ed.view`, the moving
+  edges clipped to the board); Home / End; 2 / 4 / 8 bars (keys, − +, the button; default 4, `encore-board-bars`), keycaps
+  as big as the closest notes on a string allow (12-28 px); ? opens the help, which now leads with the keys. The key list
+  is two short lines and the strip sits above it (it ran into it on a small window). Tested on the library copy (Outside):
+  B opened it at 4 bars, Tab picked 7 notes, ⇧→ 8, ⇧← ⇧← 6, 8 bars shown, Home, Tab, ↓ moved A0 A0 A0 A3 x4 to E5 / E8,
+  ⌘Z put them back; ↑ on open E / G1 notes said they can't go there; no errors.
+- Board editor, next round (user: "could make it even better to use", then "do what you think is best"):
+  - Runs that look off (`edSuspects`), framed amber on the board with ↑? / ↓? over them, amber in the strip, a count over
+    the board: (a) note by note, every 4 notes in a row looked up wherever the song has the same 4 pitches and spacing
+    (60 ms steps); a note whose string differs from the one 2/3+ of those places use (3 at least) is suspect, grouped
+    into runs on one string going the same way (same-string notes between joining); grouping by runs first failed,
+    since a run that slipped onto a string joins the notes already there into a longer run. (b) runs whose frets are 4+
+    away from where the hand is around them (2.5 s either side) and would be nearer a string over. Tab goes to the next
+    suspect (⌥Tab every run; with none it says so and goes through every run); Enter marks one fine (`ed.ok`) and goes on;
+    the chip under the board says why ("the A string in 5 of 6 places").
+  - ↑ ↓ on the board also fixes the same notes everywhere, merged into one Undo, but only for a distinctive pattern (2+
+    pitches with 3+ notes, or 6+ notes): four E7s in a row moved 88 notes elsewhere in testing; a plain pattern keeps the
+    offer (F).
+  - Ghosts: faint keycaps where ↑ / ↓ would put the picked notes, the suggested way brighter (`ed.pickDir`).
+  - Space with notes picked loops their bars (`ed.loop`); H switches what you hear (without the bass / the song / the bass
+    alone, `state.mode`); one note picked: digits type its fret (`edTypeFret` -> `typeFret`), ⌫ deletes it (`edDelete`);
+    zoom moved to − + (digits are frets now).
+  - Tested on the library copy (The Feast and The Famine after many test moves): "11 runs look off", Tab picked a slipped
+    A-string riff now on E (E7 x4, "the A string in 5 of 6 places", ghosts on A2), ↑ moved those 4 (plain pattern: no
+    repeats), one ⌘Z back; a distinctive run moved with its repeats and one ⌘Z restored all; ⇧→ picked the first note on
+    screen, ⇧→⇧→⇧← 2, ⇧← 1, 9 set fret 9, ⌘Z back; no errors.
+- Board controls made plainer (user: "the view is fine, it's more just the controls that are confusing"): under the board
+  only the keys that do something now, in words (`edHint`), the main one lit amber: a run that looks off picked ->
+  "↑ to the A string · Enter it's fine · Tab skip" with "Looks off: <why>" over it (`edWhy`); the arrows name the string
+  they go to and appear only where every picked note fits (the suggested one first); F only when it asks; one note:
+  "0-9 fret · N add one after"; just after a move "Tab next · ⌘Z undo"; nothing picked "Tab next run that looks off ·
+  ←→ move along · 2× click add a note". The count over the board is just the count. The bottom key list is the five
+  basics + "? all keys"; the help lists the basics as steps and the rest as "More keys".
+- Adding notes on the board (user: "can you add a note in this?"): double-click an empty spot on a string (`ed.at` maps
+  the screen back to time / string; snapped to `editGrid` with `snapBeat` on the board's bars), or N after the picked note
+  (a grid step on, same string and fret); the fret of the nearest note on that string (else 0), the new note picked so
+  typing sets its fret (`edAddAt`, `edAddAfter`, via `addNote`; the draft made first); ⌥← ⌥→ nudge one picked note a grid
+  step (`edNudge` -> `stepSelected`). Tested on the library copy: a double-click on the E string at bar 1 added E0
+  (picked), 5 made it E5, N added one after, three ⌘Z took them out; the hints read as above; no errors.
+- "Looks off" that didn't make sense (user: "sometimes the off runs don't make sense ... like the beginning of feast and the
+  famine"): its imported tab plays the intro riff on A (A2 / A0) and the same riff from 1:57 and 3:36 on E (E7 / E5),
+  both fine; the repeat rule compared the intro with the whole song (3 of 4, 7 of 8 places on E) and flagged it.
+  Measured on the imported tabs (written by people, so nearly every flag there is a false one), with a recall check of
+  moving a random 4-8 note run one string up in each tab, 3 times (124 runs): whole song 112 false flags / 59 found;
+  nearby only (within 25 s, 2+ other places, 80% agreeing, windows with 2+ pitches) 29 / 32 (looser nearby settings
+  brought the false flags back: min 1 place 106 / 57, 40 s at 75% 54 / 39). The hand rule (42 false / 61 found) now
+  needs 5+ fretted notes around, 2+ on each side agreeing within 3 frets and a 4.5+ fret gain: 25 / 53. Both in
+  `edSuspects`; the reason reads "the same notes just before / after are on the E string (2 of 2)". The real Feast tab
+  (a fresh copy) now shows "No runs look off". Not measured: how many slips it finds on automatic tabs.## Guitar chords (input drawer)
 
 (Moved from CLAUDE.md, word for word.)
 Guitar mode of the input (same `instrument` switch): `heardNotes` (harmonic multi-pitch
@@ -2783,8 +3113,8 @@ progessing the new one, just do a ring on the outside").
   - Encore phrases: `encorePlan(d)` per song (cached on the tab data): in each 8 bars from the 3rd, the 2 bars with the
     most notes (>= 4) are a gold phrase; Baby (184 s, 79 bars) gets 10. `game.enc` (Arcade board only: not the tab view,
     guitar chords' board or practice): phrase states (done / broken by a miss or a messy note / skip: before a later start
-    or overlapping Encore), the meter (half a phrase each), `on` {t0, t1}: Encore from the bar after the meter fills, 4
-    bars. `encoreTick(now)` after each `judge`; every score goes through `addScore(pts, now)` (x2 in Encore, its extra
+    or overlapping Encore), the meter (half a phrase each), `on` {t0, t1, segs}: Encore from the next bar with notes after
+    the meter fills, 4 bars with notes (since 2026-11-10; see below). `encoreTick(now)` after each `judge`; every score goes through `addScore(pts, now)` (x2 in Encore, its extra
     kept as the bonus). Note: records come from `perfectScore`, which doesn't count Encore, so Encore makes them a bit
     easier to reach.
   - Look as in the mockup: gold keycaps (warm fill, gold rim and glow, a glint), the board and its outline gold in Encore
@@ -3553,6 +3883,139 @@ progessing the new one, just do a ring on the outside").
     so the old calibration (set while plucks were stamped late) is now slightly early: re-calibrating is optional. 14 of 16
     misses were plucks heard with another pitch read (an octave low at 1:25, a semitone flat at 0:50; 0:11.5 and 1:13.2 missed
     in all three games); 2 had no pluck. Reading steps median 21.9 ms, worst 42.
+
+- Song screen buttons and covers (2026-11-09): Play | Practice switch -> two buttons (`#arc-go` Play, `#arc-go-practice`;
+  user: "default to play everytime you enter the screen. Practice should probably be a button"). Entering the screen
+  sets Play; title › Practice and Library › Practice still arrive with Practice as the primary button. Covers tiny
+  after a song (user: "the albums are really small until you click somewhere"): `renderCarousel` sizes cards from the
+  carousel's height, drawn while the screen was still hidden (0 px -> the 150 px minimum); a ResizeObserver on
+  `#arc-carousel` redraws when it gets its size (checked: hidden -> shown went 150 -> 292 px at 1280x800).
+
+- 8× in gold (2026-11-09, user: "make 8x look similar to 4x but gold. It's hard to tell what the multiplier is cause it
+  looks like all the others when you have 8x"): 8× is an Encore at x4, and Encore's plain gold used to switch x4's look off,
+  so 8× looked like Encore's 2×-6×. Now x4's look stays on in an Encore and `g8` (eased) blends its colours to gold: the board
+  wash, strings, keycaps, trail tints (`X4SKY`), the edge outline's cycle, and a gold aurora (`arcadeBoard.auroraGold`, its own
+  ray texture; rim gold). Encore's own wash and edge (`encW = encK * (1 - x4k)`) step aside at 8×. Checked in a game on a copy
+  (Dust to Dust from 3:35.5, test streak 30): gold board + gold aurora during the Encore, blue x4 after it.
+  Test switch: localStorage `track-splitter-game-encore` = '1' starts the game with the Encore meter full (with
+  `track-splitter-game-streak` 30 that's 8× on the next bar). A test start past the last note had judged every note from the
+  first as missed (`firstNote` was max(0, -1)); now nothing is left to judge.
+- Glass sweep and song progress (2026-11-09, user: "the bar that runs along the board sometimes" could look better: "glass
+  sweep, but also song progress", then "can we make the progress bar space themed?"). Sweep: a diagonal gradient filled an
+  upright box, so its sides were cut off in hard vertical edges as it crossed; now a slanted band, soft both sides with a
+  faint glint line, easing in and out of its 3.2 s pass every 8 s. Progress: each bar was its own semi-transparent block
+  overlapping the next by half a pixel (seams / stripes), the head a plain bar and the Encore phrases' glow clipped. Now
+  space themed: the rest of the song a row of faint twinkling stars, the played part a glowing trail in runs of one
+  colour (gold all Perfect, white clean, violet messy, red a miss, faint grey for bars with no notes), you a comet with a
+  short tail in the board's mood colour, Encore phrases ahead gold four-point sparkles, the song's end a small ringed
+  planet. Checked in a test game on a copy (Dust to Dust from 2:30).
+- Progress bar cleaned up (2026-11-10, user: "not huge on it currently and the planet at the end"). The stars, comet and
+  ringed planet are gone: one slim glass track (a dark seat under it so it reads over bright parts of the sky), the played
+  part filled in the same per-bar colours (runs of one colour, one soft mood-coloured glow under it all), the Encore phrases
+  still ahead as short gold segments on the track (slow shimmer), you a white bead with a thin ring in the mood colour; the
+  times either side. Checked in a test game on a copy (Hysteria from 1:00, Encore meter full).
+- Progress bar as a glass capsule (2026-11-10, user: "I want the progress bar to look more polished, like a real game").
+  Three directions mocked up in `design/game-mockups/progress.html` (A Skyline: a column per bar as tall as its notes;
+  B Glass capsule; C Sections: the song's parts between breaks as separate pills with badges). User: "I like glass capsule
+  the best, maybe make it more polished and futuristic", then "that's better". In the game: a 10 px glass tube on a dark
+  seat, a frame lit top and bottom, HUD brackets at both ends in the mood colour, a faint tick every 4 bars and fine
+  scanlines inside, a gloss on its top half. The played part fills it in the per-bar colours (each run a vertical gradient),
+  a sheen runs through the fill, and a plasma front in the mood colour leads it. Notches above and below where the song's
+  parts start (the first bar with notes after 2+ empty bars, `plan.parts`, from `encorePlan`'s `busy`). The Encore phrases
+  are gold diamond gems over the frame (dim once passed; 3.3 px because Hysteria has 27). You are a white diamond knob with a
+  glow. The time is on the left and the percent on the right (the song's length is gone). Checked in a test game on a copy.
+- Bigger medals (2026-11-10, user: "can we also make the medals bigger. Make the medal section the same width as the encore
+  meter"): the record ladder under the score now has radius 13 (was 9.5) and is spread over the Encore meter's width
+  (`SP = (mw - 2 * LR) / 4`, so the outer records' edges line up with the meter's ends; at least 34 px apart). Its row moved
+  down 4 px and the meter 10 px, the scoreboard sits 8 px higher (4 without Encore), and the dark halo behind it grew to
+  match. Checked in a test game.
+- Shockwave (2026-11-10, user: "can we also improve the shockwave effect?"). The ring that opened from the cursor past the
+  screen's edges at a big moment's start. A first try (a pressure band with a colour split, an echo ring, string flares where
+  the ellipse crossed them) got "looks less polished than the rest of the game" and "should only trigger if you hit the
+  note". Now: it waits for your first hit in the big moment's first 1.5 s (`arcadeBoard.shockAt` from `game.laneHitMs`, one
+  per moment, `shockKey`); with no hit there's none. It lasts 0.95 s, clipped to the board's glass: two fronts run out from the
+  cursor to both ends (a soft trail in the mood colour, gold in Encore, behind a crisp white edge), the glass lights faintly
+  between them, each string flares with a short streak where a front crosses it, the rails catch it, and the cursor gets a
+  0.3 s flash and a vertical streak. Seen in a test game with the hit check switched off for the test (the simulated input
+  doesn't hit notes), then restored. The firing on a real hit is unplayed so far.
+- More big moments (2026-11-10, user: "it feels like there should be big moments in places where there arent"). Over the
+  library there were 177, many songs with 0-2 (Hysteria 2, Outside 1, Wow! Wow! Wow! 1, Reset Me and Save Yourself none).
+  Only one song rated on the light check page (ABBA, a yes at 0:38.6), too little for `tools/lights_tune.py`, so this was
+  judged from loudness timelines. Hysteria: the band coming in at 0:20 (0.14 -> 0.47) was skipped because the song gets
+  louder later (the part after had to be louder than 60% of the song), and choruses building over a few seconds (1:50)
+  never jump 0.15 within the 2 s / 1 s windows. `lights.decide` now has a second pass that only fills gaps: the same jump into
+  a part louder than 45% (or any 0.25+ jump), or the 4 s after 0.1+ louder than the 4 s before (weighted x1.2), from 6 s on
+  (earlier ones were just the song starting from silence), onset where the short jump peaks within 1.5 s, snapped to a kick;
+  same 15 s gap and 1 per 30 s cap (`BIG` gets `loud2`, `sure_jump`, `long`, `long_w`, `from`). Run first as one pass, it
+  moved ABBA's rated moment to 0:37.0 and pushed out some of Baby's and American Idiot's, hence two passes. Library: 177 ->
+  254, none lost (checked song by song against the saved cues); Hysteria 0:20.8, 0:59.7, 1:20.2, 1:50.8; Reset Me 6;
+  Outside 5. 0.08 for `long` gave 280 (The Feast and The Famine 8), so 0.1. `LIGHTS_RULES` 2 (cues made again on first
+  play; vocals kept). Checked through `/api/lights` on a copy. Mark any still missing (M) or wrong on the light check page
+  and the tuner can take it from there.
+- Progress bar, alive (2026-11-10, user: "I feel like we could make the progress bar cooler"). Mockup
+  `design/game-mockups/progress-cool.html`: Now, 1 Waveform (the song's loudness in the glass), 2 Alive (it plays along),
+  3 Warp (stars inside, a core with a trail, big moments as gates), 4 all three. User: "I like 4, but think we could make it
+  look more polished", so row 5 "All three, polished" (smooth waveform instead of 2 px columns, x4 a shimmer inside it
+  instead of ribbons over it, half the stars and softer, gates as rings of light, a frame glow in the multiplier's colour,
+  sparks as streaks, an inner shadow). The first row 5 washed out white at x4 (lighter blend over a bright centre), so
+  toned down. "Yes, build it". In `drawArcade`: the tube is 16 px. The waveform is the light cues' level (`songLights`,
+  20 a second) averaged over ±0.5 s every 3 px, scaled so the song's loudest part fills the tube (Hysteria sits at
+  0.4-0.6, so it came out thin before that), and built once per song and layout as a Path2D (`arcadeBoard.pb.wave`).
+  Ahead it's faint; behind it's filled run by run in each bar's colour. Stars stream past ahead at 0.02-0.08 of the bar a
+  second by `cues.level`. The big moments (`LC.big`) are rings that brighten over the last 6 s and burst open as passed, then
+  leave a dot. Alive: the fill breathes on `beat`; the frame glow, brackets, front, core and percent take the multiplier's
+  colour (`MULT_COLORS`; the song's mood at x1, gold in Encore); x4 (`x4k`) is a blue-violet shimmer clipped to the
+  waveform; each hit (`game.laneHitMs` rising) throws 4 spark streaks; a miss (`P.missAt`) turns the frame red with red
+  slivers for 0.35 s (it also shook the bar 4 px at first: "its shaking a ton", "the red is fine, just not the shake"); every 10 in a row (`game.streak`) a pulse runs back along the fill. State lives in `arcadeBoard.pb`,
+  reset with each game. Checked in a test game on a copy (Hysteria from 0:57), no errors; not yet seen with real hits.
+- The ring resets on a miss (2026-11-10, user: "can we make a missed note animate the ring to reset?"). Before, the lit
+  segments went red and faded together over 0.55 s, and nothing happened when x4 was lost (it only drained `streak % 10`, and
+  not from x4). Now (`arcadeBoard.ringDrain` {at, n, c}): n = what was lit (10 from x4). The segments turn from their own
+  colour (`arcadeBoard.ringCol`, the colour before the miss) to red in 80 ms, then empty one by one from the newest back to
+  the first: 0.22 s each, staggered min(45 ms, 0.36 s / n), each with a white-hot head and a glow. Meanwhile a red ring
+  snaps in round the record (1.35x -> 1x over 0.4 s). About 0.25-0.6 s by how much was lit. Checked frame by frame in a test
+  game (test streak 30, so the first miss drops x4): blue -> red flash with the ring, then draining back round, no errors.
+- Repeats as numbers (2026-11-10, user: "could we show numbers instead of repeated diamonds? It's harder to read. Maybe just
+  the connection for those ones"). A repeat (`info[i].rep`: the very next note, same string and fret, within a beat and a
+  half) was a small diamond. It's now its fret number at 0.82 of the keycap size, with no keycap: a dark edge so it reads on
+  the string, tinted by the string, glowing when next or hit, grey when missed. A link along the string joins it to the note
+  before it (`it.linkFrom`, where that note ends; a 5 px glow and a 1.6 px core, only when there's room). Its width
+  (`it.mw`, the number's) now decides when it gives way to a keycap. Seen on Hysteria from 0:22: "8 8", "5 5", "0 0" read
+  as numbers; repeats right next to their note leave little room for the link. No errors.
+- Encore no longer spent in breaks (2026-11-10, user: "a lot of encore sections happen right before the bass stops,
+  causing it to all be used during a long break"). Phrases are each 8 bars' busiest 2, so they often end a section, and
+  Encore ran the next 4 bars whatever they held. Now `encorePlan` marks the bars with notes (`busy`); a full meter waits for
+  the next bar with notes, and Encore lasts 4 bars that have notes (`e.on.segs`, `len`): empty bars inside its span don't
+  count and hold the meter (`encoreMeter` drains only over `segs`; the meter shows full while it waits). Simulated from each
+  phrase's end: Electra's windows at 1:01 and 1:59 went from 1 and 2 notes to 16 each; Hysteria had none in breaks.
+- Notes coming back before the ending (2026-11-09, user: "at the end of dust to dust, I still see notes showing back up
+  before the end transition"): the song's end puts the player back at 0; the board held its last frame only once the
+  input loop set `game.songEnded`, so frames in between drew time 0, the song's opening notes coming in. It now holds
+  as soon as the player has stopped at 0 mid-game (`over` in drawArcade). The flash lasts a frame or two, so the test
+  game's frames couldn't show it either way; no notes appeared in the ending there.
+- Held notes popping in and out (2026-11-09, user: "there's pop in on some held notes where it will show and then
+  disappear before it arrives"): whether a note gets its held capsule (`tails` in `drawArcade`) needs it to ring a beat,
+  and the beat was taken from the bar being played now. Bars synced to a recording differ a little, so a note held about
+  a beat flipped as the song crossed bar lines on its way in: 370 such notes over the imported tabs (Sha-La-La-Lady 43,
+  Addictive 41, Outside 34; counted from each tab's bars over the 4 s before the note). Now the note's own bar decides
+  (`beatOf`), which doesn't change while it comes. A game of Outside ran with no errors; not watched on the real board yet.
+- New songs and tabs showing up (2026-11-09, user: "songs ... don't show up until I reopen the game", "same with tabs"):
+  Encore's song select and title are built from `state.library` when they open, and a finished song refreshed the library
+  but redrew neither; a finished tab or import didn't refresh the library at all (only the tab view reloaded), so the
+  song kept "No tab yet" even on reopening song select. Now `refreshLibrary` builds the Encore screen showing again
+  (`renderSelect` / `renderTitle`; `state.arcadeUp` once Encore's state exists), and `pollJob` refreshes the library
+  after tab and import jobs. Tested on a library copy: on song select while a tab was made for a song without one (from
+  the Library), with another song folder added meanwhile: at the job's end "Search 3 songs" -> 4, the new song in the
+  carousel, and the song showed View tab with Play enabled, without reopening.
+- Streak moment and Encore bonus beside the score (2026-11-10, user: "the encore score shows above behind the score", then
+  "the streak also shows behind the progress bar. Put the streak to the left of the score and the encore score to the
+  right"): "+N ENCORE BONUS" had its small line printed under the number, right on the score's digits; the 50-note moment
+  sat under the board on the progress bar. Now the streak number (40 px, NOTE STREAK under it, a line drawing out to the
+  left) is right-aligned 44 px left of the ring, and the bonus (34 px gold, ENCORE BONUS under it, a line out to the right)
+  starts 44 px right of the score's fixed width (`arcadeBoard.plaque`'s `mx + mw`), both on the score's baseline, sliding
+  in 10 px. Then without their lines (user: "why does the streak only have lines on the left?", then "or maybe no lines"). Then the number centred over its label and an animation (user: "center the number to the text", "give it an animation", then "looks better"): `sideMoment()` pops the number in (0.6 to 1 with a small overshoot) with a glow flash and a ring bursting out, spreads the label in just after, counts the bonus up from 0 over 0.7 s, and floats both up 10 px as they fade. The ENCORE start banner stays over the score. The streak moment is no longer shown in practice (no score
+  there). Checked with both forced on in a game at 1280x800 (clear of the score, ring and ladder); no console errors.
+  Not seen with a real 50-note streak or a real Encore.
 
 ## Open ideas / to do
 

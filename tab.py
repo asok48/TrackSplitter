@@ -1372,18 +1372,218 @@ def model_counts(truth, notes):
     return hit, len(notes), len(tt)
 
 
-def drop_ringing_octaves(notes, audio, window=0.5, attack=1.0):
+def drop_ringing_octaves(notes, audio, window=0.5, attack=1.0, onsets=None, times=None, plucked=0.7, fading=-2.5):
     """For a clean recording of the user's own playing (My tab): drop notes an octave
     or two from a note played just before that have no attack of their own (the bass
     gets no louder there): an open string ringing along, like the low E sounding when E
     is played at the 7th fret, or an overtone. In the user's Cry Baby Cry take these
     were most of the stray notes (E1/E3 around a played E2): 10 of its 46 notes not in
     the tab went, 2 real ones with them. A no-attack rule without the octave condition
-    cost far more real notes (26 for 11)."""
+    cost far more real notes (26 for 11).
+    onsets / times (the model's onset activations, transcribe's keep): a note the model
+    heard plucked (onset >= plucked for its pitch) stays unless the bass clearly fades
+    there. Octave riffs lost their upper notes: the low note is muted as the octave is
+    plucked, so the bass gets no louder below 400 Hz (Gimme! Gimme! Gimme!'s D2-D3 8ths,
+    user: "half the notes I play are skipped": 7 of its plucked D3s/D2s went, onset
+    0.74-0.93 and -2 to +0.4 dB; the stray notes in the other takes were mostly under 0.5,
+    those above were 3-13 dB quieter)."""
     keep = []
     for k, (s, e, p, a) in enumerate(notes):
         ringing = any(abs(p - q[2]) in (12, 24) and q[0] < s and s - q[0] < window and q[1] > s - 0.15
                       for q in notes[max(0, k - 6):k])
-        if not (ringing and _low_bump(audio, s) < attack):
+        bump = _low_bump(audio, s) if ringing else 0.0
+        if ringing and bump < attack and onsets is not None:
+            i = int(np.argmin(np.abs(times - s)))
+            ringing = not (onsets[max(0, i - 3):i + 4, p - MIDI_OFFSET].max() >= plucked and bump >= fading)
+        if not (ringing and bump < attack):
             keep.append((s, e, p, a))
     return keep
+
+
+# --- Plucks in a clean take (My tab) ---------------------------------------------
+# On the user's Scarlett takes a held note's level wobbles ~10 times a second (+-4 dB as
+# it rings), and Basic Pitch's onsets follow that: a note held 2 s came out as ~10 (the
+# slow string test: 105 plucks, 327 notes). A real pluck jumps 10-30 dB within ~10 ms
+# with a bright click; the wobble rises ~2 dB per 10 ms without one. So plucks are found
+# from the take itself: the level over the next 12 ms against the lowest of the 40 ms
+# before, whole band plus (weighted) above 1 kHz.
+PLUCK = {"high": 0.6, "rise": 21.0, "floor": 20.0, "gap": 0.09, "relative": 0.65}
+
+
+def take_plucks(audio, rise=None, gap=None, floor=None, high=None, hop=64, n=256):
+    """Times (s) of plucks / pick attacks in a clean bass recording."""
+    rise, gap = rise or PLUCK["rise"], gap or PLUCK["gap"]
+    floor, high = floor or PLUCK["floor"], PLUCK["high"] if high is None else high
+    from numpy.lib.stride_tricks import sliding_window_view as windows
+    x = np.pad(audio.astype(np.float32), n // 2)
+    frames = windows(x, n)[::hop]
+    spec = np.abs(np.fft.rfft(frames * np.hanning(n).astype(np.float32), axis=1)) ** 2
+    f = np.fft.rfftfreq(n, 1 / SAMPLERATE)
+    whole = 10 * np.log10(spec.sum(1) + 1e-12)
+    bright = 10 * np.log10(spec[:, f > 1000].sum(1) + 1e-12)
+    fps = SAMPLERATE / hop
+    k1, k2 = int(0.012 * fps), int(0.04 * fps)
+
+    def jump(e):   # the next k1 frames' peak over the quietest of the k2 before
+        ahead = windows(np.pad(e, (0, k1 - 1), mode="edge"), k1).max(1)
+        before = np.r_[e[:1], windows(np.pad(e, (k2 - 1, 0), mode="edge"), k2).min(1)[:-1]]
+        return ahead - before
+    score = jump(whole) + high * jump(bright)
+    candidates = np.nonzero((score > rise) & (whole > np.percentile(whole, 99) - floor))[0]
+    peaks = []
+    for i in candidates:
+        if peaks and i - peaks[-1] < gap * fps:
+            if score[i] > score[peaks[-1]]:
+                peaks[-1] = i
+            continue
+        peaks.append(i)
+    if PLUCK["relative"] and peaks:
+        # A pluck stands out from the plucks around it: noise and a strong wobble between
+        # slow plucks reach about half of theirs, re-plucked fast 8ths most of it.
+        t, sc = np.array(peaks) / fps, score[peaks]
+        peaks = [i for i, ti, si in zip(peaks, t, sc)
+                 if si >= PLUCK["relative"] * np.median(sc[np.abs(t - ti) < 1.5])]
+    return [float(i / fps + 0.006) for i in peaks]   # + about where the attack is halfway up
+
+
+def notes_on_plucks(notes, plucks, near=0.05, ringing=0.12):
+    """A take's notes with their starts taken from the plucks heard: a long note is split
+    at every pluck inside it, and same-pitch notes that touch without a pluck between are
+    joined (wobble). A new pitch without a pluck stays (hammer-ons, slides)."""
+    plucks = np.asarray(sorted(plucks))
+    out = []
+    for s, e, p, a in sorted(notes):
+        k = np.searchsorted(plucks, s - near)
+        own = k < len(plucks) and plucks[k] <= s + near
+        if out and out[-1][2] == p and s - out[-1][1] < ringing and not own:
+            out[-1] = (out[-1][0], e, p, out[-1][3])      # the same note ringing on
+            continue
+        if own:
+            s = float(plucks[k])
+        out.append((s, e, p, a))
+    split = []
+    for s, e, p, a in out:
+        inside = plucks[(plucks > s + near) & (plucks < e - near)]
+        edges = [s, *inside.tolist(), e]
+        split += [(a0, a1, p, a) for a0, a1 in zip(edges, edges[1:])]
+    return split
+
+
+# --- Which string a take's note was played on -------------------------------------
+# The page's string detection (static/index.html stringFeatures / fitStrings /
+# stringScores), here for recorded takes, with the calibration the user made in the page
+# (<library>/.calibration.json): each string's overtones run sharper (inharmonicity B)
+# and its harmonics 2-6 sit at their own levels.
+CAL_OPEN = [28, 33, 38, 43]   # the calibration is made in standard tuning
+
+
+def string_features(buf, sr, midi):
+    """[log B, brightness, harmonics 2-6 in dB below the loudest] of a note, or None (no
+    clear harmonics, or not within half a semitone of `midi`)."""
+    L = len(buf)
+    N = 1 << int(np.ceil(np.log2(L * 4)))
+    S = np.abs(np.fft.rfft(buf * np.hanning(L), N))
+    df = sr / N
+
+    def peak(f, rel):
+        if not f > 0:
+            return None
+        lo, hi = int(f * (1 - rel) / df), int(f * (1 + rel) / df) + 1
+        if lo < 1 or hi >= len(S) - 1:
+            return None
+        k = lo + int(np.argmax(S[lo:hi]))
+        a, b, c = np.log(S[k - 1:k + 2] + 1e-12)
+        den = a - 2 * b + c
+        return (k + (0.5 * (a - c) / den if den else 0)) * df, S[k]
+    f0 = 440 * 2 ** ((midi - 69) / 12)
+    first = peak(f0, 0.04)
+    if not first:
+        return None
+    fs, amps = [], []
+    for n in range(1, 13):
+        p = peak(n * first[0] * np.sqrt(1 + 0.0005 * n * n), 0.015 if n > 1 else 0.04)
+        fs.append(p[0] if p else np.nan)
+        amps.append(p[1] if p else 1e-9)
+    amps = np.array(amps)
+    top = amps.max()
+    use = [n for n in range(1, 13) if np.isfinite(fs[n - 1]) and amps[n - 1] > top * 10 ** (-50 / 20)]
+    if len(use) < 5:
+        return None
+    X = np.array([n * n for n in use], float)
+    Y = np.array([(fs[n - 1] / n) ** 2 for n in use])
+    slope, icpt = np.polyfit(X, Y, 1)
+    if not icpt > 0 or abs(12 * np.log2(np.sqrt(icpt) / f0)) > 0.5:
+        return None
+    B = slope / icpt
+    return [float(np.log(B if B > 0 else 1e-5)), float((amps * np.arange(1, 13)).sum() / amps.sum()),
+            *(20 * np.log10(amps[1:6] / top)).tolist()]
+
+
+def fit_strings(samples, strings=4):
+    """The page's fitStrings: per string the open notes' mean and a line in the fret for
+    fretted ones (worked out from the open string when it has no two fretted spots)."""
+    model = {"strings": []}
+    for s in range(strings):
+        op = np.array([x["v"] for x in samples if x["s"] == s and x["f"] == 0])
+        fr = [x for x in samples if x["s"] == s and x["f"] > 0]
+        d = {"open": op.mean(0) if len(op) else None, "line": None, "guessed": False}
+        if d["open"] is not None and len({x["f"] for x in fr}) < 2:
+            d["line"] = [(v, np.log(2) / 6 if j == 0 else 0.0) for j, v in enumerate(d["open"])]
+            d["guessed"] = True
+        elif len({x["f"] for x in fr}) > 1:
+            f = np.array([x["f"] for x in fr], float)
+            V = np.array([x["v"] for x in fr])
+            b = ((f - f.mean())[:, None] * (V - V.mean(0))).sum(0) / ((f - f.mean()) ** 2).sum()
+            d["line"] = list(zip((V.mean(0) - b * f.mean()).tolist(), b.tolist()))
+        model["strings"].append(d)
+    res = [np.array(x["v"]) - p for x in samples if (p := _predict_string(model, x["s"], x["f"])) is not None]
+    model["sd"] = np.array(res).std(0) + 1e-6 if res else None
+    if model["sd"] is not None and any(d["guessed"] for d in model["strings"]):
+        model["sd"] = model["sd"] * 1.5
+    return model
+
+
+def _predict_string(model, s, f):
+    d = model["strings"][s]
+    if f == 0:
+        return d["open"]
+    return None if d["line"] is None else np.array([a + b * f for a, b in d["line"]])
+
+
+def string_scores(model, v, midi, opens=CAL_OPEN):
+    """[(score, string, fret)] for every calibrated place the pitch can be played, best first."""
+    first = len(opens) - len(model["strings"])   # a 5-string's low B isn't calibrated
+    out = []
+    for s in range(first, len(opens)):
+        f = midi - opens[s]
+        if 0 <= f <= 20:
+            p = _predict_string(model, s - first, f)
+            if p is not None:
+                out.append((float(-0.5 * (((np.array(v) - p) / model["sd"]) ** 2).sum()), s, f))
+    return sorted(out, reverse=True)
+
+
+STRING_SURE = 13.0   # how far the best place must beat the next for a take's note to keep it (heard_strings)
+
+
+def heard_strings(audio, sr, notes, model, margin=STRING_SURE, opens=CAL_OPEN, after=(0.1, 0.2)):
+    """{note index: (string, fret)} for the take's notes whose string is clear from their
+    sound. Read 0.1-0.2 s into the note (a short note: up to its last 0.1 s): on the user's
+    labelled string tests (with the calibration they made in the page) that was right for
+    87% of slow plucks and 77% of fast 8ths, against 60% / 78% at the live readout's
+    0.03-0.115 s. Beating the next place by `margin`: slow 96% right of the half named, fast
+    86% of 60%. The others are left to the fingering, which leans toward these: whole takes
+    vs their imported tab's strings, Cry Baby Cry 80 -> 97% and 82 -> 85%, Fireman & Dancer
+    69 -> 92% (margin 0 pinned more and did worse on real takes: 85 / 63 / 89%)."""
+    out = {}
+    for i, (s, e, p, *_) in enumerate(notes):
+        a, b = int((s + after[0]) * sr), int((s + min(after[1], e - s)) * sr)
+        if b - a < int(0.06 * sr):   # a short note: up to its last 0.1 s
+            a, b = int(max(s + 0.02, e - 0.1) * sr), int(e * sr)
+        if b - a < int(0.04 * sr) or b > len(audio):
+            continue
+        v = string_features(audio[a:b], sr, p)
+        sc = string_scores(model, v, p, opens) if v else []
+        if sc and (len(sc) == 1 or sc[0][0] - sc[1][0] >= margin):
+            out[i] = (sc[0][1], sc[0][2])
+    return out

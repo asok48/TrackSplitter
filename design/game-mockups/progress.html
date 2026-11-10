@@ -1,0 +1,146 @@
+<!doctype html><meta charset="utf-8"><title>Encore progress bar</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The song progress under the board, three directions (2026-11-10, user: "I want the progress bar to look more polished,
+     like a real game"; before that "not huge on it currently and the planet at the end"). Everything drawn is data the game
+     keeps: the bars, notes per bar, each played bar's result (gold all Perfect, white clean, violet messy, red a miss), the
+     Encore phrases, and the breaks (bars with no notes, encorePlan's busy). The song is made up: 3:20, 92 bars, a hard
+     stretch in the middle, two breaks. Time runs on its own; click a row's bar to jump. -->
+<style>
+:root{color-scheme:dark;--ink:#f5f5f7;--font:-apple-system,"SF Pro Display",system-ui,sans-serif}
+html,body{margin:0;background:#05060a;color:var(--ink);font:400 14px var(--font);-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(1200px 500px at 60% 30%,rgba(90,50,150,.22),transparent 70%),radial-gradient(900px 400px at 20% 80%,rgba(24,34,90,.35),transparent 70%),#05060a;min-height:100vh}
+header{padding:22px 32px 6px;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+header b{font:700 16px var(--font)}
+header span{color:rgba(245,245,247,.45);font-size:12.5px}
+header button{margin-left:auto;font:600 11px var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--ink);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:999px;height:30px;padding:0 16px;cursor:pointer}
+.row{padding:14px 32px 8px}
+.row h2{margin:0 0 2px;font:600 11px var(--font);letter-spacing:.24em;text-transform:uppercase;color:rgba(245,245,247,.75)}
+.row p{margin:0 0 6px;color:rgba(245,245,247,.45);font-size:12.5px;max-width:820px}
+canvas{display:block;width:100%;height:150px;cursor:pointer}
+</style>
+<header><b>Progress bar</b><span>three directions · the board's bottom edge above each · time runs on its own, click to jump</span><button id="pp">Pause</button></header>
+<div class="row"><h2>A · Skyline</h2><p>Each bar a column as tall as its notes, so you see the busy parts and the breaks coming. Played columns light up in how they went, the Encore phrases ahead glow gold, a playhead with the time on it.</p><canvas id="a"></canvas></div>
+<div class="row"><h2>B · Glass capsule</h2><p>A framed glass tube that fills as you play, in how each bar went, with a sheen running through it. Notches where the song's parts change, gold gems on the frame for Encore phrases, a glowing knob and the percent.</p><canvas id="b"></canvas></div>
+<div class="row"><h2>C · Sections</h2><p>The song split into its parts (between the breaks), like a level map. The part you're in fills and glows; finished parts keep their colour and get a badge: a gold star when every note was Perfect, a tick when clean, the miss count otherwise. Encore phrases as gold marks under them.</p><canvas id="c"></canvas></div>
+<script>
+const DUR = 200, NB = 92, BL = DUR / NB, bars = Array.from({ length: NB }, (_, i) => i * BL);
+const R = ((a) => () => (a = (a * 16807) % 2147483647) / 2147483647)(42);
+const brk = (i) => (i < 2) || (i >= 30 && i < 34) || (i >= 62 && i < 66) || i > 89;   // the intro, two breaks, the end
+const notesIn = bars.map((_, i) => brk(i) ? 0 : Math.round(4 + R() * 6 + (i > 40 && i < 58 ? 6 + R() * 4 : 0) + (i % 8 === 6 || i % 8 === 7 ? 3 : 0)));
+const resOf = bars.map((_, i) => { if (!notesIn[i]) return 'none'; const r = R(), hard = i > 40 && i < 58; return r < (hard ? 0.18 : 0.05) ? 'miss' : r < (hard ? 0.34 : 0.14) ? 'messy' : r < 0.62 ? 'perf' : 'clean'; });
+const missN = bars.map((_, i) => resOf[i] === 'miss' ? 1 + Math.floor(R() * 2) : 0);
+const COL = { perf: [246, 216, 120], clean: [235, 240, 255], messy: [196, 161, 255], miss: [242, 123, 123], none: [150, 160, 190] }, GOLD = [251, 191, 36], MOOD = [245, 200, 160];
+const phrases = []; for (let b0 = 2; b0 + 2 < NB; b0 += 8) { let best = -1, bn = 0; for (let b = b0; b < Math.min(b0 + 6, NB - 2); b++) { const n = notesIn[b] + notesIn[b + 1]; if (notesIn[b] && notesIn[b + 1] && n > bn) { bn = n; best = b; } } if (best >= 0) phrases.push([best, best + 2]); }
+const parts = []; { let s = -1; for (let i = 0; i <= NB; i++) { const on = i < NB && !brk(i); if (on && s < 0) s = i; if (!on && s >= 0) { parts.push([s, i]); s = -1; } } }
+const acss = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`, fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+let t = 34, last = performance.now(), paused = false;
+document.getElementById('pp').onclick = (e) => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
+const views = ['a', 'b', 'c'].map((id) => { const cv = document.getElementById(id); cv.onclick = (e) => { const r = cv.getBoundingClientRect(), L = r.width * 0.18, W = r.width * 0.64; t = Math.max(0, Math.min(DUR, (e.clientX - r.left - L) / W * DUR)); }; return { id, cv, g: cv.getContext('2d') }; });
+function soft(g, x, y, r, c, a) { const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, acss(c, a)); q.addColorStop(1, acss(c, 0)); g.fillStyle = q; g.fillRect(x - r, y - r, r * 2, r * 2); }
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function frame(ms) {
+  if (!paused) t = (t + (ms - last) / 1000) % DUR; last = ms;
+  const T = ms / 1000, nowBar = Math.min(NB - 1, Math.floor(t / BL));
+  for (const v of views) {
+    const dpr = devicePixelRatio || 1, Wc = v.cv.clientWidth, Hc = 150;
+    if (v.cv.width !== Math.round(Wc * dpr)) { v.cv.width = Math.round(Wc * dpr); v.cv.height = Hc * dpr; }
+    const g = v.g; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, Wc, Hc);
+    // the board's bottom edge, for context
+    g.strokeStyle = 'rgba(240,200,140,.35)'; g.lineWidth = 1.2; rr(g, 30, -40, Wc - 60, 70, 16); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.02)'; g.fill();
+    const px0 = Wc * 0.18, pw = Wc * 0.64, x = (s) => px0 + Math.max(0, Math.min(DUR, s)) / DUR * pw, xn = x(t), cy = 96;
+    g.save(); ({ a: skyline, b: capsule, c: sections })[v.id](g, { px0, pw, x, xn, cy, T, nowBar, Wc }); g.restore();
+  }
+  requestAnimationFrame(frame);
+}
+function times(g, px0, pw, cy, extra) {
+  g.font = `500 12px ${'-apple-system,system-ui'}`; g.textBaseline = 'middle'; g.fillStyle = 'rgba(245,245,247,.85)';
+  g.textAlign = 'right'; g.fillText(fmt(t), px0 - 16, cy); g.textAlign = 'left'; g.fillStyle = 'rgba(245,245,247,.45)'; g.fillText(extra ?? fmt(DUR), px0 + pw + 16, cy);
+}
+// A: skyline
+function skyline(g, { px0, pw, x, xn, cy, T, nowBar }) {
+  const base = cy + 8, maxN = Math.max(...notesIn), bw = pw / NB;
+  g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 1; g.beginPath(); g.moveTo(px0, base + 0.5); g.lineTo(px0 + pw, base + 0.5); g.stroke();
+  const inPh = (i) => phrases.some(([a, b]) => i >= a && i < b);
+  for (let i = 0; i < NB; i++) {
+    if (!notesIn[i]) continue;
+    const h = 3 + (notesIn[i] / maxN) * 22, x0 = px0 + i * bw + 0.6, w = Math.max(1, bw - 1.2), played = bars[i] + BL <= t, cur = i === nowBar;
+    if (played || cur) {
+      const c = COL[resOf[i]], fill = cur ? (t - bars[i]) / BL : 1;
+      soft(g, x0 + w / 2, base - h / 2, h * 0.9, c, cur ? 0.25 : 0.08);
+      const q = g.createLinearGradient(0, base - h, 0, base); q.addColorStop(0, acss(c, 1)); q.addColorStop(1, acss(c, 0.45));
+      g.fillStyle = q; rr(g, x0, base - h, w, h, Math.min(1.5, w / 2)); g.fill();
+      if (cur) { g.fillStyle = 'rgba(5,6,10,.55)'; g.fillRect(x0 + w * fill, base - h, w * (1 - fill), h); }
+    } else if (inPh(i)) {
+      const tw = 0.7 + 0.3 * Math.sin(T * 2.4 + i);
+      soft(g, x0 + w / 2, base - h / 2, h, GOLD, 0.12 * tw);
+      g.fillStyle = acss(GOLD, 0.55 * tw); rr(g, x0, base - h, w, h, 1.5); g.fill();
+    } else { g.fillStyle = 'rgba(220,228,255,.16)'; rr(g, x0, base - h, w, h, 1.5); g.fill(); }
+  }
+  // playhead with a time chip
+  const tq = g.createLinearGradient(0, base - 34, 0, base + 4); tq.addColorStop(0, acss(MOOD, 0)); tq.addColorStop(1, acss(MOOD, 0.95));
+  g.fillStyle = tq; g.fillRect(xn - 0.75, base - 34, 1.5, 38); soft(g, xn, base, 10, MOOD, 0.6);
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(xn, base + 0.5, 2.6, 0, 7); g.fill();
+  g.font = '600 10.5px -apple-system,system-ui'; const s = fmt(t), tw2 = g.measureText(s).width + 14;
+  g.fillStyle = 'rgba(10,11,16,.85)'; rr(g, xn - tw2 / 2, base - 52, tw2, 17, 8.5); g.fill(); g.strokeStyle = acss(MOOD, 0.5); g.stroke();
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, xn, base - 43.5);
+  g.font = '500 12px -apple-system,system-ui'; g.fillStyle = 'rgba(245,245,247,.45)'; g.textAlign = 'left'; g.fillText(fmt(DUR), px0 + pw + 16, base - 4);
+}
+// B: glass capsule
+function capsule(g, { px0, pw, x, xn, cy, T }) {
+  const h = 12, y0 = cy - h / 2, r = h / 2;
+  g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 12; g.fillStyle = 'rgba(8,9,14,.75)'; rr(g, px0 - 3, y0 - 3, pw + 6, h + 6, r + 3); g.fill(); g.shadowBlur = 0;
+  const fr = g.createLinearGradient(0, y0 - 3, 0, y0 + h + 3); fr.addColorStop(0, 'rgba(255,255,255,.35)'); fr.addColorStop(0.5, 'rgba(255,255,255,.08)'); fr.addColorStop(1, 'rgba(255,255,255,.22)');
+  g.strokeStyle = fr; g.lineWidth = 1; rr(g, px0 - 2.5, y0 - 2.5, pw + 5, h + 5, r + 2.5); g.stroke();
+  g.save(); rr(g, px0, y0, pw, h, r); g.clip();
+  g.fillStyle = 'rgba(255,255,255,.04)'; g.fillRect(px0, y0, pw, h);
+  // the fill, bar by bar in runs
+  let a = 0; while (a < NB && bars[a] < t) { let b = a; while (b + 1 < NB && bars[b + 1] < t && resOf[b + 1] === resOf[a]) b++; const c = COL[resOf[a]], x0 = x(bars[a]), x1 = x(Math.min(t, bars[b] + BL));
+    const q = g.createLinearGradient(0, y0, 0, y0 + h); q.addColorStop(0, acss(c, resOf[a] === 'none' ? 0.35 : 1)); q.addColorStop(1, acss(c.map((v) => v * 0.55), resOf[a] === 'none' ? 0.35 : 1));
+    g.fillStyle = q; g.fillRect(x0, y0, x1 - x0 + 0.5, h); a = b + 1; }
+  const sx = px0 + ((T * 0.18) % 1.4 - 0.2) * pw, sq = g.createLinearGradient(sx - 60, 0, sx + 60, 0);   // a sheen running through the fill
+  sq.addColorStop(0, 'rgba(255,255,255,0)'); sq.addColorStop(0.5, 'rgba(255,255,255,.35)'); sq.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = sq; g.fillRect(px0, y0, Math.max(0, xn - px0), h);
+  const gl = g.createLinearGradient(0, y0, 0, y0 + h * 0.5); gl.addColorStop(0, 'rgba(255,255,255,.4)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gl; g.fillRect(px0, y0 + 1, pw, h * 0.45);   // glass gloss
+  g.restore();
+  for (let k = 1; k < parts.length; k++) { const nx = x(bars[parts[k][0]]); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(nx - 0.5, y0 - 5, 1, h + 10); }   // part notches
+  for (const [pa, pb] of phrases) { const mx = (x(bars[pa]) + x(bars[pb])) / 2, done = bars[pb] <= t, my = y0 - 6, s = 4;      // gems on the frame
+    if (!done) soft(g, mx, my, 10, GOLD, 0.3 + 0.15 * Math.sin(T * 3 + pa));
+    g.fillStyle = done ? 'rgba(251,191,36,.25)' : acss([253, 224, 130], 1); g.beginPath(); g.moveTo(mx, my - s); g.lineTo(mx + s * 0.8, my); g.lineTo(mx, my + s); g.lineTo(mx - s * 0.8, my); g.closePath(); g.fill();
+    if (!done) { g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.moveTo(mx, my - s); g.lineTo(mx + s * 0.4, my - s * 0.2); g.lineTo(mx, my); g.closePath(); g.fill(); } }
+  soft(g, xn, cy, 20, MOOD, 0.55);   // the knob
+  g.fillStyle = '#fff'; g.beginPath(); g.moveTo(xn, cy - 11); g.lineTo(xn + 6, cy); g.lineTo(xn, cy + 11); g.lineTo(xn - 6, cy); g.closePath(); g.fill();
+  g.strokeStyle = acss(MOOD, 1); g.lineWidth = 1.4; g.stroke();
+  times(g, px0, pw, cy, `${Math.round(t / DUR * 100)}%`);
+}
+// C: sections
+function sections(g, { px0, pw, x, xn, cy, T }) {
+  const h = 8, gap = 6;
+  parts.forEach(([s, e], k) => {
+    const x0 = x(bars[s]) + gap / 2, x1 = x(bars[e - 1] + BL) - gap / 2, w = x1 - x0, done = bars[e - 1] + BL <= t, cur = t >= bars[s] && !done;
+    const res = bars.slice(s, e).map((_, j) => resOf[s + j]).filter((r, j) => bars[s + j] < t), miss = missN.slice(s, e).reduce((n, m, j) => n + (bars[s + j] < t ? m : 0), 0);
+    const col = res.some((r) => r === 'miss') ? COL.miss : res.some((r) => r === 'messy') ? COL.messy : res.every((r) => r === 'perf') ? COL.perf : COL.clean;
+    g.fillStyle = cur ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.06)'; rr(g, x0, cy - h / 2, w, h, h / 2); g.fill();
+    if (cur) { g.strokeStyle = acss(MOOD, 0.55 + 0.2 * Math.sin(T * 3)); g.lineWidth = 1; rr(g, x0 - 2.5, cy - h / 2 - 2.5, w + 5, h + 5, h / 2 + 2.5); g.stroke(); }
+    if (cur || done) {   // filled bar by bar in how each went
+      g.save(); rr(g, x0, cy - h / 2, w, h, h / 2); g.clip();
+      for (let i = s; i < e && bars[i] < t; i++) { const c = COL[resOf[i]], a0 = Math.max(x0, x(bars[i])), a1 = Math.min(x1, x(Math.min(t, bars[i] + BL))); const q = g.createLinearGradient(0, cy - h / 2, 0, cy + h / 2); q.addColorStop(0, acss(c, 1)); q.addColorStop(1, acss(c, 0.6)); g.fillStyle = q; g.fillRect(a0, cy - h / 2, a1 - a0 + 0.5, h); }
+      g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(x0, cy - h / 2 + 1, w, 1.5); g.restore();
+      if (cur) soft(g, xn, cy, 16, MOOD, 0.5);
+    }
+    if (done) {   // the badge
+      const bx = (x0 + x1) / 2, by = cy - 20;
+      g.fillStyle = 'rgba(10,11,16,.85)'; g.beginPath(); g.arc(bx, by, 8.5, 0, 7); g.fill(); g.strokeStyle = acss(col, 0.8); g.lineWidth = 1.2; g.stroke();
+      g.fillStyle = acss(col, 1); g.strokeStyle = acss(col, 1);
+      if (col === COL.perf) { g.beginPath(); for (let j = 0; j < 10; j++) { const rr2 = j % 2 ? 2.2 : 5, an = -Math.PI / 2 + j * Math.PI / 5; g.lineTo(bx + rr2 * Math.cos(an), by + rr2 * Math.sin(an)); } g.closePath(); g.fill(); }
+      else if (col === COL.clean) { g.lineWidth = 1.6; g.beginPath(); g.moveTo(bx - 3.5, by); g.lineTo(bx - 1, by + 2.8); g.lineTo(bx + 3.8, by - 3); g.stroke(); }
+      else { g.font = '700 9.5px -apple-system,system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(miss ? `−${miss}` : '~', bx, by + 0.5); }
+    }
+  });
+  for (const [pa, pb] of phrases) { if (bars[pb] <= t) continue; const a0 = x(bars[pa]), a1 = x(bars[pb]); g.fillStyle = acss(GOLD, 0.75 + 0.25 * Math.sin(T * 2.4 + pa)); rr(g, a0 + 1, cy + 9, a1 - a0 - 2, 2.5, 1.25); g.fill(); }
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(xn, cy, 3, 0, 7); g.fill();
+  times(g, px0, pw, cy);
+}
+requestAnimationFrame(frame);
+</script>

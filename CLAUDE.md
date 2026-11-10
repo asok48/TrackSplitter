@@ -85,6 +85,8 @@ in use. Ground rules agreed so far (kept here so every computer's session has th
   `~/Applications/Encore.app`; `POST /api/encore-app`).
 - `tools/gamecheck_replay.py`, `tools/gamecheck_experiment.py`: replay recorded game checks (judging, pitch reader
   variants, wrong-notes control); see NOTES.md.
+- `tools/take_bench.py`: scores recorded takes (`take_notes`) against the labelled string tests and real takes; see NOTES.md › My tab.
+- `tools/tab_bench.py`: scores the automatic bass tab against the imported tabs, held out (`app.auto_notes`, `app.fit_learning`); see NOTES.md › Bass tab.
 - `track-splitter.zip`: an email-sized copy of the app (git-ignored). Email filters
   block `.bat`, so inside the zip it is `start.bat.txt`; never commit that name.
 
@@ -198,7 +200,7 @@ standard, drop D, half step down, 5-string, with a suggestion) and saves
 - Bass input listening (`listen`, YIN `pitchOf`, noise gate `input.floorDb`, Listening boost `input.listenGain` / `encore-listen-boost`), string
   detection (`stringFeatures`, `#strcal-dlg`) and timing calibration (`#calib-dlg`,
   `inputCalibration`); both calibrations also saved to `<library>/.calibration.json`.
-- Test start: localStorage `track-splitter-game-start` (seconds); Electra tests use 30.
+- Test start: localStorage `track-splitter-game-start` (seconds); Electra tests use 30. `track-splitter-game-encore` = '1': Encore meter full (8× test).
 
 ## Imported tabs (tabimport.py)
 
@@ -208,7 +210,7 @@ format -> TabTrack -> `timeline()` (repeats written out), then synced to the aut
 tab's heard notes (`_tempo_fit`, `_sync_timed` Viterbi placing/skipping bars,
 `_place_in_bars`; text via `_sync_text`; text without count lines: rhythm from the
 spacing, `spaced`, unless order-only finds more, `SPACING_TRUST`). Stored as `imported-tab - <name>.<ext>` /
-`imported-tab.txt` + `.bass-tab-imported.json`; `POST /api/tab/import`,
+`imported-tab.txt` + `.bass-tab-imported.json` (notes where the stem is silent left out, `without_silence`, `SILENT_DB`); `POST /api/tab/import`,
 `GET /api/tab?source=imported`, `POST /api/tab/import/remove`; bars written differently from an earlier copy that
 the song plays the copy's way are repaired (`_repair_repeats`, `repaired`). Bump `IMPORT_RULES` when
 syncing changes (`get_tab` re-syncs via `resync_import`).
@@ -233,7 +235,7 @@ input) -> `arcadePlay` -> `startGame`. Mac icon "Track Splitter Game" (`install_
 look (`drawArcMesh`, mockup `ui.html`), song select carousel (`renderCarousel`), Settings in tabs. In-game look "clean and premium" (mockups in `design/game-mockups/`):
 `drawStage` mood background, `drawMultiplier` + `drawRingFire` by the score (`rbScore`); test
 streak `track-splitter-game-streak`. Phase 2 (scoring depth) to come.
-Practice (title › Practice, or Play | Practice `#arc-mode` on song select; `arcade.mode`, `game.pr`): no score, strip
+Practice (title › Practice, or the Practice button `#arc-go-practice` on song select, which opens on Play; `arcade.mode`, `game.pr`): no score, strip
 `#pr-hud` (`renderPractice`, timeline `#pr-line`: click to move, drag bars to loop), `practiceSeek` / `practiceGo` /
 `practiceTick` / `practiceHeld` (Wait for me), Click, speed via `/api/audio?speed=50-100` (`shifted()`, `player.rate`);
 settings `encore-practice`.
@@ -254,7 +256,8 @@ Song select tuner (`#arc-tune`, `songTuning`, `readTuner`, `input.tunerSemis`): 
 Arcade board (`drawArcade` / `arcadePrep` / `arcadeBoard`; mockup `design/game-mockups/arcade.html`):
 the tab glides under a still cursor, numbers on keycaps, echoes for repeats, song-driven background, blue x4.
 Moments (`moments.html`): Encore (`encorePlan`, `game.enc`, `encoreTick`, `addScore`), intro (`game.intro`), ending (`arcadeBoard.ending`, `--res-x`).
-Results: `prepResRun` / `drawResRun`, `practiceSpot` (`arcade.prLoop`), `game.dt`. Song progress under the board (`arcadeBoard.prog`).
+Results: `prepResRun` / `drawResRun`, `practiceSpot` (`arcade.prLoop`), `game.dt`. Song progress under the board (`arcadeBoard.prog`; glass capsule, mockup `progress.html`, parts `plan.parts`).
+Big moment shockwave only after a hit (`arcadeBoard.shockAt`); Encore waits for bars with notes (`plan.busy`, `e.on.segs`).
 Scoreboard (2026-11-08): tilted ring multiplier, streak on the record, Hologram score, Ladder (`arcadeBoard.ringDrain`, `disp`); x4 aurora (`auroraBody`); Jump (`jumpOut`, `jumpOnOpen`), Stay in space (`resultsSky`), Fold (`#game-songs`); see NOTES.md.
 Big moment + layers (build-up from `cuesAt`'s `bigNext`, sky, ring, strings, afterglow `arcadeBoard.afterAt`).
 Arcade also draws chord frames (`chords`), held tubes only past a beat (`tails`), slurs / slides (`legatoMarks`); bass double stops
@@ -284,14 +287,22 @@ Bass input drawer (`#input-bar`): input/channel (Both inputs default,
 Tuner, Record. Stays on between songs; reopens on dropouts (`reopenInput`).
 - Record: `POST /api/tab/record` -> `record_tab()` (transcribe, `align_take()`,
   Click switch (`#record-click`, `startClickTrack`, `track-splitter-record-click`);
-  `apply_take()` add/replace, both snapped to the take's `grid` (the page's `editGrid`);
+  `apply_take()` add/replace, both snapped to the take's `grid` (the page's `editGrid`; Replace keeps the draft's time within `LOOSE_TIMING`, runs trimmed to the notes played);
   add: `ADD_MIN_AMP` / `ADD_LOOSE_AMP`, `bar_starts` fills gap bars), saved in `.bass-tab-mine.json` + `.my-bass/take-<ms>.flac`;
-  `redo_mine` rebuilds (bump `MINE_RULES`). A take waits as `pending` for review
+  `redo_mine` rebuilds (bump `MINE_RULES`). Note starts from the take's own plucks (`tab.take_plucks`, `notes_on_plucks`); strings heard
+  in it (`take_strings`, `tab.heard_strings`, the user's string calibration) pinned in `mine_places`. A take waits as `pending` for review
   (`#take-review`, `POST /api/tab/mine/take`); Your takes (`#takes-dlg`).
+  While a take records, or with Show what I play (`#played-show`, `encore-show-played`; nothing saved), the notes heard show on the tab live (`liveListen`, `liveAdd`, `liveMarks`; Lines / Whole tab).
+  Free play (`#free-dlg`, `openFreePlay` / `freeListen` / `drawFreePlay`; drawer `#input-free`, Encore title `#arc-free`): no song, notes as Arcade keycaps on the string heard.
+  Its checks (`#free-rec`, `freeStop` review, `#free-pop`, `freeSave` -> `.game-checks/<date> Free play/`, `freeTeach` adds fixes to the string calibration; `input.stringRead`); a second string read at 215 ms (`freeLateRead`, `input.lateDue`).
 - Drafts: `POST /api/tab/draft` (`new_draft` / `start_draft`), editing by delete
   (`/api/tab/mine/note`), drag (`/api/tab/mine/move`, `moved`), add / Fill
   (`/api/tab/mine/add`, `hand`), grid picker (`#tab-grid`, `track-splitter-edit-grid`),
-  Undo per song; imported-tab drafts keep the tab's fingering (`import_places`).
+  Undo per song; imported-tab drafts keep the tab's fingering (`import_places`). Selected note: `#note-edit` (type a fret, ↑↓ string,
+  ⇧↑↓ fret, ←→ step, Tab next), `/api/tab/mine/change` (`change_mine`; strings kept in `places`, `mine_places`).
+  Wrong strings fast: pick a run (double-click, box, ⇧-click; `tabView.multi`, `selectRun`, `boxSelect`), ↑↓ moves them all (`moveStrings`,
+  `POST /api/tab/mine/strings`, one Undo), `findRepeats` offers the same notes elsewhere (`#fix-more`); first fix makes the draft (`draftForFix`); help `#fix-help-dlg`.
+  Arcade editor: the same on the game's board (`#ed-dlg`, `edOpen` / `drawEd`, `ed`; "Fix on the board" `#tab-board-edit`; mockups `design/game-mockups/editor.html`); ⌘C / ⌘V bars (`edCopy` / `edPaste`), grid back to the song's start (`tabLead`); keyboard: B opens, Tab to runs that look off (`edSuspects`, Enter = fine, ⌥Tab all `edRuns`), ↑↓ also fixes distinctive repeats, ⇧←→ (`edGrow`), Space loops, H hear, digits = fret, −/+ bars (`encore-board-bars`); keys for now shown under the board (`edHint`); add notes: double-click / N (`edAddAt`), ⌥←→ nudge.
 - Playback: the player's "My bass" mode (`my_bass()`, `/api/audio?part=mine`).
 - Match the song's tone (`tone.py`, `GET /api/tone`, `applyTone`): EQ from the song's
   stem vs the user's instrument captures (`<library>/.instrument-tones.json`,

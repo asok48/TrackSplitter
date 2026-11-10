@@ -651,6 +651,23 @@ def make_tab(song_dir, report):
         bass = half_rate(separate(mix, ["bass"], True, separating))
     report(0.7, "Writing out the notes")
     settings, models = note_settings(), note_models()
+    notes, split, grid = auto_notes(bass, song, settings, models, report)
+    report(0.95, "Working out the fingering")
+    suggested = tab.suggest_tuning(notes)
+    rows = lambda ns: [[round(s, 3), round(e, 3), p, round(a, 2)] for s, e, p, a in ns]
+    data = {"source": "bass track" if track else "separated", "made": time.time(),
+            "notes": rows(notes), "notes_split": rows(split),
+            **grid, "suggested": suggested, "maybe_half_down": tab.maybe_half_down(notes),
+            "tuning_rules": TUNING_RULES, "notes_rules": NOTES_RULES, "bars_rules": BARS_RULES, "note_settings": settings,
+            "split_default": bool(settings["grid_split"] or (models and models.get("pluck"))),
+            "fingering": {suggested: tab.fingering(notes, suggested, learned_style()[0])},
+            "fingering_style": learned_style()[1]}
+    (song_dir / TAB_FILE).write_text(json.dumps(data), encoding="utf-8")
+
+
+def auto_notes(bass, song, settings, models, report=lambda fraction=None, step=None: None):
+    """The automatic tab's notes: (notes as heard, notes with repeated plucks split on the
+    beat, tab.lines_for's bpm and lines). Also run by tools/tab_bench.py on imported tabs."""
     activations = {}
     notes = tab.transcribe(bass, lambda f: report(0.7 + 0.2 * f), mix=song, keep=activations,
                            **{k: v for k, v in settings.items() if k not in ("grid_split", "models")})
@@ -669,17 +686,7 @@ def make_tab(song_dir, report):
     else:
         ratio, level = settings["grid_split"] or (1.35, 0.2)   # learned from imported tabs: also on by default
         split = tab.split_on_grid(notes, beat_grid, bass, ratio=ratio, activations=activations, onset_level=level)
-    report(0.95, "Working out the fingering")
-    suggested = tab.suggest_tuning(notes)
-    rows = lambda ns: [[round(s, 3), round(e, 3), p, round(a, 2)] for s, e, p, a in ns]
-    data = {"source": "bass track" if track else "separated", "made": time.time(),
-            "notes": rows(notes), "notes_split": rows(split),
-            **grid, "suggested": suggested, "maybe_half_down": tab.maybe_half_down(notes),
-            "tuning_rules": TUNING_RULES, "notes_rules": NOTES_RULES, "bars_rules": BARS_RULES, "note_settings": settings,
-            "split_default": bool(settings["grid_split"] or (models and models.get("pluck"))),
-            "fingering": {suggested: tab.fingering(notes, suggested, learned_style()[0])},
-            "fingering_style": learned_style()[1]}
-    (song_dir / TAB_FILE).write_text(json.dumps(data), encoding="utf-8")
+    return notes, split, grid
 
 
 # --- Imported tabs ------------------------------------------------------------------
@@ -706,7 +713,10 @@ IMPORT_FILE = ".bass-tab-imported.json"
 #    note often sat before its line and showed at the end of the bar before).
 # 12: bars the tab writes a little differently from an earlier copy, where the recording plays
 #    the copy's way, take the copy's notes (tabimport._repair_repeats; "repaired" in the import).
-IMPORT_RULES = 12
+# 13: the tempo fit also tries a same-pitch offset histogram, bars placed with both fits and the
+#    better kept (Gimme! Gimme! Gimme! was fitted 7% slow and drifted up to half a second).
+# 14: notes where the song's own stem is silent are left out (without_silence: Gimme's intro run).
+IMPORT_RULES = 14
 TAB_EXTENSIONS = {".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml", ".mxl", ".txt"}
 INSTRUMENTS_WITH_TABS = ("bass", "guitar")
 # Guitar tabs (imported only, for now) live beside the bass ones under their own names
@@ -810,6 +820,26 @@ def note_name(p):
     return ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"][p % 12]
 
 
+SILENT_DB = 50   # a stem this far below its loud parts (~1 s average) has no instrument there (without_silence)
+
+
+def without_silence(notes, stem):
+    """Tab notes minus those where the recording's own stem is silent: the sync places a
+    bar where nothing is heard as readily as leaving it out, so a tab's intro sat in the
+    bassless intro (user: "notes before the bass": Gimme! Gimme! Gimme!'s run at 0:09 and
+    chords at 0:13, the bass track at -80 dB until ~0:18). Library: 9 of 39 tabs had such
+    notes, all in -64 to -97 dB stretches (Amsterdam's 13 single notes over a bassless
+    140-176 s, stops in Baby and I Love My Friends); a quiet fade-in (Gimme's riff from
+    0:18.9 at -45 to -65 dB, where the heard notes only start at 0:22.5) is ~40 dB down
+    and stays."""
+    n = len(stem) // (tab.SAMPLERATE // 20)
+    if n < 20:
+        return notes
+    level = tab._levels(stem, n)
+    quiet = level < np.percentile(level, 95) - SILENT_DB
+    return [x for x in notes if not quiet[min(n - 1, max(0, int(x[0] * 20)))]]
+
+
 def import_tab(song_dir, source, report, instrument="bass", track_index=None):
     """Read a tab file, line the chosen track (track_index: its place in the file; by
     default the first that looks like this instrument) up with the recording, save it."""
@@ -834,6 +864,9 @@ def import_tab(song_dir, source, report, instrument="bass", track_index=None):
         notes, bpm = data["notes"], data.get("bpm")
     report(0.85, "Lining the tab up with the recording")
     synced = tabimport.sync(track, [tuple(n) for n in notes], 60 / bpm if bpm else None)
+    stem = guitar_track(song_dir) if instrument == "guitar" else bass_track(song_dir)
+    if stem:
+        synced["notes"] = without_silence(synced["notes"], decode(stem, tab.SAMPLERATE).mean(0))
     bars = synced["bars"]
     end = max((n[1] for n in synced["notes"]), default=bars[-1] if bars else 0.0)
     bar_len = float(np.median(np.diff(bars))) if len(bars) > 1 else 2.0
@@ -948,7 +981,7 @@ def my_bass(song_dir, shift):
     return dest
 
 
-MINE_RULES = 6   # 6: an added note an octave from the slot's replaces it. Bump when take_notes or apply_take changes: recorded tabs are redone from their takes' audio
+MINE_RULES = 9   # 9: a take's notes start at the plucks heard in it (tab.take_plucks), and the strings heard in it are kept (take_strings) and pinned when fingering (mine_places). 8: a Replace take's runs start at their first note and end an 8th after their last (played_spans); notes within LOOSE_TIMING of the same draft note keep its time. 7: plucked octaves no longer dropped as ringing strings (drop_ringing_octaves onsets). 6: an added note an octave from the slot's replaces it. Bump when take_notes or apply_take changes: recorded tabs are redone from their takes' audio
 
 
 def take_notes(take, on_progress=lambda fraction: None):
@@ -958,13 +991,14 @@ def take_notes(take, on_progress=lambda fraction: None):
         take = take * min(0.5 / loud, 1000.0)
     # Nothing above the 21st fret of a G string (E4) is a bass note: one of the user's takes
     # had a pulsing ~330-350 Hz tone on the input, read as F4 every ~0.1 s (199 of 288 notes).
-    # Re-plucks of low notes (up to E2) are split where the model's onset for them peaks
-    # again: an open E (or E2) re-plucked keeps one steady pitch, so 8ths came out as a few
-    # long notes (user's Look What Happened takes: ~15 plucks, 4 and 7 notes; now 12-16).
-    # At least ~116 ms apart: closer, a held note split in two (Fireman & Dancer, 0.1 s
-    # apart inside the tab's quarter notes). Every note: notes on no tab note (+24, 2 on).
-    notes = [n for n in tab.transcribe(take, on_progress, split=TAKE_SPLIT, split_below=40, split_gap=10) if n[2] <= 43 + 21]
-    return tab.drop_ringing_octaves(notes, take)
+    # Basic Pitch says which notes; where they start comes from the plucks in the take itself
+    # (tab.take_plucks / notes_on_plucks): its own onsets followed the level's wobble on a
+    # held note (the slow string test: 105 plucks, 327 notes), and re-plucks of one pitch
+    # hardly showed in them (they used to be split where its onset peaked again, low notes only).
+    keep = {}
+    notes = [n for n in tab.transcribe(take, on_progress, keep=keep) if n[2] <= 43 + 21]
+    notes = tab.drop_ringing_octaves(notes, take, onsets=keep["onsets"], times=keep["times"])
+    return tab.notes_on_plucks(notes, tab.take_plucks(take))
 
 
 def without_removed(notes, removed):
@@ -997,7 +1031,7 @@ def with_hand_added(notes, hand):
 
 ADD_MIN_AMP = 0.55   # how sure the transcription must be of a note "add" puts in (see apply_take)
 ADD_LOOSE_AMP = 0.3  # ... in a take whose median note is that sure
-TAKE_SPLIT = 0.2     # onset level that splits a take's low re-plucked notes (take_notes)
+LOOSE_TIMING = 0.1   # s: a Replace take's note this close to the same note in the draft keeps the draft's time (apply_take)
 
 
 def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None, grid=None):
@@ -1089,28 +1123,47 @@ def apply_take(notes, new, start, end, mode="replace", bars=None, tag=None, grid
         # step, the surer one stays. Takes without a grid (made before) keep their timing.
         bars = sorted(bars)
         snapped = {}
+        # A note the draft already has, played a little off its timing (same pitch within
+        # LOOSE_TIMING), keeps the draft's time: snapped from where it was played, a note 60-90 ms
+        # late landed on the next 16th, so a take of the tab's own line came back with notes
+        # moved about (user: takes "mess it up"). Each draft note takes one played note.
+        claimed, new = set(), [list(n) for n in new]   # copies: the waiting take's notes are re-applied on every view
+        for n in sorted(new, key=lambda n: -(n[3] if len(n) > 3 else 1.0)):
+            near = [o for o in notes if o[2] == n[2] and abs(o[0] - n[0]) < LOOSE_TIMING and id(o) not in claimed]
+            if near:
+                o = min(near, key=lambda o: abs(o[0] - n[0]))
+                claimed.add(id(o))
+                n[1], n[0] = round(n[1] + o[0] - n[0], 3), o[0]
+                n.append("draft")                          # exactly the draft's time: not snapped again (its grid can sit ~10 ms off)
         for n in new:
             k = bisect.bisect_right(bars, n[0]) - 1
-            if 0 <= k < len(bars) - 1:
+            if n[-1] == "draft":
+                key, t = ("draft", n[0], n[2]), n[0]
+            elif 0 <= k < len(bars) - 1:
                 step = (bars[k + 1] - bars[k]) / grid
                 i = round((n[0] - bars[k]) / step)
                 key, t = ((k + 1, 0), round(bars[k + 1], 3)) if i >= grid else ((k, i), round(bars[k] + i * step, 3))
             else:
                 key, t = ("off", n[0]), n[0]
-            amp = n[3] if len(n) > 3 else 1.0
+            amp = n[3] if len(n) > 3 and not isinstance(n[3], str) else 1.0
             if key not in snapped or amp > snapped[key][1]:
                 snapped[key] = ([t, round(t + max(0.05, n[1] - n[0]), 3), n[2]], amp)
         new = [v[0] for v in snapped.values()]
     spans = played_spans(new, start, end, bars)
     inside = lambda t: any(a <= t < b for a, b in spans)
-    return sorted([n for n in notes if not inside(n[0])] + [list(n[:3]) + mark for n in new], key=order)
+    # The same note at the same time: the draft's own stays (where it came from too), so the
+    # review doesn't list it as removed and added again.
+    there = [n for n in notes if inside(n[0])]
+    same = lambda n: next((o for o in there if o[2] == n[2] and abs(o[0] - n[0]) < 0.005), None)
+    return sorted([n for n in notes if not inside(n[0])] + [same(n) or list(n[:3]) + mark for n in new], key=order)
 
 
 def played_spans(new, start, end, bars=None):
-    """Where a Replace take takes over: the bars (of the take's stretch) it has notes in.
-    Bars it has none in keep the draft's notes (user: "when I don't play anything, it
-    removes what was there when I actually want to keep it": the 2 s run-in and rests
-    were wiped). Without bars: the stretch from each note to 1 s after it."""
+    """Where a Replace take takes over: the bars (of the take's stretch) it has notes in,
+    from the first note of each run of them to just after its last. Bars it has none in
+    keep the draft's notes (user: "when I don't play anything, it removes what was there
+    when I actually want to keep it": the 2 s run-in and rests were wiped). Without bars:
+    the stretch from each note to 1 s after it."""
     if not new:
         return []
     if bars and len(bars) > 1:
@@ -1125,8 +1178,26 @@ def played_spans(new, start, end, bars=None):
         for k in sorted(hit):
             a = bars[k] if k >= 0 else start
             b = bars[k + 1] if k + 1 < len(bars) else end
-            out.append((max(a, start), min(b, end)))
-        return out
+            if out and abs(out[-1][1] - max(a, start)) < 1e-6:
+                out[-1] = (out[-1][0], min(b, end))       # bars next to each other: one run
+            else:
+                out.append((max(a, start), min(b, end)))
+        # Each run starts at its first note and ends an 8th after its last, not at the bar lines
+        # (user: takes "mess it up": a Replace take that stopped mid-bar took the rest of that
+        # bar's notes with it, Look What Happened's six E1s after 0:54.1; coming in mid-bar did
+        # the same before the first note). Each edge's bar sets the margins: a 32nd before, an
+        # 8th after (a held last note leaves what the draft has after it).
+        def length(t):
+            k = min(max(bisect.bisect_right(bars, t) - 1, 0), len(bars) - 2)
+            return bars[k + 1] - bars[k]
+        trimmed = []
+        for a, b in out:
+            inside = [n[0] for n in new if a - 0.05 <= n[0] < b]
+            if not inside:
+                continue
+            first, last = min(inside), max(inside)
+            trimmed.append((max(a, first - length(first) / 32), min(b, last + length(last) / 8)))
+        return trimmed
     return [(n[0] - 0.05, n[0] + 1.0) for n in new]
 
 
@@ -1151,10 +1222,41 @@ def bar_starts(mine):
 
 
 def take_new(song_dir, t):
-    """A saved take's notes on the song's clock, with amplitudes (from its audio)."""
-    path = song_dir / MY_BASS_DIR / t["audio"]
-    return [[round(t["start"] + s, 3), round(t["start"] + e, 3), p - t.get("shift", 0), a]
-            for s, e, p, a in take_notes(decode(path, tab.SAMPLERATE).mean(0))]
+    """A saved take's notes on the song's clock, with amplitudes (from its audio); also
+    refreshes the strings heard in it (t["strings"])."""
+    take = decode(song_dir / MY_BASS_DIR / t["audio"], tab.SAMPLERATE).mean(0)
+    notes = take_notes(take)
+    t["strings"] = take_strings(take, notes, t["start"], t.get("shift", 0))
+    return [[round(t["start"] + s, 3), round(t["start"] + e, 3), p - t.get("shift", 0), a] for s, e, p, a in notes]
+
+
+_string_model = {}
+
+
+def string_model():
+    """The user's bass string calibration (made in the page, kept in the library), fitted
+    as tab.fit_strings; None without one."""
+    saved = read_calibration().get("track-splitter-string-calibration")
+    try:
+        saved = json.loads(saved) if isinstance(saved, str) else saved
+    except ValueError:
+        return None
+    if not saved or not saved.get("samples"):
+        return None
+    key = saved.get("at") or len(saved["samples"])
+    if _string_model.get("key") != key:
+        _string_model.update(key=key, model=tab.fit_strings(saved["samples"]))
+    return _string_model["model"]
+
+
+def take_strings(take, notes, start, shift):
+    """[[song time, song pitch, string]] for a take's notes whose string is clear from the
+    audio (tab.heard_strings with the user's calibration); [] without one."""
+    model = string_model()
+    if model is None:
+        return []
+    heard = tab.heard_strings(take, tab.SAMPLERATE, notes, model)
+    return [[round(start + notes[i][0], 3), notes[i][2] - shift, s] for i, (s, f) in sorted(heard.items())]
 
 
 def redo_mine(song_dir, mine):
@@ -1236,7 +1338,8 @@ def record_tab(song_dir, take_path, song_start, shift, report, mode="replace", r
                        "notes": len(new), "made": made, "audio": audio, "shift": shift, "mode": mode,
                        "match": match if match is None else round(match, 2), "sure": sure if sure is None else round(sure, 2), "peak_db": round(float(20 * np.log10(np.abs(take).max() + 1e-9)), 1),
                        "device": device, "channel": channel,   # the input it came from, named in the review
-                       "replaces": replaces, "grid": grid, "new": [[float(v) for v in n[:3]] + [float(n[3])] for n in new]}
+                       "replaces": replaces, "grid": grid, "new": [[float(v) for v in n[:3]] + [float(n[3])] for n in new],
+                       "strings": take_strings(take, notes, start, shift)}
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
 
 
@@ -1251,7 +1354,7 @@ def keep_take(song_dir, mine, keep=True):
         (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
         return mine
     new, start, end, mode = p["new"], p["start"], p["end"], p["mode"]
-    take = {k: p[k] for k in ("start", "end", "shifted_by", "notes", "made", "audio", "shift", "mode", "device", "channel", "grid") if k in p}
+    take = {k: p[k] for k in ("start", "end", "shifted_by", "notes", "made", "audio", "shift", "mode", "device", "channel", "grid", "strings") if k in p}
     if mode == "add":   # removed notes played again come back
         mine["removed"] = [r for r in mine.get("removed", []) if not any(abs(n[0] - r[0]) < 0.06 and n[2] == r[1] for n in new)]
     else:               # new playing over the bars it has notes in
@@ -1340,7 +1443,16 @@ def learn_from_imports(report=lambda fraction=None, step=None: None):
             bass, song = tab_audio(song_dir, track)
             songs.append({**tab.note_example(bass, song, [(t, p) for t, p, _, _ in played]), "name": song_dir.name})
         report(0.2 * len(fingers) / max(1, len(imported_tabs())))
+    learned = fit_learning(fingers, songs, report)
+    temp = LEARNED_FILE.with_suffix(".tmp")   # written whole, then swapped in: tabs read it meanwhile
+    temp.write_text(json.dumps({"made": time.time(), "sources": sources, "rules": LEARN_RULES, **learned}), encoding="utf-8")
+    temp.replace(LEARNED_FILE)
 
+
+def fit_learning(fingers, songs, report=lambda fraction=None, step=None: None):
+    """What learn_from_imports saves, from the tabs' fingerings [(open strings, [(time,
+    pitch, string, fret)])] and note examples (tab.note_example + "name"). Also run by
+    tools/tab_bench.py on part of the library, to score the rest."""
     notes = None
     if songs:
         report(0.2, "Learning which notes your tabs play")
@@ -1376,12 +1488,8 @@ def learn_from_imports(report=lambda fraction=None, step=None: None):
     before = (tab.style_match(halves[1]) * n1 + tab.style_match(halves[0]) * n0) / (n0 + n1)
     after = (tab.style_match(halves[1], first) * n1 + tab.style_match(halves[0], second) * n0) / (n0 + n1)
     style = tab.learn_style(fingers, on_progress=lambda f: report(0.85 + 0.15 * f)) if after > before else None
-    temp = LEARNED_FILE.with_suffix(".tmp")   # written whole, then swapped in: tabs read it meanwhile
-    temp.write_text(json.dumps({
-        "made": time.time(), "sources": sources, "rules": LEARN_RULES, "notes": notes, "note_models": models,
-        "fingering": {"style": style, "tabs": len(fingers), "before": round(before, 3), "after": round(after, 3)}}),
-        encoding="utf-8")
-    temp.replace(LEARNED_FILE)
+    return {"notes": notes, "note_models": models,
+            "fingering": {"style": style, "tabs": len(fingers), "before": round(before, 3), "after": round(after, 3)}}
 
 
 def learned_style():
@@ -2191,6 +2299,31 @@ def import_places(song_dir, mine, notes, tuning):
     return out
 
 
+def mine_places(song_dir, mine, notes, tuning):
+    """Pinned places for fingering a draft: the imported tab's (`import_places`), then the
+    strings the user picked for notes (`places`, see change_mine)."""
+    pinned = import_places(song_dir, mine, notes, tuning) or {}
+    opens = tab.tunings_for("bass").get(tuning, (None, None, None))[1]
+    # The strings heard in the takes (take_strings), the waiting take's too: a take's notes
+    # may have moved onto the grid or kept the draft's time, so within LOOSE_TIMING.
+    heard = sorted(h for t in mine.get("takes", []) + ([mine["pending"]] if mine.get("pending") else []) for h in t.get("strings", []))
+    if heard and opens and len(opens) == len(tab.CAL_OPEN):
+        times = np.array([h[0] for h in heard])
+        for i, (t, _, pitch, _) in enumerate(notes):
+            near = [heard[k] for k in range(np.searchsorted(times, t - LOOSE_TIMING), np.searchsorted(times, t + LOOSE_TIMING))
+                    if heard[k][1] == pitch]
+            h = min(near, key=lambda h: abs(h[0] - t), default=None)
+            if h and 0 <= pitch - opens[h[2]] <= 24:
+                pinned[i] = (h[2], pitch - opens[h[2]])
+    picked = [p for p in mine.get("places", []) if p[3] == tuning]
+    if picked and opens:
+        for i, (t, _, pitch, _) in enumerate(notes):
+            p = next((p for p in picked if p[1] == pitch and abs(p[0] - t) < 0.03), None)
+            if p and 0 <= pitch - opens[p[2]] <= 24:
+                pinned[i] = (p[2], pitch - opens[p[2]])
+    return pinned or None
+
+
 @api.get("/api/tab")
 def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = None, source: str = "auto",
             version: Optional[str] = None, instrument: str = "bass"):
@@ -2236,7 +2369,7 @@ def get_tab(song: str, tuning: Optional[str] = None, split: Optional[bool] = Non
         kind = lambda n: n[3] if len(n) > 3 and isinstance(n[3], str) else (f"take:{number[n[3]]}" if len(n) > 3 and n[3] in number else "tab")
         everything = sorted(drafted + gone, key=lambda n: n[:3])
         notes = [(n[0], n[1], n[2], 1.0) for n in everything]
-        fingered = tab.fingering(notes, tuning, learned_style()[0], pinned=import_places(song_dir, mine, notes, tuning))
+        fingered = tab.fingering(notes, tuning, learned_style()[0], pinned=mine_places(song_dir, mine, notes, tuning))
         out = [[notes[i][0], notes[i][1], s, f, False, kind(everything[i])] for i, s, f in fingered]
         added = {}
         for n in mine["notes"]:
@@ -2562,7 +2695,7 @@ def game_check_audio(check_id: str):
 # vocal notes from its vocals. Made when a version is made (the vocals come free from the separation), else on the
 # first GET /api/lights (the song part takes ~1 s; the vocals then come from a one-time background pass).
 LIGHTS_FILE = ".light-cues.json"
-LIGHTS_RULES = 1        # bump when lights.song_cues changes (song cues are made again; vocals kept)
+LIGHTS_RULES = 2        # bump when lights.song_cues changes (song cues are made again; vocals kept)
 VOCALS_RULES = 1        # bump when lights.vocal_cues or how the vocals are separated changes
 lights_lock = threading.Lock()
 vocals_queue, vocals_waiting = queue.Queue(), set()
@@ -3073,6 +3206,103 @@ def move_mine(req: MineMove):
         raise HTTPException(404, "That note isn't in the draft any more.")
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
     return {"ok": True}
+
+
+class MineChange(BaseModel):
+    song: str
+    start: float                     # the note as it is now
+    pitch: int
+    to_pitch: Optional[int] = None   # its new pitch (another fret)
+    string: Optional[int] = None     # the string to show it on (same pitch, another place)
+    tuning: Optional[str] = None     # the tuning that string is in
+
+
+@api.post("/api/tab/mine/change")
+def change_mine(req: MineChange):
+    """Another fret or string for a note of the user's draft (user: the tab editor "is just
+    difficult to work with", fixing single notes: before, a wrong fret meant deleting the note
+    and double-clicking a new one in, which took the nearest fret it could find). Another
+    pitch: the note is removed and put in again by hand (`removed` + `hand`, so a rebuild
+    keeps it); changing it back puts the original back. Another string: kept in `places`
+    ([start, pitch, string, tuning]), pinned when the draft is fingered in that tuning."""
+    song_dir = library_path(req.song, 2)
+    mine = read_mine(song_dir)
+    if not mine:
+        raise HTTPException(404, "This song has no recorded tab.")
+    note = min((n for n in mine["notes"] if n[2] == req.pitch and abs(n[0] - req.start) < 0.06),
+               key=lambda n: abs(n[0] - req.start), default=None)
+    if note is None:
+        raise HTTPException(409 if mine.get("pending") else 404, "Keep or discard the new take first, then change this note."
+                            if mine.get("pending") else "That note isn't in the draft any more.")
+    start, pitch = note[0], req.pitch
+    if req.to_pitch is not None and req.to_pitch != pitch:
+        if not 0 < req.to_pitch < 128:
+            raise HTTPException(400, "That isn't a note.")
+        if any(n[2] == req.to_pitch and abs(n[0] - start) < 0.03 for n in mine["notes"]):
+            raise HTTPException(400, "That note is already there.")
+        hand = [h for h in mine.get("hand", []) if not (abs(h[0] - start) < 0.03 and h[2] == pitch)]
+        back = [r for r in mine.get("removed", []) if abs(r[0] - start) < 0.06 and r[1] == req.to_pitch]
+        if len(hand) < len(mine.get("hand", [])) and back:   # changed back: the original returns
+            mine["hand"] = hand
+            mine["removed"] = [r for r in mine["removed"] if r not in back]
+        elif len(hand) < len(mine.get("hand", [])):          # one put in by hand: just another pitch
+            mine["hand"] = hand + [[start, note[1], req.to_pitch]]
+        else:
+            mine["removed"] = mine.get("removed", []) + [[start, pitch]]
+            mine["hand"] = mine.get("hand", []) + [[start, note[1], req.to_pitch]]
+        mine["places"] = [p for p in mine.get("places", []) if not (abs(p[0] - start) < 0.03 and p[1] == pitch)]
+        note[2] = req.to_pitch
+        pitch = req.to_pitch
+    if req.string is not None:
+        tunings = tab.tunings_for("bass")
+        opens = tunings.get(req.tuning, (None, None, None))[1]
+        if not opens or not 0 <= req.string < len(opens) or not 0 <= pitch - opens[req.string] <= 24:
+            raise HTTPException(400, "That note can't be played on that string.")
+        mine["places"] = [p for p in mine.get("places", []) if not (abs(p[0] - start) < 0.03 and p[1] == pitch and p[3] == req.tuning)] \
+            + [[start, pitch, req.string, req.tuning]]
+    mine["notes"] = sorted(mine["notes"], key=lambda n: n[:3])
+    (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+    return {"ok": True, "start": start, "pitch": pitch}
+
+
+class StringMove(BaseModel):
+    start: float
+    pitch: int
+    string: int
+
+
+class MineStrings(BaseModel):
+    song: str
+    tuning: str
+    moves: list[StringMove]
+
+
+@api.post("/api/tab/mine/strings")
+def strings_mine(req: MineStrings):
+    """Many notes of the draft onto other strings at once, same pitch (user: notes "moving
+    strings" ruin a tab; fixing them one at a time was slow): a run selected and moved with
+    ↑ ↓, or the same notes wherever the riff comes round. Kept in `places` like change_mine's;
+    notes that can't be played on the string asked for are skipped and counted."""
+    song_dir = library_path(req.song, 2)
+    mine = read_mine(song_dir)
+    if not mine:
+        raise HTTPException(404, "This song has no recorded tab.")
+    if mine.get("pending"):
+        raise HTTPException(409, "Keep or discard the new take first, then move these notes.")
+    opens = tab.tunings_for("bass").get(req.tuning, (None, None, None))[1]
+    if not opens:
+        raise HTTPException(400, "Unknown tuning.")
+    places, moved, skipped = mine.get("places", []), [], 0
+    for m in req.moves:
+        note = min((n for n in mine["notes"] if n[2] == m.pitch and abs(n[0] - m.start) < 0.06), key=lambda n: abs(n[0] - m.start), default=None)
+        if note is None or not 0 <= m.string < len(opens) or not 0 <= m.pitch - opens[m.string] <= 24:
+            skipped += 1
+            continue
+        places = [p for p in places if not (abs(p[0] - note[0]) < 0.03 and p[1] == m.pitch and p[3] == req.tuning)] + [[note[0], m.pitch, m.string, req.tuning]]
+        moved.append([note[0], m.pitch, m.string])
+    mine["places"] = places
+    (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+    return {"ok": True, "moved": moved, "skipped": skipped}
 
 
 class BarShift(BaseModel):

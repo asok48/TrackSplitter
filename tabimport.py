@@ -621,19 +621,41 @@ SYNC_GRID = 0.05                                 # s: where a bar may start
 SYNC_DRIFT, SYNC_JUMP, SYNC_SKIP = 0.6, 8.0, 3.0  # costs, in matched notes (see _sync_timed)
 
 
-def _tempo_fit(tab_t, tab_p, heard_t, heard_p):
+TEMPO_PEAKS = 5   # starts tried per tempo ratio by the pitch-matched fit: its histogram's highest peaks, >= 0.1 s apart
+
+
+def _tempo_fit(tab_t, tab_p, heard_t, heard_p, same_pitch=False):
     """The tab's overall tempo ratio and start: for each ratio the start that lines up most
     notes (onset histogram), 0.6-1.7 in 1% steps, then 0.25% around the best. It searched
-    only 0.85-1.15, which missed tabs written at another tempo."""
+    only 0.85-1.15, which missed tabs written at another tempo.
+
+    same_pitch: the histogram only of offsets between notes of the same pitch, trying its
+    TEMPO_PEAKS highest peaks. Of every pair of notes and only its top bin, a steady 8ths riff
+    (Gimme! Gimme! Gimme!: octaves on every 8th) is evenly spread, and with the tab ~45 s
+    longer than the song's bass part one start lines up only one section, so it chose 1.07x
+    (48 notes on a heard note; same-pitch: 1.0055x, the tab's 120 bpm against the song's 119.3,
+    175 notes) and every bar came out 7% long, pulled back 0.1 s by the next. `_sync_timed`
+    places the bars with both fits and keeps the better: same-pitch alone lost a little on 3 of
+    39 tabs (I Love My Friends 29 -> 25% of notes on the bass's pitch)."""
     def at(scale):
-        diffs = (heard_t[None, :] - tab_t[::max(1, len(tab_t) // 400), None] * scale).ravel()
-        diffs = diffs[(diffs > -60) & (diffs < 600)]
+        step = max(1, len(tab_t) // 400)
+        diffs = heard_t[None, :] - tab_t[::step, None] * scale
+        keep = (diffs > -60) & (diffs < 600)
+        if same_pitch:
+            keep &= heard_p[None, :] == tab_p[::step, None]
+        diffs = diffs[keep]
         if not len(diffs):
             return (-1, scale, 0.0)
         hist, edges = np.histogram(diffs, bins=np.arange(diffs.min(), diffs.max() + 0.05, 0.02))
-        k = int(np.argmax(np.convolve(hist, np.ones(3), mode="same")))
-        offset = edges[k] + 0.01
-        return (_hits(tab_t * scale + offset, tab_p, heard_t, heard_p), scale, offset)
+        smooth = np.convolve(hist, np.ones(3), mode="same")
+        tops = []
+        for k in np.argsort(smooth)[::-1]:
+            if len(tops) == (TEMPO_PEAKS if same_pitch else 1):
+                break
+            if all(abs(k - q) >= 5 for q in tops):
+                tops.append(k)
+        return max((_hits(tab_t * scale + edges[k] + 0.01, tab_p, heard_t, heard_p), scale, edges[k] + 0.01)
+                   for k in tops)
     coarse = max(at(x) for x in np.arange(0.6, 1.7001, 0.01))
     return max(at(x) for x in np.arange(coarse[1] - 0.012, coarse[1] + 0.0121, 0.0025))
 
@@ -682,7 +704,6 @@ def _sync_timed(tab_t, tab_p, bar_starts, bar_ends, bar_of, heard):
     heard_t = np.array([h[0] for h in heard])
     heard_p = np.array([h[2] for h in heard])
     tab_t, tab_p = np.asarray(tab_t), np.asarray(tab_p)
-    best, scale, _ = _tempo_fit(tab_t, tab_p, heard_t, heard_p)
     by_pitch = {}
     for t, p in zip(heard_t, heard_p):
         by_pitch.setdefault(int(p), []).append(t)
@@ -691,70 +712,81 @@ def _sync_timed(tab_t, tab_p, bar_starts, bar_ends, bar_of, heard):
     for h in heard:
         by_pc.setdefault(int(h[2]) % 12, []).append((h[0], h[1]))
     by_pc = {c: (np.array([a for a, _ in v]), np.maximum.accumulate(np.array([b for _, b in v]))) for c, v in by_pc.items()}
-    grid = np.arange(min(-5.0, heard_t[0] - 5), heard[-1][1] + 5, SYNC_GRID)
-    N, B = len(grid), len(bar_starts)
-    length = [int(round((bar_ends[b] - bar_starts[b]) * scale / SYNC_GRID)) for b in range(B)]
-    score = np.zeros((B, N))
-    for b in range(B):
-        mine = bar_of == b
-        if mine.any():
-            score[b] = _bar_scores((tab_t[mine] - bar_starts[b]) * scale, tab_p[mine], grid, by_pitch, by_pc)
-    NEG = -1e18
-    placed, waiting = np.full((B, N), NEG), np.full((B, N), NEG)   # bar b starts at j / bar b left out, the next due at j
-    p_from, p_kind = np.zeros((B, N), np.int32), np.zeros((B, N), np.int8)   # kind: 0 follows, 1 jumps (from placed), 2/3 (from waiting), 4 first
-    w_from, w_kind = np.zeros((B, N), np.int32), np.zeros((B, N), np.int8)   # kind: 0 after a placed bar, 1 still waiting, 4 first
-    placed[0], waiting[0] = score[0], -SYNC_SKIP
-    p_kind[0] = w_kind[0] = 4
-    cols = np.arange(N)
 
-    def follow(prev, shift):   # prev[j - shift + d] - SYNC_DRIFT * |d|, d in -2..2
-        best, src = np.full(N, NEG), np.zeros(N, np.int32)
-        for d in range(-2, 3):
-            idx = cols - shift + d
-            ok = (idx >= 0) & (idx < N)
-            cand = np.full(N, NEG)
-            cand[ok] = prev[idx[ok]] - SYNC_DRIFT * abs(d)
-            better = cand > best
-            best[better], src[better] = cand[better], idx[better]
-        return best, src
+    def place(scale):   # bars on the recording at this tempo: (path score, starts, ends)
+        grid = np.arange(min(-5.0, heard_t[0] - 5), heard[-1][1] + 5, SYNC_GRID)
+        N, B = len(grid), len(bar_starts)
+        length = [int(round((bar_ends[b] - bar_starts[b]) * scale / SYNC_GRID)) for b in range(B)]
+        score = np.zeros((B, N))
+        for b in range(B):
+            mine = bar_of == b
+            if mine.any():
+                score[b] = _bar_scores((tab_t[mine] - bar_starts[b]) * scale, tab_p[mine], grid, by_pitch, by_pc)
+        NEG = -1e18
+        placed, waiting = np.full((B, N), NEG), np.full((B, N), NEG)   # bar b starts at j / bar b left out, the next due at j
+        p_from, p_kind = np.zeros((B, N), np.int32), np.zeros((B, N), np.int8)   # kind: 0 follows, 1 jumps (from placed), 2/3 (from waiting), 4 first
+        w_from, w_kind = np.zeros((B, N), np.int32), np.zeros((B, N), np.int8)   # kind: 0 after a placed bar, 1 still waiting, 4 first
+        placed[0], waiting[0] = score[0], -SYNC_SKIP
+        p_kind[0] = w_kind[0] = 4
+        cols = np.arange(N)
 
-    def jump(prev, shift):     # the best prev[i] with i + shift < j - 2, minus SYNC_JUMP
-        top = np.maximum.accumulate(prev)
-        arg = np.zeros(N, np.int32)
-        cur = 0
-        for i in range(N):
-            if prev[i] >= prev[cur]:
-                cur = i
-            arg[i] = cur
-        best, src = np.full(N, NEG), np.zeros(N, np.int32)
-        idx = cols - shift - 3
-        ok = idx >= 0
-        best[ok], src[ok] = top[idx[ok]] - SYNC_JUMP, arg[idx[ok]]
-        return best, src
+        def follow(prev, shift):   # prev[j - shift + d] - SYNC_DRIFT * |d|, d in -2..2
+            best, src = np.full(N, NEG), np.zeros(N, np.int32)
+            for d in range(-2, 3):
+                idx = cols - shift + d
+                ok = (idx >= 0) & (idx < N)
+                cand = np.full(N, NEG)
+                cand[ok] = prev[idx[ok]] - SYNC_DRIFT * abs(d)
+                better = cand > best
+                best[better], src[better] = cand[better], idx[better]
+            return best, src
 
-    for b in range(B - 1):
-        k = length[b]
-        options = [follow(placed[b], k), jump(placed[b], k), follow(waiting[b], 0), jump(waiting[b], 0)]
-        vals, srcs = np.stack([o[0] for o in options]), np.stack([o[1] for o in options])
-        which = np.argmax(vals, axis=0)
-        placed[b + 1] = vals[which, cols] + score[b + 1]
-        p_kind[b + 1], p_from[b + 1] = which, srcs[which, cols]
-        after = np.full(N, NEG)
-        after[k:] = placed[b][:N - k] if k < N else after[k:]
-        use = after >= waiting[b]
-        waiting[b + 1] = np.where(use, after, waiting[b]) - SYNC_SKIP
-        w_kind[b + 1], w_from[b + 1] = np.where(use, 0, 1), np.where(use, cols - k, cols)
-    starts = [None] * B
-    on = placed[B - 1].max() >= waiting[B - 1].max()
-    j = int(np.argmax(placed[B - 1] if on else waiting[B - 1]))
-    for b in range(B - 1, -1, -1):
-        kind = p_kind[b, j] if on else w_kind[b, j]
-        if on:
-            starts[b] = float(grid[j])
-        if kind == 4:
-            break
-        j, on = (int(p_from[b, j]), kind in (0, 1)) if on else (int(w_from[b, j]), kind == 0)
-    ends = [None if a is None else a + (bar_ends[b] - bar_starts[b]) * scale for b, a in enumerate(starts)]
+        def jump(prev, shift):     # the best prev[i] with i + shift < j - 2, minus SYNC_JUMP
+            top = np.maximum.accumulate(prev)
+            arg = np.zeros(N, np.int32)
+            cur = 0
+            for i in range(N):
+                if prev[i] >= prev[cur]:
+                    cur = i
+                arg[i] = cur
+            best, src = np.full(N, NEG), np.zeros(N, np.int32)
+            idx = cols - shift - 3
+            ok = idx >= 0
+            best[ok], src[ok] = top[idx[ok]] - SYNC_JUMP, arg[idx[ok]]
+            return best, src
+
+        for b in range(B - 1):
+            k = length[b]
+            options = [follow(placed[b], k), jump(placed[b], k), follow(waiting[b], 0), jump(waiting[b], 0)]
+            vals, srcs = np.stack([o[0] for o in options]), np.stack([o[1] for o in options])
+            which = np.argmax(vals, axis=0)
+            placed[b + 1] = vals[which, cols] + score[b + 1]
+            p_kind[b + 1], p_from[b + 1] = which, srcs[which, cols]
+            after = np.full(N, NEG)
+            after[k:] = placed[b][:N - k] if k < N else after[k:]
+            use = after >= waiting[b]
+            waiting[b + 1] = np.where(use, after, waiting[b]) - SYNC_SKIP
+            w_kind[b + 1], w_from[b + 1] = np.where(use, 0, 1), np.where(use, cols - k, cols)
+        starts = [None] * B
+        total = max(placed[B - 1].max(), waiting[B - 1].max())
+        on = placed[B - 1].max() >= waiting[B - 1].max()
+        j = int(np.argmax(placed[B - 1] if on else waiting[B - 1]))
+        for b in range(B - 1, -1, -1):
+            kind = p_kind[b, j] if on else w_kind[b, j]
+            if on:
+                starts[b] = float(grid[j])
+            if kind == 4:
+                break
+            j, on = (int(p_from[b, j]), kind in (0, 1)) if on else (int(w_from[b, j]), kind == 0)
+        ends = [None if a is None else a + (bar_ends[b] - bar_starts[b]) * scale for b, a in enumerate(starts)]
+        return total, starts, ends
+
+    # Both tempo fits (see _tempo_fit); the same one only once.
+    fits = {}
+    for same_pitch in (False, True):
+        hits, scale, _ = _tempo_fit(tab_t, tab_p, heard_t, heard_p, same_pitch)
+        fits.setdefault(round(scale, 4), (hits, scale))
+    (best, scale), (_, starts, ends) = max(((f, place(f[1])) for f in fits.values()), key=lambda e: e[1][0])
     return starts, ends, best / max(1, len(tab_t)), scale
 
 

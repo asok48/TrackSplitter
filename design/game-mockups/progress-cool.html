@@ -1,0 +1,190 @@
+<!doctype html><meta charset="utf-8"><title>Encore progress, cooler</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Cooler takes on the glass capsule (2026-11-10, user: "I feel like we could make the progress bar cooler"; the capsule was
+     picked on progress.html: "I like glass capsule the best, maybe make it more polished and futuristic", "that's better").
+     Now = the game's capsule. Waveform: the song's loudness etched in the glass. Alive: it plays along (beat pulse, your
+     multiplier's colour, a spark per hit, a glitch per miss, a light running the fill at each 10 streak). Warp: you fly it
+     (stars streaming past inside, a trail, the big moments as gates you pass through). Data the game has: bars and their
+     results, Encore phrases, the light cues (loudness, kicks, big moments), hits / misses, the multiplier. Made-up song at
+     120 bpm; hits and misses come from each bar's result. -->
+<style>
+:root{color-scheme:dark;--ink:#f5f5f7;--font:-apple-system,"SF Pro Display",system-ui,sans-serif}
+html,body{margin:0;background:#05060a;color:var(--ink);font:400 14px var(--font);-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(1200px 500px at 60% 30%,rgba(90,50,150,.22),transparent 70%),radial-gradient(900px 400px at 20% 80%,rgba(24,34,90,.35),transparent 70%),#05060a;min-height:100vh}
+header{padding:22px 32px 6px;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+header b{font:700 16px var(--font)}
+header span{color:rgba(245,245,247,.45);font-size:12.5px}
+header .btns{margin-left:auto;display:flex;gap:8px}
+header button{font:600 11px var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--ink);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);border-radius:999px;height:30px;padding:0 16px;cursor:pointer}
+.row{padding:10px 32px 4px}
+.row h2{margin:0 0 2px;font:600 11px var(--font);letter-spacing:.24em;text-transform:uppercase;color:rgba(245,245,247,.75)}
+.row p{margin:0 0 4px;color:rgba(245,245,247,.45);font-size:12.5px;max-width:860px}
+canvas{display:block;width:100%;height:120px;cursor:pointer}
+</style>
+<header><b>Progress bar, cooler</b><span>Now = the game's capsule · time runs on its own, click a bar to jump</span>
+ <div class="btns"><button id="x4">Streak: x4</button><button id="pp">Pause</button></div></header>
+<div class="row"><h2>Now</h2><p>The capsule in the game today.</p><canvas id="now"></canvas></div>
+<div class="row"><h2>1 · Waveform</h2><p>The song's loudness etched into the glass, mirrored like an audio waveform: faint ahead, so you see the loud parts and breaks coming; lit in how each bar went behind you. The big moments are small bright flares on the frame.</p><canvas id="wave"></canvas></div>
+<div class="row"><h2>2 · Alive</h2><p>It plays along: the fill breathes on the kicks, its front takes your multiplier's colour (grey, yellow, orange, blue aurora at x4), every hit throws a spark off the knob, a miss glitches it red, and every 10 in a row a pulse of light runs back along the fill.</p><canvas id="alive"></canvas></div>
+<div class="row"><h2>3 · Warp</h2><p>You fly it: stars stream past inside the glass ahead (faster as the song gets louder), the knob is an energy core with a light trail, and the big moments are gates on the track that flare as you pass through them.</p><canvas id="warp"></canvas></div>
+<div class="row"><h2>4 · All three</h2><p>Waveform + Alive + Warp together.</p><canvas id="all"></canvas></div>
+<div class="row"><h2>5 · All three, polished</h2><p>The same, cleaner: the waveform a smooth shape with a bright edge, x4 a blue-violet shimmer inside it (no ribbons over it), fewer and softer stars behind it, the gates as rings of light that burst open as you pass, a soft glow round the frame in your multiplier's colour, sparks as light streaks, an inner shadow for depth.</p><canvas id="pol"></canvas></div>
+<script>
+const DUR = 200, NB = 100, BL = DUR / NB, BEAT = 0.5, bars = Array.from({ length: NB }, (_, i) => i * BL);
+const R = ((a) => () => (a = (a * 16807) % 2147483647) / 2147483647)(42);
+const brk = (i) => (i < 2) || (i >= 30 && i < 34) || (i >= 64 && i < 68) || i > 97;
+const notesIn = bars.map((_, i) => brk(i) ? 0 : Math.round(4 + R() * 6 + (i > 40 && i < 60 ? 6 + R() * 4 : 0)));
+const resOf = bars.map((_, i) => { if (!notesIn[i]) return 'none'; const r = R(), hard = i > 40 && i < 60; return r < (hard ? 0.16 : 0.05) ? 'miss' : r < (hard ? 0.3 : 0.12) ? 'messy' : r < 0.62 ? 'perf' : 'clean'; });
+// loudness per 0.25 s: quiet intro, verses, louder choruses, the breaks, a big last chorus
+const LV = Array.from({ length: DUR * 4 }, (_, k) => { const s = k / 4, i = Math.floor(s / BL); if (brk(i)) return 0.06 + 0.05 * R();
+  const chorus = (s > 40 && s < 60) || (s > 96 && s < 120) || (s > 150 && s < 196); return Math.min(1, (chorus ? 0.72 : 0.45) + 0.18 * R() + (s > 170 ? 0.1 : 0)); });
+const BIGS = [20, 40, 96, 136, 150];
+const COL = { perf: [246, 216, 120], clean: [235, 240, 255], messy: [196, 161, 255], miss: [242, 123, 123], none: [150, 160, 190] }, GOLD = [251, 191, 36], MOOD = [245, 200, 160];
+const MULT = { 1: [161, 161, 170], 2: [250, 204, 21], 3: [251, 146, 60], 4: [56, 189, 248] };
+const phrases = []; for (let b0 = 2; b0 + 2 < NB; b0 += 8) { let best = -1, bn = 0; for (let b = b0; b < Math.min(b0 + 6, NB - 2); b++) { const n = notesIn[b] + notesIn[b + 1]; if (notesIn[b] && notesIn[b + 1] && n > bn) { bn = n; best = b; } } if (best >= 0) phrases.push([best, best + 2]); }
+const parts = []; for (let i = 1; i < NB; i++) if (!brk(i) && brk(i - 1)) parts.push(i);
+// note events: notesIn spread over each bar; a miss bar misses one of them
+const EV = []; bars.forEach((b, i) => { for (let j = 0; j < notesIn[i]; j++) EV.push({ t: b + (j + 0.5) * BL / notesIn[i], miss: resOf[i] === 'miss' && j === 1 }); });
+const acss = (c, a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`, mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k), fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+let t = 16, last = performance.now(), paused = false, forceX4 = false;
+document.getElementById('pp').onclick = (e) => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
+document.getElementById('x4').onclick = (e) => { forceX4 = !forceX4; e.target.textContent = forceX4 ? 'Streak: real' : 'Streak: x4'; };
+const OPT = { now: {}, wave: { wave: 1 }, alive: { alive: 1 }, warp: { warp: 1 }, all: { wave: 1, alive: 1, warp: 1 }, pol: { wave: 1, alive: 1, warp: 1, pol: 1 } };
+const views = Object.keys(OPT).map((id) => { const cv = document.getElementById(id); cv.onclick = (e) => { const r = cv.getBoundingClientRect(); t = Math.max(0, Math.min(DUR - 1, (e.clientX - r.left - r.width * 0.18) / (r.width * 0.64) * DUR)); views.forEach((v) => v.st = null); }; return { id, cv, g: cv.getContext('2d'), st: null }; });
+function soft(g, x, y, r, c, a) { if (a <= 0) return; const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, acss(c, a)); q.addColorStop(1, acss(c, 0)); g.fillStyle = q; g.fillRect(x - r, y - r, r * 2, r * 2); }
+const lvAt = (s) => LV[Math.max(0, Math.min(LV.length - 1, Math.floor(s * 4)))];
+function streakAt(s) { let n = 0; for (const e of EV) { if (e.t > s) break; n = e.miss ? 0 : n + 1; } return n; }
+function frame(ms) {
+  const dt = Math.min(0.05, (ms - last) / 1000); if (!paused) { t += dt; if (t >= DUR) { t = 0; views.forEach((v) => v.st = null); } } last = ms;
+  for (const v of views) {
+    const dpr = devicePixelRatio || 1, Wc = v.cv.clientWidth, Hc = 120;
+    if (v.cv.width !== Math.round(Wc * dpr)) { v.cv.width = Math.round(Wc * dpr); v.cv.height = Hc * dpr; }
+    const g = v.g; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, Wc, Hc);
+    g.strokeStyle = 'rgba(240,200,140,.3)'; g.lineWidth = 1.2; g.beginPath(); g.roundRect(30, -40, Wc - 60, 62, 16); g.stroke();   // the board's bottom edge
+    capsule(g, v, OPT[v.id], Wc, ms, dt);
+  }
+  requestAnimationFrame(frame);
+}
+function capsule(g, v, o, Wc, ms, dt) {
+  const T = ms / 1000, px0 = Wc * 0.18, pw = Wc * 0.64, x1e = px0 + pw, x = (s) => px0 + Math.max(0, Math.min(DUR, s)) / DUR * pw, xn = x(t);
+  const hc = o.wave ? 16 : 10, cy = 74, y0 = cy - hc / 2, rc = hc / 2;
+  const st = v.st ||= { sparks: [], glitch: -9, pulse: -9, lastEv: EV.findIndex((e) => e.t > t), stars: Array.from({ length: 70 }, () => ({ u: R(), y: R(), z: 0.3 + R() * 0.7 })), gates: {} };
+  const streak = forceX4 ? 40 : streakAt(t), mult = Math.min(4, 1 + Math.floor(streak / 10)), mc = MULT[mult];
+  const kick = Math.exp(-((t % BEAT) / BEAT) * 5), loud = lvAt(t);
+  if (o.alive) for (; st.lastEv >= 0 && st.lastEv < EV.length && EV[st.lastEv].t <= t; st.lastEv++) {   // this frame's notes
+    const e = EV[st.lastEv];
+    if (e.miss) st.glitch = T; else { for (let j = 0; j < 4; j++) st.sparks.push({ x: xn, y: cy, vx: -30 - R() * 70, vy: -50 - R() * 80, at: T, c: mc });
+      if ((streak + 1) % 10 === 0) st.pulse = T; }
+  }
+  const glitch = o.alive ? Math.max(0, 1 - (T - st.glitch) / 0.35) : 0, jx = glitch ? (R() - 0.5) * 4 * glitch : 0;
+  g.save(); g.translate(jx, 0);
+  // seat, frame, brackets
+  g.fillStyle = 'rgba(4,5,10,.72)'; g.beginPath(); g.roundRect(px0 - 4, y0 - 4, pw + 8, hc + 8, rc + 4); g.fill();
+  const fr = g.createLinearGradient(0, y0 - 3, 0, y0 + hc + 3); fr.addColorStop(0, 'rgba(255,255,255,.42)'); fr.addColorStop(0.5, 'rgba(255,255,255,.07)'); fr.addColorStop(1, 'rgba(255,255,255,.24)');
+  if (o.pol && mult > 1) { g.strokeStyle = acss(mc, 0.12 + 0.12 * kick); g.lineWidth = 5; g.beginPath(); g.roundRect(px0 - 3, y0 - 3, pw + 6, hc + 6, rc + 3); g.stroke(); }
+  g.strokeStyle = glitch ? acss([242, 123, 123], 0.4 + 0.5 * glitch) : fr; g.lineWidth = 1; g.beginPath(); g.roundRect(px0 - 2.5, y0 - 2.5, pw + 5, hc + 5, rc + 2.5); g.stroke();
+  const bc = o.alive ? mix(MOOD, mc, 0.7) : MOOD;
+  g.strokeStyle = acss(bc, 0.75 + (o.alive ? 0.25 * kick : 0)); g.lineWidth = 1.4; g.lineCap = 'round';
+  for (const [ex, sd] of [[px0 - 8, 1], [x1e + 8, -1]]) { g.beginPath(); g.moveTo(ex + sd * 5, y0 - 6); g.lineTo(ex, y0 - 6); g.lineTo(ex, y0 + hc + 6); g.lineTo(ex + sd * 5, y0 + hc + 6); g.stroke(); }
+  g.save(); g.beginPath(); g.roundRect(px0, y0, pw, hc, rc); g.clip();
+  g.fillStyle = 'rgba(255,255,255,.035)'; g.fillRect(px0, y0, pw, hc);
+  if (o.warp) for (const [si, s] of st.stars.entries()) {   // stars streaming past ahead
+    if (o.pol && si % 2) continue;
+    s.u -= dt * (0.02 + 0.06 * loud) * s.z; if (s.u < 0) { s.u += 1; s.y = R(); }
+    const sx = px0 + s.u * pw; if (sx < xn + 4) continue; const len = (4 + 16 * loud) * s.z, sy = y0 + 1.5 + s.y * (hc - 3);
+    const q = g.createLinearGradient(sx, 0, sx + len, 0); q.addColorStop(0, acss([235, 240, 255], (o.pol ? 0.4 : 0.75) * s.z)); q.addColorStop(1, acss([235, 240, 255], 0));
+    g.fillStyle = q; g.fillRect(sx, sy - 0.4, len, 0.8);
+  }
+  if (o.wave && o.pol) {   // the waveform as a smooth shape: faint ahead, behind filled run by run in each bar's colour
+    const pts = []; for (let px = px0; px <= x1e + 3; px += 3) { const s0 = (px - px0) / pw * DUR; let a2 = 0; for (let k = -2; k <= 2; k++) a2 += lvAt(s0 + k * 0.25); pts.push([Math.min(px, x1e), Math.max(0.8, (a2 / 5) * (hc - 5) / 2)]); }
+    const shape = () => { g.beginPath(); g.moveTo(pts[0][0], cy - pts[0][1]); for (let k = 1; k < pts.length; k++) { const [xa, ha] = pts[k - 1], [xb, hb] = pts[k]; g.quadraticCurveTo(xa, cy - ha, (xa + xb) / 2, cy - (ha + hb) / 2); }
+      for (let k = pts.length - 1; k > 0; k--) { const [xa, ha] = pts[k], [xb, hb] = pts[k - 1]; g.quadraticCurveTo(xa, cy + ha, (xa + xb) / 2, cy + (ha + hb) / 2); } g.closePath(); };
+    g.save(); g.beginPath(); g.rect(xn, y0, x1e - xn, hc); g.clip(); shape(); g.fillStyle = 'rgba(220,228,255,.12)'; g.fill(); g.strokeStyle = 'rgba(220,228,255,.28)'; g.lineWidth = 0.8; g.stroke(); g.restore();
+    let a = 0; while (a < NB && bars[a] < t) { let b = a; while (b + 1 < NB && bars[b + 1] < t && resOf[b + 1] === resOf[a]) b++;
+      const c = COL[resOf[a]], al = resOf[a] === 'none' ? 0.4 : 1, x0 = x(bars[a]), x1 = x(Math.min(t, bars[b] + BL));
+      g.save(); g.beginPath(); g.rect(x0, y0, x1 - x0 + 0.5, hc); g.clip(); shape();
+      const q = g.createLinearGradient(0, y0, 0, y0 + hc); q.addColorStop(0, acss(c.map((u) => u * 0.6), al)); q.addColorStop(0.5, acss(mix(c, [255, 255, 255], 0.12), al)); q.addColorStop(1, acss(c.map((u) => u * 0.6), al));
+      g.fillStyle = q; g.fill(); g.strokeStyle = acss(mix(c, [255, 255, 255], 0.5), al); g.lineWidth = 1; g.stroke(); g.restore(); a = b + 1; }
+    if (o.alive && mult === 4 && xn > px0 + 2) {   // x4: a blue-violet shimmer inside the played waveform
+      g.save(); g.beginPath(); g.rect(px0, y0, xn - px0, hc); g.clip(); shape(); g.clip(); g.globalCompositeOperation = 'lighter';
+      const sh = ((T * 0.25) % 1) * 300, q = g.createLinearGradient(px0 - 300 + sh, 0, px0 + sh, 0); q.addColorStop(0, 'rgba(125,211,252,0)'); q.addColorStop(0.5, 'rgba(160,140,255,.22)'); q.addColorStop(1, 'rgba(125,211,252,0)');
+      g.fillStyle = 'rgba(56,189,248,.1)'; g.fillRect(px0, y0, xn - px0, hc); for (let ox = 0; ox < xn - px0 + 300; ox += 300) { g.save(); g.translate(ox, 0); g.fillStyle = q; g.fillRect(px0 - 300, y0, 600, hc); g.restore(); }
+      g.restore(); }
+  } else if (o.wave) {   // the waveform: 2 px columns; ahead faint, behind in each bar's colour
+    for (let px = px0; px < x1e; px += 2) { const s = (px - px0) / pw * DUR, a2 = lvAt(s), hh = Math.max(0.6, a2 * (hc - 4) / 2), i = Math.min(NB - 1, Math.floor(s / BL));
+      if (s < t) { const c = COL[resOf[i]]; g.fillStyle = acss(mix(c, [255, 255, 255], 0.2), resOf[i] === 'none' ? 0.35 : 0.95); }
+      else g.fillStyle = `rgba(220,228,255,${0.16 + 0.1 * a2})`;
+      g.fillRect(px, cy - hh, 1.3, hh * 2); }
+    const hz = g.createLinearGradient(0, y0, 0, y0 + hc); hz.addColorStop(0, 'rgba(255,255,255,.06)'); hz.addColorStop(0.5, 'rgba(255,255,255,0)'); hz.addColorStop(1, 'rgba(0,0,0,.25)');
+    g.fillStyle = hz; g.fillRect(px0, y0, xn - px0, hc);
+  } else {
+    g.fillStyle = 'rgba(200,215,255,.10)'; for (let i = 0; i < NB; i += 4) g.fillRect(Math.round(x(bars[i])), y0 + hc - 3, 1, 3);
+    let a = 0; while (a < NB && bars[a] < t) { let b = a; while (b + 1 < NB && bars[b + 1] < t && resOf[b + 1] === resOf[a]) b++;
+      const c = COL[resOf[a]], al = resOf[a] === 'none' ? 0.35 : 1, x0 = x(bars[a]), x1 = x(Math.min(t, bars[b] + BL)), q = g.createLinearGradient(0, y0, 0, y0 + hc);
+      q.addColorStop(0, acss(mix(c, [255, 255, 255], 0.25), al)); q.addColorStop(0.55, acss(c, al)); q.addColorStop(1, acss(c.map((u) => u * 0.5), al));
+      g.fillStyle = q; g.fillRect(x0, y0, x1 - x0 + 0.5, hc); a = b + 1; }
+  }
+  if (xn > px0 + 2) {
+    if (o.alive) { g.fillStyle = acss(mc, (o.pol ? 0.1 : 0.18) * kick); g.fillRect(px0, y0, xn - px0, hc); }   // breathing on the kicks
+    if (o.alive && mult === 4 && !o.pol) for (let k = 0; k < 3; k++) {   // x4: aurora ribbons through the fill
+      g.strokeStyle = acss(k === 1 ? [190, 140, 255] : [125, 211, 252], 0.5); g.lineWidth = 1.2; g.beginPath();
+      for (let px = px0; px <= xn; px += 4) { const yy = cy + Math.sin(px * 0.035 + T * (2 + k) + k * 2) * (hc * 0.3); px === px0 ? g.moveTo(px, yy) : g.lineTo(px, yy); } g.stroke(); }
+    if (o.alive) { const pa = (T - st.pulse) / 0.9; if (pa >= 0 && pa < 1) { const px = xn - (xn - px0) * pa, q = g.createLinearGradient(px - 40, 0, px + 40, 0);   // the streak pulse running back
+      q.addColorStop(0, 'rgba(255,255,255,0)'); q.addColorStop(0.5, `rgba(255,255,255,${0.8 * (1 - pa)})`); q.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = q; g.fillRect(px - 40, y0, 80, hc); } }
+    const sx = px0 + ((T * 0.16) % 1.5 - 0.25) * pw, sq = g.createLinearGradient(sx - 50, 0, sx + 50, 0);
+    sq.addColorStop(0, 'rgba(255,255,255,0)'); sq.addColorStop(0.5, 'rgba(255,255,255,.3)'); sq.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sq; g.fillRect(px0, y0, xn - px0, hc);
+    const fc = o.alive ? mc : MOOD, pf = g.createLinearGradient(xn - 30, 0, xn, 0); pf.addColorStop(0, acss(fc, 0)); pf.addColorStop(1, acss(mix(fc, [255, 255, 255], 0.4), 0.8));
+    g.fillStyle = pf; g.fillRect(xn - 30, y0, 30, hc);
+    if (glitch) { g.fillStyle = acss([242, 123, 123], 0.5 * glitch); for (let k = 0; k < 3; k++) g.fillRect(px0 + R() * (xn - px0), y0 + R() * hc, 10 + R() * 40, 1.5); }
+  }
+  g.fillStyle = 'rgba(255,255,255,.07)'; for (let yy = y0 + 1; yy < y0 + hc; yy += 2) g.fillRect(px0, yy, pw, 0.6);
+  if (o.pol) { const sh2 = g.createLinearGradient(0, y0, 0, y0 + 5); sh2.addColorStop(0, 'rgba(0,0,0,.45)'); sh2.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = sh2; g.fillRect(px0, y0, pw, 5); }
+  const gl = g.createLinearGradient(0, y0, 0, y0 + hc * 0.5); gl.addColorStop(0, 'rgba(255,255,255,.42)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gl; g.fillRect(px0, y0 + 1, pw, hc * 0.42);
+  g.restore();
+  g.fillStyle = 'rgba(255,255,255,.45)'; for (const p of parts) { const nx = Math.round(x(bars[p])); g.fillRect(nx - 0.5, y0 - 5, 1, 3); g.fillRect(nx - 0.5, y0 + hc + 2, 1, 3); }
+  for (const [pa, pb] of phrases) { const mx = (x(bars[pa]) + x(bars[pb])) / 2, done = bars[pb] <= t, my = y0 - 8, s = 3.3;
+    if (!done) soft(g, mx, my, 10, GOLD, 0.28 + 0.14 * Math.sin(T * 3 + pa));
+    g.fillStyle = done ? 'rgba(251,191,36,.22)' : 'rgb(253,224,130)'; g.beginPath(); g.moveTo(mx, my - s); g.lineTo(mx + s * 0.8, my); g.lineTo(mx, my + s); g.lineTo(mx - s * 0.8, my); g.closePath(); g.fill(); }
+  if (o.wave && !o.warp) for (const b of BIGS) { const bx = x(b), done = b <= t, by = y0 + hc + 8;   // big moments: flares under the frame
+    soft(g, bx, by, done ? 6 : 12, [255, 240, 220], done ? 0.15 : 0.45 + 0.2 * Math.sin(T * 2 + b));
+    g.strokeStyle = `rgba(255,245,230,${done ? 0.25 : 0.9})`; g.lineWidth = 1; g.beginPath(); g.moveTo(bx - 4, by); g.lineTo(bx + 4, by); g.moveTo(bx, by - 4); g.lineTo(bx, by + 4); g.stroke(); }
+  if (o.warp && o.pol) for (const b of BIGS) {   // big moments: rings of light that burst open as you pass
+    const bx = x(b), age = t - b, gh = hc / 2 + 7;
+    if (age >= 0 && age < 0.9) { const k = age / 0.9, f = (1 - k) ** 2; soft(g, bx, cy, 26 + 40 * k, [255, 240, 220], 0.6 * f);
+      g.strokeStyle = acss([255, 245, 230], 0.9 * f); g.lineWidth = 1.5; g.beginPath(); g.ellipse(bx, cy, 3 + 22 * k, gh + 10 * k, 0, 0, 7); g.stroke(); continue; }
+    if (age >= 0.9) { g.fillStyle = 'rgba(255,255,255,.22)'; g.beginPath(); g.arc(bx, y0 + hc + 7, 1.2, 0, 7); g.fill(); continue; }
+    const br = 0.75 + 0.25 * Math.sin(T * 2.5 + b), near = Math.max(0, 1 - (b - t) / 6);
+    soft(g, bx, cy, 14 + 8 * near, mix([255, 236, 214], MOOD, 0.3), (0.18 + 0.25 * near) * br);
+    for (const sd of [-1, 1]) { const q = g.createLinearGradient(0, cy - gh, 0, cy + gh); q.addColorStop(0, 'rgba(255,240,220,0)'); q.addColorStop(0.5, `rgba(255,248,236,${0.85 * br})`); q.addColorStop(1, 'rgba(255,240,220,0)');
+      g.strokeStyle = q; g.lineWidth = 1.3; g.beginPath(); g.ellipse(bx, cy, 3.5, gh, 0, sd < 0 ? Math.PI / 2 : -Math.PI / 2, sd < 0 ? Math.PI * 1.5 : Math.PI / 2); g.stroke(); }
+  }
+  else if (o.warp) for (const b of BIGS) {   // big moments: gates on the track
+    const bx = x(b), age = t - b, gh = hc + 14, flare = age >= 0 && age < 1 ? 1 - age : 0, done = age >= 1;
+    if (flare) { soft(g, bx, cy, 30 + 30 * (1 - flare), [255, 240, 220], 0.7 * flare); }
+    g.strokeStyle = done ? 'rgba(255,255,255,.18)' : acss(mix([255, 236, 214], MOOD, 0.3), 0.85 + 0.15 * Math.sin(T * 3 + b)); g.lineWidth = 1.6 + 2 * flare;
+    g.beginPath(); g.ellipse(bx, cy, 3 + 6 * flare, gh / 2 + 6 * flare, 0, 0, 7); g.stroke();
+    if (!done && !flare) soft(g, bx, cy, 12, [255, 236, 214], 0.25);
+  }
+  // the knob
+  if (o.warp) {   // an energy core with a light trail
+    const tl = Math.min(70, xn - px0), q = g.createLinearGradient(xn - tl, 0, xn, 0), cc = o.alive ? mc : MOOD;
+    q.addColorStop(0, acss(cc, 0)); q.addColorStop(1, acss(mix(cc, [255, 255, 255], 0.5), 0.85)); g.fillStyle = q;
+    g.beginPath(); g.moveTo(xn - tl, cy); g.lineTo(xn, cy - 4); g.lineTo(xn, cy + 4); g.closePath(); g.fill();
+    soft(g, xn, cy, 22 + 6 * kick, cc, 0.6); g.fillStyle = '#fff'; g.beginPath(); g.arc(xn, cy, 4, 0, 7); g.fill();
+    g.strokeStyle = acss(cc, 0.9); g.lineWidth = 1; g.beginPath(); g.arc(xn, cy, 7 + 2 * Math.sin(T * 6), 0, 7); g.stroke();
+  } else {
+    const kc = o.alive ? mc : MOOD; soft(g, xn, cy, 22 + (o.alive ? 6 * kick : 0), kc, 0.55);
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(xn, cy - hc / 2 - 5); g.lineTo(xn + 5.5, cy); g.lineTo(xn, cy + hc / 2 + 5); g.lineTo(xn - 5.5, cy); g.closePath(); g.fill();
+    g.strokeStyle = acss(kc, 1); g.lineWidth = 1.3; g.stroke();
+  }
+  if (o.alive) { st.sparks = st.sparks.filter((p) => T - p.at < 0.6);   // sparks off the knob
+    for (const p of st.sparks) { const a = T - p.at, px = p.x + p.vx * a, py = p.y + p.vy * a + 260 * a * a;
+      if (o.pol) { const vx = p.vx, vy = p.vy + 520 * a, l = 0.035; g.strokeStyle = acss(mix(p.c, [255, 255, 255], 0.6), 1 - a / 0.6); g.lineWidth = 1.2; g.lineCap = 'round'; g.beginPath(); g.moveTo(px, py); g.lineTo(px - vx * l, py - vy * l); g.stroke(); }
+      else { g.fillStyle = acss(mix(p.c, [255, 255, 255], 0.5), 1 - a / 0.6); g.fillRect(px - 1, py - 1, 2, 2); } } }
+  g.font = '500 12px -apple-system,system-ui'; g.textBaseline = 'middle';
+  g.textAlign = 'right'; g.fillStyle = 'rgba(245,245,247,.85)'; g.fillText(fmt(t), px0 - 18, cy);
+  g.textAlign = 'left'; g.fillStyle = acss(mix(o.alive ? mc : MOOD, [255, 255, 255], 0.5), 0.75); g.fillText(`${Math.round(t / DUR * 100)}%`, x1e + 18, cy);
+  g.restore();
+}
+requestAnimationFrame(frame);
+</script>

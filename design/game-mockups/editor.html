@@ -1,0 +1,264 @@
+<!doctype html><meta charset="utf-8"><title>Encore tab editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The tab editor as a game (2026-11-09; user: "making the tab editor almost like a game would make it easier to use",
+     after fast string fixing went in: pick a run, ↑ ↓, fix the same riff everywhere). Four ideas to try, in the Arcade
+     board's look (keycaps, strings by gauge, a still cursor):
+     1. Fix as it plays: the song scrolls like the game; a run on the wrong string lights up as it comes; ↓ / ↑ fixes it.
+     2. Arcade editor: the board stopped; pick notes (click, double-click a run, drag a box), ↑ ↓ slides them, F fixes repeats.
+     3. Play to fix: play the bar on your bass; where you played a note on another string, Enter takes your way.
+     4. Clean tab: the whole song as bars, a meter of how much is clean; N jumps to the next problem, ↓ ↑ fixes it.
+     The song is made up: a 16-bar riff in 8ths, its E-string notes "slipped" onto the A string in some bars (as automatic
+     tabs do). Nothing here is wired to the app. -->
+<style>
+:root{color-scheme:dark}
+html,body{margin:0;height:100%;background:#020307;color:#f5f5f7;font:500 14px -apple-system,"SF Pro Text",system-ui,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.bar{position:fixed;top:14px;left:18px;right:18px;z-index:2;display:flex;gap:16px;align-items:center;flex-wrap:wrap;font:600 13px -apple-system,system-ui}
+.bar b{font:700 15px -apple-system,"SF Pro Display",system-ui;letter-spacing:.02em;margin-right:6px}
+.bar button{border:0;background:none;padding:3px 0;color:rgba(245,245,247,.45);font:inherit;cursor:pointer;border-bottom:1.5px solid transparent}
+.bar button.on{color:#fff;border-bottom-color:rgba(255,255,255,.7)}
+.bar .sep{width:1px;height:14px;background:rgba(255,255,255,.15)}
+.how{position:fixed;left:18px;right:18px;top:46px;z-index:2;color:rgba(245,245,247,.6);font-size:13.5px;max-width:880px;line-height:1.45}
+.keys{position:fixed;left:18px;bottom:14px;z-index:2;color:rgba(245,245,247,.42);font-size:12.5px}
+.keys kbd{display:inline-block;min-width:1.4em;padding:0 5px;margin:0 1px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);font:600 11.5px -apple-system,system-ui;text-align:center;color:#f5f5f7}
+</style>
+<canvas id="cv"></canvas>
+<div class="bar" id="bar">
+ <b>Tab editor as a game</b>
+ <button data-m="play">1 · Fix as it plays</button>
+ <button data-m="arcade">2 · Arcade editor</button>
+ <button data-m="you">3 · Play to fix</button>
+ <button data-m="clean">4 · Clean tab</button>
+ <span class="sep"></span><button id="reset">Start again</button>
+</div>
+<div class="how" id="how"></div>
+<div class="keys" id="keys"></div>
+<script>
+const COL=['#6ee7a8','#f8a1a1','#f6d878','#8fb8fa'],NAMES=['E','A','D','G'],OPEN=[28,33,38,43];
+const FONT='-apple-system,"SF Pro Display",system-ui,sans-serif',AMBER=[252,211,77],BLUE=[125,211,252],GREEN=[110,231,168];
+const cv=document.getElementById('cv'),g=cv.getContext('2d');
+let W=0,H=0,dpr=1,mode='play',last=performance.now();
+const rgb=(h)=>[1,3,5].map((i)=>parseInt(h.slice(i,i+2),16)),css=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`,mix=(a,b,k)=>a.map((v,i)=>v+(b[i]-v)*k);
+const ease=(x)=>x<0?0:x>1?1:1-(1-x)**3;
+function size(){dpr=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;stars=makeStars()}
+addEventListener('resize',size);
+
+// ---- the song: 16 bars of 8ths (4/4), a riff on E and A; bars 3, 4, 7, 11, 12, 15 "slipped" up a string ----
+const RIFF=[[0,5],[0,5],[0,7],[0,7],[1,5],[1,5],[0,7],[0,5]],RIFF2=[[1,0],[1,0],[1,2],[1,3],[2,0],[1,3],[1,2],[1,0]];
+const SLIPPED=new Set([2,3,6,10,11,14]);
+function makeSong(){
+  const notes=[];
+  for(let b=0;b<16;b++){
+    const pat=b%4===3?RIFF2:RIFF;
+    pat.forEach(([s,f],i)=>{
+      const pitch=OPEN[s]+f;let ss=s,ff=f;
+      if(SLIPPED.has(b)&&s<3&&pitch-OPEN[s+1]>=0){ss=s+1;ff=pitch-OPEN[ss]}   // the slip: next string up, lower fret
+      notes.push({t:b*4+i*0.5,bar:b,pitch,s:ss,f:ff,right:s,slip:ss!==s,fixed:false,anim:null,pick:false,flash:0});
+    });
+  }
+  return notes;
+}
+let song=makeSong();
+const runs=()=>{const out=new Map();song.forEach((n)=>{if(n.slip&&!n.fixed){if(!out.has(n.bar))out.set(n.bar,[]);out.get(n.bar).push(n)}});return [...out.values()]};
+function moveTo(n,s,now,tag){const f=n.pitch-OPEN[s];if(s<0||s>3||f<0||f>20)return false;n.anim={s0:n.s,f0:n.f,at:now};n.s=s;n.f=f;n.flash=now;n.fixed=n.s===n.right;n.slip=n.s!==n.right;return true}
+const pops=[];   // floating tags: {text,x,y,at,col}
+
+// ---- drawing: sky, board, keycaps (as the Arcade board) ----
+let stars=[];
+function makeStars(){const R=((a)=>()=>(a=(a*16807)%2147483647)/2147483647)(99);return Array.from({length:160},()=>({x:R()*W,y:R()*H,r:0.4+R()*1.4,a:0.15+R()*0.6,p:R()*7}))}
+function sky(sec,drift){
+  g.fillStyle='#020307';g.fillRect(0,0,W,H);
+  let q=g.createRadialGradient(W*.6,H*.5,0,W*.6,H*.5,W*.6);q.addColorStop(0,'rgba(90,50,150,.18)');q.addColorStop(.5,'rgba(24,34,90,.12)');q.addColorStop(1,'rgba(2,3,7,0)');g.fillStyle=q;g.fillRect(0,0,W,H);
+  q=g.createRadialGradient(W*.55,H*.52,0,W*.55,H*.52,W*.18);q.addColorStop(0,'rgba(150,80,70,.14)');q.addColorStop(1,'rgba(150,80,70,0)');g.fillStyle=q;g.fillRect(0,0,W,H);
+  for(const s of stars){if(drift){s.x-=drift*(0.2+s.r*0.3);if(s.x<0)s.x+=W}g.fillStyle=`rgba(235,238,250,${s.a*(0.75+0.25*Math.sin(sec*1.3+s.p))})`;g.beginPath();g.arc(s.x,s.y,s.r,0,7);g.fill()}
+}
+// board: {L,R,top,h} -> y(s); fades at the ends
+function board(L,R,top,h,lit){
+  const sp=h/4,y=(s)=>top+(3-s+0.5)*sp,ends=(c,a)=>{const q=g.createLinearGradient(L,0,R,0);q.addColorStop(0,css(c,0));q.addColorStop(.06,css(c,a));q.addColorStop(.94,css(c,a));q.addColorStop(1,css(c,0));return q};
+  g.fillStyle=ends([12,13,20],.6);g.fillRect(L,top-14,R-L,h+28);
+  for(let s=0;s<4;s++){g.fillStyle=ends(rgb(COL[s]),s%2?.035:.018);g.fillRect(L,top+(3-s)*sp+sp*.08,R-L,sp*.84)}
+  for(let s=0;s<4;s++){const a=lit?.[s]||0;g.strokeStyle=ends(mix(rgb(COL[s]),[255,255,255],.2*a),.42+.5*a);g.lineWidth=4.2-2.3*s/3+a;g.beginPath();g.moveTo(L,y(s));g.lineTo(R,y(s));g.stroke();
+    if(s<3){g.setLineDash([1.2,1.6]);g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=4.2-2.3*s/3;g.stroke();g.setLineDash([])}
+    g.fillStyle=css(rgb(COL[s]),.8);g.font=`800 13px ${FONT}`;g.textAlign='center';g.textBaseline='middle';g.fillText(NAMES[s],L-14,y(s))}
+  return {y,sp};
+}
+function soft(x,y,r,c,a){const q=g.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,css(c,a));q.addColorStop(1,css(c,0));g.fillStyle=q;g.fillRect(x-r,y-r,r*2,r*2)}
+// a keycap: style = {rim: color, dashed, glow, ghost}
+function keycap(x,y,sz,label,c,st={}){
+  g.font=`700 ${sz}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';
+  const ch=sz*1.12,cw=Math.max(sz*1.05,g.measureText(label).width+sz*.55);
+  g.save();g.globalAlpha=st.alpha??1;
+  if(st.ghost){g.setLineDash([4,3]);g.strokeStyle=css(st.rim||c,.85);g.lineWidth=1.6;g.beginPath();g.roundRect(x-cw/2,y-ch/2,cw,ch,ch*.3);g.fillStyle=css(st.rim||c,.12);g.fill();g.stroke();g.setLineDash([]);
+    g.fillStyle=css(st.rim||c,.95);g.fillText(label,x,y+sz*.04);g.restore();return cw}
+  soft(x,y+ch*.4,cw*.9,c,.14);
+  g.beginPath();g.roundRect(x-cw/2,y-ch/2+3,cw,ch,ch*.3);g.fillStyle='rgba(0,0,0,.4)';g.fill();
+  if(st.glow){g.shadowColor=css(st.rim||c,1);g.shadowBlur=st.glow}
+  g.beginPath();g.roundRect(x-cw/2,y-ch/2,cw,ch,ch*.3);const q=g.createLinearGradient(0,y-ch/2,0,y+ch/2);q.addColorStop(0,'rgba(38,40,54,.97)');q.addColorStop(1,'rgba(8,9,13,.97)');g.fillStyle=q;g.fill();g.shadowBlur=0;
+  g.fillStyle=css(st.fill||c,st.fillA??.1);g.fill();
+  if(st.dashed)g.setLineDash([3,3]);g.strokeStyle=css(st.rim||c,st.rimA??.6);g.lineWidth=st.rim?2:1.2;g.stroke();g.setLineDash([]);
+  g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=1;g.beginPath();g.moveTo(x-cw/2+ch*.3,y-ch/2+1.4);g.lineTo(x+cw/2-ch*.3,y-ch/2+1.4);g.stroke();
+  g.fillStyle=st.text||'#f5f5f7';g.fillText(label,x,y+sz*.04);g.restore();return cw;
+}
+// where a note is drawn while it slides to its new string: up/down with a little hop
+function placeOf(n,now,y){
+  if(!n.anim)return {yy:y(n.s),label:String(n.f),hop:0};
+  const k=ease((now-n.anim.at)/260);if(k>=1){n.anim=null;return {yy:y(n.s),label:String(n.f),hop:0}}
+  return {yy:y(n.anim.s0)+(y(n.s)-y(n.anim.s0))*k,label:String(k<.5?n.anim.f0:n.f),hop:Math.sin(Math.PI*k)};
+}
+function drawPops(now){for(let i=pops.length-1;i>=0;i--){const p=pops[i],a=(now-p.at)/1400;if(a>1){pops.splice(i,1);continue}
+  g.globalAlpha=1-a*a;g.font=`800 ${p.big?26:16}px ${FONT}`;g.textAlign='center';g.fillStyle=css(p.col||GREEN,1);g.fillText(p.text,p.x,p.y-30*ease(a));g.globalAlpha=1}}
+function ring(x,y,now,at,c){const a=(now-at)/500;if(a<0||a>1)return;g.strokeStyle=css(c,.7*(1-a));g.lineWidth=3*(1-a)+.5;g.beginPath();g.arc(x,y,12+50*ease(a),0,7);g.stroke()}
+function chip(x,y,text,col,keyText){g.font=`600 14px ${FONT}`;const w=g.measureText(text).width+(keyText?54:24);g.fillStyle='rgba(16,15,22,.95)';g.strokeStyle=css(col,.8);g.lineWidth=1.2;g.beginPath();g.roundRect(x-w/2,y-16,w,32,16);g.fill();g.stroke();
+  g.fillStyle='#f5f5f7';g.textAlign='left';g.textBaseline='middle';g.fillText(text,x-w/2+12,y+1);
+  if(keyText){g.strokeStyle='rgba(255,255,255,.3)';g.beginPath();g.roundRect(x+w/2-30,y-10,20,20,5);g.stroke();g.textAlign='center';g.font=`700 11px ${FONT}`;g.fillText(keyText,x+w/2-20,y+1)}return w}
+
+// ---- 1. Fix as it plays ----
+const P={beat:0,bps:2.2,fixedRuns:0,streak:0,missed:new Set(),done:false};
+function drawPlay(now,dt){
+  P.beat+=dt*P.bps; if(P.beat>16*4+4){P.beat=-4}
+  sky(now/1000,dt*40);
+  const L=W*.05,R=W*.95,curX=W*.24,top=H*.42,h=Math.min(H*.32,200),ppb=Math.min(120,(R-curX)/7);
+  const lit=[0,0,0,0];song.forEach((n)=>{const a=(P.beat-n.t);if(a>=0&&a<0.4)lit[n.s]=Math.max(lit[n.s],1-a/0.4)});
+  const {y,sp}=board(L,R,top,h,lit),x=(t)=>curX+(t-P.beat)*ppb,sz=Math.min(26,sp*.58);
+  // the cursor
+  let q=g.createLinearGradient(curX-46,0,curX+46,0);q.addColorStop(0,'rgba(192,132,87,0)');q.addColorStop(.5,'rgba(192,132,87,.14)');q.addColorStop(1,'rgba(192,132,87,0)');g.fillStyle=q;g.fillRect(curX-46,top-14,92,h+28);
+  g.fillStyle='rgba(255,255,255,.6)';g.fillRect(curX-.75,top-14,1.5,h+28);
+  // the run coming up (its first note within 4 beats ahead, until its last passes the cursor): amber, "wrong string?"
+  const active=runs().find((r)=>r[0].t-P.beat<4.2&&r[r.length-1].t-P.beat>-0.3);P.active=active;
+  if(active){const x0=x(active[0].t)-24,x1=x(active[active.length-1].t)+24,pulse=.5+.5*Math.sin(now/140);
+    g.strokeStyle=css(AMBER,.35+.35*pulse);g.lineWidth=1.5;g.setLineDash([6,4]);g.beginPath();g.roundRect(x0,top-10,x1-x0,h+20,14);g.stroke();g.setLineDash([]);
+    soft((x0+x1)/2,top+h/2,(x1-x0)*.6,AMBER,.06+.04*pulse);
+    const dir=active[0].right<active[0].s?'↓':'↑';chip(Math.max(curX+120,(x0+x1)/2),top-38,`Wrong string? Press ${dir} to fix`,AMBER,dir)}
+  for(const n of song){const xx=x(n.t);if(xx<L-30||xx>R+30)continue;const {yy,label,hop}=placeOf(n,now,y),c=rgb(COL[n.s]),inRun=active?.includes(n);
+    const passed=n.t<P.beat-.05,fresh=now-n.flash<400;
+    keycap(xx,yy-hop*sp*.35,sz,label,c,{rim:inRun?AMBER:n.fixed?GREEN:null,rimA:inRun?.9:.8,glow:fresh?18:inRun?8:0,alpha:passed?.55:1})}
+  for(const r of runs())if(r[r.length-1].t<P.beat-.3&&!P.missed.has(r[0].bar)){P.missed.add(r[0].bar);P.streak=0}
+  // score corner: the game's feel
+  const total=SLIPPED.size;g.textAlign='right';g.textBaseline='alphabetic';g.font=`300 40px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(`${P.fixedRuns} / ${total}`,R,top+h+90);
+  g.font=`600 12px ${FONT}`;g.fillStyle='rgba(245,245,247,.5)';g.fillText('RUNS FIXED',R,top+h+110);
+  if(P.streak>1){g.font=`800 16px ${FONT}`;g.fillStyle=css(AMBER,1);g.fillText(`${P.streak} in a row`,R,top+h+134)}
+  drawPops(now);
+}
+function playFix(dir){const r=P.active;if(!r)return;const now=performance.now(),want=r[0].right-r[0].s;if(Math.sign(want)!==dir){pops.push({text:'other way',x:W*.5,y:H*.36,at:now,col:[248,113,113]});return}
+  r.forEach((n)=>moveTo(n,n.right,now));P.fixedRuns++;P.streak++;P.missed.delete(r[0].bar);
+  pops.push({text:`Fixed · ${r.length} notes`,x:W*.5,y:H*.36,at:now,big:true});}
+
+// ---- 2. Arcade editor ----
+const A={view:0,box:null,offer:null,hover:-1};
+function aLayout(){const L=W*.07,R=W*.93,top=H*.36,h=Math.min(H*.36,230),bars=2,beat0=A.view*4,ppb=(R-L-40)/(bars*4);return {L,R,top,h,beat0,ppb,x:(t)=>L+20+(t-beat0)*ppb+ppb*.25}}
+function drawArcade(now){
+  sky(now/1000,0);const Ly=aLayout(),{y,sp}=board(Ly.L,Ly.R,Ly.top,Ly.h),sz=Math.min(30,sp*.62);
+  // bar lines and numbers
+  for(let b=0;b<=2;b++){const bx=Ly.L+20+b*4*Ly.ppb;g.fillStyle='rgba(255,255,255,.14)';g.fillRect(bx,Ly.top-10,1.2,Ly.h+20);if(b<2){g.font=`600 12px ${FONT}`;g.fillStyle='rgba(245,245,247,.45)';g.textAlign='left';g.fillText(`bar ${A.view+b+1}`,bx+6,Ly.top-24)}}
+  A.hits=[];
+  for(const n of song){if(n.t<Ly.beat0||n.t>=Ly.beat0+8)continue;const xx=Ly.x(n.t),{yy,label,hop}=placeOf(n,now,y),c=rgb(COL[n.s]),fresh=now-n.flash<450;
+    const w=keycap(xx,yy-hop*sp*.4,sz,label,c,{rim:n.pick?[255,255,255]:n.fixed?GREEN:null,rimA:n.pick?.95:.8,fill:n.pick?[255,255,255]:c,fillA:n.pick?.16:.1,glow:n.pick?14:fresh?20:0});
+    if(fresh)ring(xx,yy,now,n.flash,GREEN);A.hits.push({n,x:xx,y:yy,w,h:sz*1.12})}
+  if(A.box){const [x0,y0,x1,y1]=A.box;g.fillStyle='rgba(192,132,87,.12)';g.strokeStyle='#c08457';g.setLineDash([4,3]);g.lineWidth=1;g.beginPath();g.rect(Math.min(x0,x1),Math.min(y0,y1),Math.abs(x1-x0),Math.abs(y1-y0));g.fill();g.stroke();g.setLineDash([])}
+  const picked=song.filter((n)=>n.pick);
+  if(picked.length){chip(W*.5,Ly.top+Ly.h+46,`${picked.length} picked · ↑ ↓ slides them to the next string`,[255,255,255])}
+  if(A.offer){chip(W*.5,Ly.top+Ly.h+92,`Same riff at ${A.offer.length} other places · Fix all`,AMBER,'F')}
+  // a strip of the whole song under it: where the problems are (amber), fixed (green), the 2 bars in view framed
+  strip(W*.07,W*.93,H-110,A.view,2);
+  drawPops(now);
+}
+function strip(L,R,top,v0,nv){const bw=(R-L)/16;for(let b=0;b<16;b++){const ns=song.filter((n)=>n.bar===b),bad=ns.some((n)=>n.slip),fix=ns.some((n)=>n.fixed);
+  g.fillStyle=bad?css(AMBER,.55):fix?css(GREEN,.45):'rgba(255,255,255,.08)';g.beginPath();g.roundRect(L+b*bw+2,top,bw-4,14,4);g.fill()}
+  g.strokeStyle='rgba(255,255,255,.8)';g.lineWidth=1.5;g.beginPath();g.roundRect(L+v0*bw,top-4,bw*nv,22,6);g.stroke()}
+function arcadeMove(dir){const now=performance.now(),picked=song.filter((n)=>n.pick);if(!picked.length)return;let moved=0;picked.forEach((n)=>{if(moveTo(n,n.s+dir,now))moved++});
+  if(!moved){pops.push({text:"can't go there",x:W*.5,y:H*.3,at:now,col:[248,113,113]});return}
+  // the same notes (pitch + old string) in other bars: offered
+  const bars=new Set(picked.map((n)=>n.bar)),key=(ns)=>ns.map((n)=>`${n.pitch}`).join(',');
+  const pk=key(picked),others=[];for(let b=0;b<16;b++){if(bars.has(b))continue;const ns=song.filter((n)=>n.bar===b&&picked.some((p)=>p.t%4===n.t%4));if(ns.length===picked.length&&key(ns)===pk&&ns.every((n,i)=>n.s===picked[i].s-dir))others.push(ns)}
+  A.offer=others.length?others.map((ns)=>({ns,dir})):null;
+  pops.push({text:`${moved} moved`,x:W*.5,y:H*.3,at:now})}
+function arcadeFixAll(){if(!A.offer)return;const now=performance.now();let c=0;A.offer.forEach(({ns,dir})=>ns.forEach((n)=>{if(moveTo(n,n.s+dir,now))c++}));pops.push({text:`Fixed ${A.offer.length} more places · ${c} notes`,x:W*.5,y:H*.3,at:now,big:true});A.offer=null}
+
+// ---- 3. Play to fix ----
+const Y={bar:2,beat:-1,played:[],playing:false,asked:false};
+function drawYou(now,dt){
+  sky(now/1000,0);const L=W*.08,R=W*.92,top=H*.38,h=Math.min(H*.34,220),ppb=(R-L-40)/4,x=(t)=>L+20+(t-Y.bar*4)*ppb+ppb*.25;
+  const {y,sp}=board(L,R,top,h),sz=Math.min(30,sp*.6);
+  g.font=`600 12px ${FONT}`;g.fillStyle='rgba(245,245,247,.45)';g.textAlign='left';g.fillText(`bar ${Y.bar+1}`,L+26,top-24);
+  if(Y.playing){Y.beat+=dt*2;const t=Y.bar*4+Y.beat;   // you "play" each note on its right string, as it comes
+    song.filter((n)=>n.bar===Y.bar&&n.t<=t&&!Y.played.includes(n)).forEach((n)=>{Y.played.push(n);n.youAt=now});
+    if(Y.beat>4.2){Y.playing=false;Y.asked=true}
+    const cx=x(t);g.fillStyle='rgba(255,255,255,.6)';g.fillRect(cx-.75,top-14,1.5,h+28)}
+  const tabNotes=song.filter((n)=>n.bar===Y.bar);let differ=0;
+  for(const n of tabNotes){const xx=x(n.t),{yy,label,hop}=placeOf(n,now,y),c=rgb(COL[n.s]),you=Y.played.includes(n),off=you&&n.right!==n.s;if(off)differ++;
+    keycap(xx,yy-hop*sp*.4,sz,label,c,{rim:off?BLUE:n.fixed?GREEN:null,rimA:.9,glow:now-n.flash<450?20:0,alpha:off?.6:1});
+    if(off){const ry=y(n.right),f=n.pitch-OPEN[n.right];g.strokeStyle=css(BLUE,.45);g.setLineDash([3,3]);g.beginPath();g.moveTo(xx,yy);g.lineTo(xx,ry);g.stroke();g.setLineDash([]);
+      keycap(xx,ry,sz*.9,String(f),BLUE,{ghost:true,rim:BLUE,alpha:Math.min(1,(now-n.youAt)/200)})}
+    else if(you&&now-n.youAt<300)ring(xx,yy,now,n.youAt,GREEN)}
+  if(Y.asked&&differ)chip(W*.5,top+h+50,`You played ${differ} of these on another string · Use mine`,BLUE,'↵');
+  else if(Y.asked&&!differ)chip(W*.5,top+h+50,'The tab matches how you played it ✓',GREEN);
+  else if(!Y.playing)chip(W*.5,top+h+50,'Play this bar on your bass (here: Space plays it for you)',[255,255,255]);
+  g.font=`600 13px ${FONT}`;g.fillStyle=css(BLUE,.9);g.textAlign='left';g.fillText('dashed blue: where you played it',L+20,top+h+100);
+  drawPops(now);
+}
+function youUse(){if(!Y.asked)return;const now=performance.now();let c=0;song.filter((n)=>n.bar===Y.bar&&n.s!==n.right&&Y.played.includes(n)).forEach((n)=>{moveTo(n,n.right,now);c++});if(c)pops.push({text:`${c} notes on your strings`,x:W*.5,y:H*.32,at:now,big:true});Y.asked=false;Y.played=[]}
+
+// ---- 4. Clean tab ----
+const C={focus:-1,cam:0,celebrate:-9};
+function drawClean(now,dt){
+  sky(now/1000,0);
+  const bad=song.filter((n)=>n.slip).length,clean=1-bad/song.length,L=W*.08,R=W*.92;
+  // the meter: a ring, like the game's multiplier
+  const cx=W*.5,cy=H*.24,r=Math.min(64,H*.09);g.lineWidth=10;g.strokeStyle='rgba(255,255,255,.08)';g.beginPath();g.arc(cx,cy,r,0,7);g.stroke();
+  const shown=C.shown=(C.shown??clean)+(clean-(C.shown??clean))*Math.min(1,dt*6);g.strokeStyle=css(mix(AMBER,GREEN,shown),1);g.lineCap='round';g.beginPath();g.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*shown);g.stroke();g.lineCap='butt';
+  g.textAlign='center';g.textBaseline='middle';g.font=`300 34px ${FONT}`;g.fillStyle='#f5f5f7';g.fillText(`${Math.round(shown*100)}%`,cx,cy-4);g.font=`600 11px ${FONT}`;g.fillStyle='rgba(245,245,247,.55)';g.fillText('CLEAN',cx,cy+22);
+  const left=runs().length;g.font=`600 14px ${FONT}`;g.fillStyle=left?css(AMBER,1):css(GREEN,1);g.fillText(left?`${left} run${left>1?'s':''} on the wrong string`:'Clean tab ✓',cx,cy+r+28);
+  if(!left&&now-C.celebrate>2600)C.celebrate=now;ring(cx,cy,now,C.celebrate,GREEN);ring(cx,cy,now,C.celebrate+180,GREEN);
+  // the song as bars: click one, or N
+  const top=H*.24+r+56,bw=(R-L)/16;C.barHits=[];
+  for(let b=0;b<16;b++){const ns=song.filter((n)=>n.bar===b),isBad=ns.some((n)=>n.slip),isFix=ns.some((n)=>n.fixed),bx=L+b*bw+3,on=b===C.focus;
+    g.fillStyle=isBad?css(AMBER,.6+.25*Math.sin(now/200)):isFix?css(GREEN,.55):'rgba(255,255,255,.09)';g.beginPath();g.roundRect(bx,top,bw-6,22,6);g.fill();
+    if(on){g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.roundRect(bx-3,top-3,bw,28,8);g.stroke()}C.barHits.push([bx,top,bw-6,22,b])}
+  // the focused bar, big
+  if(C.focus>=0){C.cam+=(C.focus-C.cam)*Math.min(1,dt*8);const btop=top+60,h=Math.min(H-btop-90,200),{y,sp}=board(L,R,btop,h),ppb=(R-L-40)/4,sz=Math.min(28,sp*.6),x=(t)=>L+20+(t-C.cam*4)*ppb+ppb*.25;
+    g.save();g.beginPath();g.rect(L,btop-30,R-L,h+60);g.clip();
+    for(const n of song){const xx=x(n.t);if(xx<L-30||xx>R+30)continue;const {yy,label,hop}=placeOf(n,now,y),c=rgb(COL[n.s]),fresh=now-n.flash<450;
+      keycap(xx,yy-hop*sp*.4,sz,label,c,{rim:n.slip?AMBER:n.fixed?GREEN:null,rimA:.85,glow:fresh?20:0});if(fresh)ring(xx,yy,now,n.flash,GREEN)}
+    g.restore();
+    const r0=song.filter((n)=>n.bar===C.focus&&n.slip);if(r0.length)chip(W*.5,btop+h+40,`Press ${r0[0].right<r0[0].s?'↓':'↑'} to put this run on the right string`,AMBER,r0[0].right<r0[0].s?'↓':'↑')}
+  else chip(W*.5,top+80,'Press N for the next problem (or click a bar)',[255,255,255],'N');
+  drawPops(now);
+}
+function cleanNext(){const r=runs();if(!r.length)return;const after=r.find((x)=>x[0].bar>C.focus)||r[0];C.focus=after[0].bar}
+function cleanFix(dir){const r0=song.filter((n)=>n.bar===C.focus&&n.slip);if(!r0.length)return;const now=performance.now();if(Math.sign(r0[0].right-r0[0].s)!==dir){pops.push({text:'other way',x:W*.5,y:H*.6,at:now,col:[248,113,113]});return}
+  r0.forEach((n)=>moveTo(n,n.right,now));pops.push({text:'+'+Math.round(r0.length/song.length*100)+'% clean',x:W*.5,y:H*.2+90,at:now,big:true});setTimeout(()=>{if(runs().length)cleanNext()},650)}
+
+// ---- the loop, keys, mouse ----
+const HOW={
+  play:['The song scrolls like a game. A run on the wrong string lights up amber as it comes: press the arrow it shows (↓ or ↑) to put it on the right string. A counter keeps track of the runs fixed.','<kbd>↓</kbd> <kbd>↑</kbd> fix the lit run'],
+  arcade:['The board stopped, in the game\'s look. Click a note, double-click for its run, or drag a box. ↑ ↓ slides the picked notes to the next string, then F fixes the same riff everywhere else. The strip at the bottom shows where the problems are.','click / double-click / drag to pick · <kbd>↑</kbd> <kbd>↓</kbd> slide · <kbd>F</kbd> fix the repeats · <kbd>←</kbd> <kbd>→</kbd> other bars · <kbd>Esc</kbd> unpick'],
+  you:['Play the bar on your bass. Where you played a note on another string than the tab has, your way shows dashed in blue under it, and Enter puts the tab where you played it. (In the app the bass input would hear you; here Space plays it.)','<kbd>Space</kbd> play the bar · <kbd>↵</kbd> use mine · <kbd>←</kbd> <kbd>→</kbd> other bars'],
+  clean:['The whole song as bars: amber ones have a run on the wrong string. The ring shows how much of the tab is clean. N jumps to the next problem, the arrow fixes it and it moves on, until the ring is full.','<kbd>N</kbd> next problem · <kbd>↓</kbd> <kbd>↑</kbd> fix · click a bar'],
+};
+function setMode(m){mode=m;document.querySelectorAll('[data-m]').forEach((b)=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('how').textContent=HOW[m][0];document.getElementById('keys').innerHTML=HOW[m][1]}
+document.querySelectorAll('[data-m]').forEach((b)=>b.onclick=()=>setMode(b.dataset.m));
+document.getElementById('reset').onclick=()=>{song=makeSong();Object.assign(P,{beat:0,fixedRuns:0,streak:0,missed:new Set()});Object.assign(A,{view:0,offer:null});Object.assign(Y,{bar:2,played:[],playing:false,asked:false});Object.assign(C,{focus:-1,cam:0});C.shown=undefined};
+addEventListener('keydown',(e)=>{const k=e.key;
+  if(mode==='play'&&(k==='ArrowDown'||k==='ArrowUp')){e.preventDefault();playFix(k==='ArrowUp'?1:-1)}
+  if(mode==='arcade'){if(k==='ArrowDown'||k==='ArrowUp'){e.preventDefault();arcadeMove(k==='ArrowUp'?1:-1)}if(k==='f'||k==='F')arcadeFixAll();if(k==='ArrowRight')A.view=Math.min(14,A.view+2);if(k==='ArrowLeft')A.view=Math.max(0,A.view-2);if(k==='Escape')song.forEach((n)=>n.pick=false)}
+  if(mode==='you'){if(k===' '){e.preventDefault();Y.playing=true;Y.beat=-0.5;Y.played=[];Y.asked=false}if(k==='Enter')youUse();if(k==='ArrowRight'){Y.bar=Math.min(15,Y.bar+1);Y.asked=false;Y.played=[]}if(k==='ArrowLeft'){Y.bar=Math.max(0,Y.bar-1);Y.asked=false;Y.played=[]}}
+  if(mode==='clean'){if(k==='n'||k==='N')cleanNext();if(k==='ArrowDown'||k==='ArrowUp'){e.preventDefault();cleanFix(k==='ArrowUp'?1:-1)}}
+});
+let down=null,lastClick={n:null,at:0};
+cv.addEventListener('pointerdown',(e)=>{
+  if(mode==='clean'){const h=(C.barHits||[]).find(([x,y,w,hh])=>e.clientX>=x&&e.clientX<=x+w&&e.clientY>=y&&e.clientY<=y+hh);if(h)C.focus=h[4];return}
+  if(mode!=='arcade')return;
+  const hit=(A.hits||[]).find((h)=>Math.abs(e.clientX-h.x)<=h.w/2+2&&Math.abs(e.clientY-h.y)<=h.h/2+2);
+  if(hit){const now=performance.now(),n=hit.n;
+    if(lastClick.n===n&&now-lastClick.at<400){   // its run: neighbours on the same string in this bar
+      song.forEach((m)=>m.pick=false);song.filter((m)=>m.bar===n.bar&&m.s===n.s).forEach((m)=>m.pick=true);lastClick={n:null,at:0};return}
+    lastClick={n,at:now};if(!e.shiftKey){const was=n.pick;song.forEach((m)=>m.pick=false);n.pick=!was}else n.pick=!n.pick;return}
+  down=[e.clientX,e.clientY,e.shiftKey];
+});
+addEventListener('pointermove',(e)=>{if(down&&mode==='arcade'){if(Math.hypot(e.clientX-down[0],e.clientY-down[1])>6)A.box=[down[0],down[1],e.clientX,e.clientY]}});
+addEventListener('pointerup',()=>{if(mode==='arcade'&&A.box){const [x0,y0,x1,y1]=A.box,[ax,bx,ay,by]=[Math.min(x0,x1),Math.max(x0,x1),Math.min(y0,y1),Math.max(y0,y1)];if(!down[2])song.forEach((m)=>m.pick=false);
+  (A.hits||[]).forEach((h)=>{if(h.x>=ax&&h.x<=bx&&h.y>=ay&&h.y<=by)h.n.pick=true})}else if(mode==='arcade'&&down&&!down[2])song.forEach((m)=>m.pick=false);A.box=null;down=null});
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;g.setTransform(dpr,0,0,dpr,0,0);
+  if(mode==='play')drawPlay(now,dt);else if(mode==='arcade')drawArcade(now);else if(mode==='you')drawYou(now,dt);else drawClean(now,dt);requestAnimationFrame(frame)}
+size();setMode('play');requestAnimationFrame(frame);
+</script>
