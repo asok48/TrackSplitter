@@ -1978,6 +1978,28 @@ The game and Show my timing still use the guitar mode's octave matching (`samePi
   falls back from imported to mine and back, so picks saved the old way still count. Tested on a library copy with
   Amsterdam in the user's state (draft chosen, standard saved only for the imported tab): the song-select tuner reads
   Standard and the game asks for and gets the draft in standard (568 notes); without a pick the server still says drop D.
+- Moving and copying groups of notes on the board (2026-11-10, user: "I want to be able to copy a group of notes and copy them
+  to another section and drag them to where I want"). In the board editor, press on a picked note and drag sideways: all the
+  picked notes go together (lifted keycaps where they'd land, a dashed outline where they were, "→ 1 bar + 7/16" over the
+  board); ⌥ held while dragging drops a copy instead (amber keycaps; ⌥ can be pressed or let go along the way). The grabbed
+  note snaps to the grid (`editGrid`) and the rest keep their places around it counted in bars (`edU` / `edT`: bar number +
+  how far into it), so the rhythm holds where an imported tab's bars differ in length. Held at the board's edge it scrolls a
+  bar every 0.38 s; Esc puts them back; a press on a picked note without moving still picks just that one (on release).
+  Moves go to `POST /api/tab/mine/shift` (`shift_mine`): each like move_mine ("moved", or a hand-put note just goes), on its
+  string (`places`, the old place dropped), done from the far end of the way they go so a note landing where the next one was
+  isn't taken for it; refused (409) while a take waits for review, like ↑↓. One Undo (`kind: 'shift'`, the same call back).
+  Copies go through `edPlace` (factored out of ⌘V: /mine/add then /mine/strings, one Undo, picked). ⌘C's toast and the help
+  now say to paste then drag. Tested on a library copy (Brianstorm's draft): the API moved a run 80 ms and back exactly
+  (strings kept, 536 notes); on the board a box-picked bar dragged one bar later (rhythm fitted to bar 2), ⌘Z put it back;
+  ⌥-drag copied 2 bars on (4 added, 2 already there), Undo removed them; Esc mid-drag left the draft as it was; held at the
+  right edge the run went 6 bars on. Driven with synthetic pointer events, not a real trackpad.
+  Strings won't move on a waiting take's notes (user: "sometimes numbers wont go down a string", then "ahh, pending notes
+  wont, I need to save them first", then "Yes, do it here"): `strings_mine` refused while a take was pending, and
+  `change_mine` only looked in the saved notes. Both now find notes in the draft as shown (`shown_notes`: the waiting take
+  put in, as get_tab draws it); strings are kept by time and pitch in `places`, so they hold when the take is kept. A fret
+  change on a waiting take's note still asks to keep the take first, and so does a group move (`shift_mine`). Tested on a
+  library copy of Look What Happened (a 190-note take waiting): four of its notes moved A 7 -> E 12 with ↑↓'s call, one
+  A -> D with the single-note call, all shown on their new strings while waiting and still there after Keep.
 ## UI (static/index.html)
 
 - Sidebar: All songs, artists (hover ... -> rename/merge, delete; + New artist; drop a

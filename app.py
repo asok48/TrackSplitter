@@ -3231,6 +3231,17 @@ def change_mine(req: MineChange):
         raise HTTPException(404, "This song has no recorded tab.")
     note = min((n for n in mine["notes"] if n[2] == req.pitch and abs(n[0] - req.start) < 0.06),
                key=lambda n: abs(n[0] - req.start), default=None)
+    if note is None and mine.get("pending") and req.string is not None and req.to_pitch in (None, req.pitch):
+        note = min((n for n in shown_notes(mine) if n[2] == req.pitch and abs(n[0] - req.start) < 0.06),   # a waiting take's note: its string only
+                   key=lambda n: abs(n[0] - req.start), default=None)
+        if note is not None:
+            opens = tab.tunings_for("bass").get(req.tuning, (None, None, None))[1]
+            if not opens or not 0 <= req.string < len(opens) or not 0 <= req.pitch - opens[req.string] <= 24:
+                raise HTTPException(400, "That note can't be played on that string.")
+            mine["places"] = [p for p in mine.get("places", []) if not (abs(p[0] - note[0]) < 0.03 and p[1] == req.pitch and p[3] == req.tuning)] \
+                + [[note[0], req.pitch, req.string, req.tuning]]
+            (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+            return {"ok": True, "start": note[0], "pitch": req.pitch}
     if note is None:
         raise HTTPException(409 if mine.get("pending") else 404, "Keep or discard the new take first, then change this note."
                             if mine.get("pending") else "That note isn't in the draft any more.")
@@ -3265,6 +3276,18 @@ def change_mine(req: MineChange):
     return {"ok": True, "start": start, "pitch": pitch}
 
 
+def shown_notes(mine):
+    """The draft's notes as shown: with a take waiting for review, the take put in (and notes moved or deleted while it
+    waits), as get_tab draws them. Strings are kept by time and pitch (`places`), so a string picked for one of the take's
+    notes holds when it's kept (user: "sometimes numbers wont go down a string" ... "pending notes wont")."""
+    drafted = [list(n) for n in mine["notes"]]
+    p = mine.get("pending")
+    if not p:
+        return drafted
+    shown = apply_take(drafted, p["new"], p["start"], p["end"], p["mode"], bar_starts(mine), tag="new", grid=p.get("grid"))
+    return without_removed(with_moves(shown, p.get("moved", [])), p.get("removed", []))
+
+
 class StringMove(BaseModel):
     start: float
     pitch: int
@@ -3287,14 +3310,12 @@ def strings_mine(req: MineStrings):
     mine = read_mine(song_dir)
     if not mine:
         raise HTTPException(404, "This song has no recorded tab.")
-    if mine.get("pending"):
-        raise HTTPException(409, "Keep or discard the new take first, then move these notes.")
     opens = tab.tunings_for("bass").get(req.tuning, (None, None, None))[1]
     if not opens:
         raise HTTPException(400, "Unknown tuning.")
-    places, moved, skipped = mine.get("places", []), [], 0
+    places, moved, skipped, shown = mine.get("places", []), [], 0, shown_notes(mine)   # a waiting take's notes too
     for m in req.moves:
-        note = min((n for n in mine["notes"] if n[2] == m.pitch and abs(n[0] - m.start) < 0.06), key=lambda n: abs(n[0] - m.start), default=None)
+        note = min((n for n in shown if n[2] == m.pitch and abs(n[0] - m.start) < 0.06), key=lambda n: abs(n[0] - m.start), default=None)
         if note is None or not 0 <= m.string < len(opens) or not 0 <= m.pitch - opens[m.string] <= 24:
             skipped += 1
             continue
@@ -3303,6 +3324,59 @@ def strings_mine(req: MineStrings):
     mine["places"] = places
     (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
     return {"ok": True, "moved": moved, "skipped": skipped}
+
+
+class ShiftMove(BaseModel):
+    start: float                  # the note as it is now
+    pitch: int
+    to: float                     # its new start
+    string: Optional[int] = None  # the string it's on, kept there
+
+
+class MineShift(BaseModel):
+    song: str
+    tuning: str
+    moves: list[ShiftMove]
+
+
+@api.post("/api/tab/mine/shift")
+def shift_mine(req: MineShift):
+    """Move a group of the draft's notes in time at once (user: "copy a group of notes ... and drag them to where I want";
+    the board editor's drag, its Undo). Each like move_mine (in "moved", or a hand-put note just goes), on its string
+    (`places`, its old place dropped). Done from the far end of the way they go, so a note landing where the next one
+    was isn't taken for it (moves are found within 60 ms)."""
+    song_dir = library_path(req.song, 2)
+    mine = read_mine(song_dir)
+    if not mine:
+        raise HTTPException(404, "This song has no recorded tab.")
+    if mine.get("pending"):
+        raise HTTPException(409, "Keep or discard the new take first, then move these notes.")
+    if any(m.to < 0 for m in req.moves):
+        raise HTTPException(400, "A note can't move before the start of the song.")
+    opens = tab.tunings_for("bass").get(req.tuning, (None, None, None))[1]
+    later = sum(m.to - m.start for m in req.moves) > 0
+    moved, places, missing = [], mine.get("places", []), 0
+    for m in sorted(req.moves, key=lambda m: m.start, reverse=later):
+        move = [round(m.start, 3), m.pitch, round(m.to, 3)]
+        hand = next((h for h in mine.get("hand", []) if h[2] == m.pitch and abs(h[0] - m.start) < 0.03), None)
+        if hand:
+            hand[1], hand[0] = round(hand[1] + m.to - hand[0], 3), round(m.to, 3)
+        elif any(n[2] == m.pitch and abs(n[0] - m.start) < 0.06 for n in mine["notes"]):
+            mine["moved"] = mine.get("moved", []) + [move]
+        else:
+            missing += 1
+            continue
+        mine["notes"] = with_moves(mine["notes"], [move])
+        places = [p for p in places if not (abs(p[0] - m.start) < 0.03 and p[1] == m.pitch)]
+        if m.string is not None and opens and 0 <= m.string < len(opens) and 0 <= m.pitch - opens[m.string] <= 24:
+            places = [p for p in places if not (abs(p[0] - m.to) < 0.03 and p[1] == m.pitch and p[3] == req.tuning)] + [[round(m.to, 3), m.pitch, m.string, req.tuning]]
+        moved.append([round(m.to, 3), m.pitch, m.string])
+    if not moved:
+        raise HTTPException(404, "Those notes aren't in the draft any more.")
+    mine["places"] = places
+    mine["notes"] = sorted(mine["notes"], key=lambda n: n[:3])
+    (song_dir / MINE_FILE).write_text(json.dumps(mine), encoding="utf-8")
+    return {"ok": True, "moved": moved, "missing": missing}
 
 
 class BarShift(BaseModel):

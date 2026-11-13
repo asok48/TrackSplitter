@@ -3015,7 +3015,7 @@
         <li><kbd>Enter</kbd> if it's right as it is: on to the next.</li>
         <li><kbd>⌘Z</kbd> takes a move back. <kbd>Esc</kbd> unpicks, then closes.</li>
       </ol>
-      <p class="fix-help-note">More keys: <kbd>⇧Tab</kbd> the run before · <kbd>⌥Tab</kbd> every run, not just the ones that look off · <kbd>⇧→</kbd> <kbd>⇧←</kbd> pick one note more / fewer · one note picked: type its fret, <kbd>⌫</kbd> deletes it, <kbd>N</kbd> adds one after it, <kbd>⌥←</kbd> <kbd>⌥→</kbd> nudge it a grid step · double-click a string to add a note there · <kbd>F</kbd> also fix the same notes (when it asks) · <kbd>Space</kbd> loops the picked bars · <kbd>H</kbd> without the bass / the song / the bass alone · <kbd>←</kbd> <kbd>→</kbd> a bar (or scroll) · <kbd>−</kbd> <kbd>+</kbd> bars on screen · <kbd>Home</kbd> <kbd>End</kbd> · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copy bars and paste them from the first bar on screen (for bars the tab left out).</p>
+      <p class="fix-help-note">More keys: <kbd>⇧Tab</kbd> the run before · <kbd>⌥Tab</kbd> every run, not just the ones that look off · <kbd>⇧→</kbd> <kbd>⇧←</kbd> pick one note more / fewer · one note picked: type its fret, <kbd>⌫</kbd> deletes it, <kbd>N</kbd> adds one after it, <kbd>⌥←</kbd> <kbd>⌥→</kbd> nudge it a grid step · double-click a string to add a note there · <kbd>F</kbd> also fix the same notes (when it asks) · <kbd>Space</kbd> loops the picked bars · <kbd>H</kbd> without the bass / the song / the bass alone · <kbd>←</kbd> <kbd>→</kbd> a bar (or scroll) · <kbd>−</kbd> <kbd>+</kbd> bars on screen · <kbd>Home</kbd> <kbd>End</kbd> · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copy the picked notes and paste them from the first bar on screen · drag picked notes along to move them, hold <kbd>⌥</kbd> while dragging to drop a copy (they snap to the grid; hold them at the board's edge to go further; <kbd>Esc</kbd> puts them back).</p>
       <p class="fix-help-note">Fixes go into your draft, a copy: on the automatic or an imported tab, the first one makes it, and the tab itself stays as it was. Fixed notes stay where you put them, and the notes around them follow your hand position. One note at a time still works: click it, then <kbd>↑</kbd> <kbd>↓</kbd> for the string, a number for the fret.</p>
     </div>
     <div class="dlg-foot"><span class="spacer"></span><button type="button" class="btn primary" data-close>Got it</button></div>
@@ -8236,7 +8236,7 @@ $('#import-form').addEventListener('submit', async (e) => {
   // offers amber; click one to go there). Space plays the song, the board following it.
   const ED_BARS_KEY = 'encore-board-bars';
   const ed = { on: false, view: 0, pos: 0, ok: new Set(), loop: null, pickDir: 0, bars: (() => { try { const b = Number(localStorage.getItem(ED_BARS_KEY)); return [2, 4, 8].includes(b) ? b : 4; } catch { return 4; } })(),   // (pref() isn't defined yet here)
-                 anims: new Map(), moved: new Map(), hits: [], box: null, down: null, last: { k: -1, at: 0 } };
+                 anims: new Map(), moved: new Map(), hits: [], box: null, down: null, drag: null, last: { k: -1, at: 0 } };
   const edKey = (t, pitch) => `${t.toFixed(3)}|${pitch}`;
   function edEdges() {
     const d = tabView.data;
@@ -8251,7 +8251,7 @@ $('#import-form').addEventListener('submit', async (e) => {
   function edOpen() {
     const d = tabView.data;
     if (!d?.notes?.length || isGuitarTab()) return;
-    Object.assign(ed, { on: true, anims: new Map(), box: null, down: null });
+    Object.assign(ed, { on: true, anims: new Map(), box: null, down: null, drag: null });
     const e = edEdges(), t = tabTime();                   // start at the bars being played (or the first picked note)
     const k0 = pickedNotes()[0], at = k0 !== undefined ? d.notes[k0][0] : t;
     ed.view = Math.max(0, Math.min(e.length - 2, e.findIndex((b, j) => j + 1 < e.length && at < e[j + 1])));
@@ -8508,7 +8508,7 @@ $('#import-form').addEventListener('submit', async (e) => {
       return { bar: b - b0, at: (t - e[b]) / len, dur: Math.max(0.02, (te - t) / len), s, f, pitch: open[s] + f };
     }).filter((n) => n.f !== 'x');
     tabClip = { notes, bars: Math.max(...notes.map((n) => n.bar)) + 1 };
-    toast(`Copied ${tabClip.bars} bar${tabClip.bars > 1 ? 's' : ''} (${notes.length} notes). ⌘V pastes them from the first bar on screen.`);
+    toast(`Copied ${notes.length} notes. ⌘V pastes them from the first bar on screen, then drag them where you want.`);
   }
   async function edPaste() {
     if (!tabClip || !tabView.data) return;
@@ -8524,7 +8524,13 @@ $('#import-form').addEventListener('submit', async (e) => {
       if (open[n.s] === undefined || n.pitch - open[n.s] < 0) continue;
       placed.push({ t, end: +(t + n.dur * len).toFixed(3), pitch: n.pitch, s: n.s });
     }
-    if (!placed.length) return;
+    const r = await edPlace(placed);
+    if (r) toast(`Pasted ${r.added} notes from bar ${T + 1}${r.skipped ? ` (${r.skipped} were there already)` : ''}. Drag them to move them; Undo takes them out.`);
+  }
+  // Notes put into the draft on their strings ({t, end, pitch, s} each), picked, one Undo: a paste, a copy dragged off.
+  async function edPlace(placed) {
+    if (!placed.length) return null;
+    const d = tabView.data;
     try {
       const r = await postJSON('/api/tab/mine/add', { song: tabView.song, notes: placed.map((p) => [p.t, p.end, p.pitch]) });
       const moves = r.added.map(([t, , pitch]) => ({ start: t, pitch, string: placed.find((p) => p.pitch === pitch && Math.abs(p.t - t) < 0.002)?.s })).filter((m) => m.string !== undefined);
@@ -8532,10 +8538,48 @@ $('#import-form').addEventListener('submit', async (e) => {
       pushUndo({ kind: 'fill', song: tabView.song, notes: r.added });   // Undo takes them all out
       tabView.reselectMany = moves;
       await loadTab(d.tuning);
-      const skipped = placed.length - r.added.length;
-      edLabels();
-      toast(`Pasted ${r.added.length} notes from bar ${T + 1}${skipped ? ` (${skipped} were there already)` : ''}. Undo takes them out.`);
-    } catch (err) { toast(err.message, 'error'); }
+      edLabels(); ed.movedAt = performance.now();
+      return { added: r.added.length, skipped: placed.length - r.added.length };
+    } catch (err) { toast(err.message, 'error'); return null; }
+  }
+  // Dragging picked notes along the board (user: "copy a group of notes and copy them to another section and drag them to
+  // where I want"): the note grabbed snaps to the grid (`editGrid`) and the rest keep their places around it, counted in
+  // bars (`edU`: bar number + how far into it), so the rhythm holds where bars differ in length. ⌥ held: a copy goes there
+  // and the notes stay. The board scrolls when the pointer is held at its edge; Esc puts them back.
+  const edU = (t) => {                                  // a time as bars from the first bar line (past either end: the end bar's length)
+    const e = edEdges(), last = e.length - 1, i = t < e[0] ? 0 : t >= e[last] ? last - 1 : Math.max(0, e.findIndex((b, j) => j < last && t < e[j + 1]));
+    return i + (t - e[i]) / ((e[i + 1] - e[i]) || 1);
+  };
+  const edT = (u) => { const e = edEdges(), i = Math.max(0, Math.min(e.length - 2, Math.floor(u))); return e[i] + (u - i) * ((e[i + 1] - e[i]) || 1); };
+  function edDragDu() {                                 // how far the drag has gone, in bars (snapped); 0 until it moves
+    const dr = ed.drag, A = ed.at, d = tabView.data;
+    if (!dr?.started || !A || !d.notes[dr.k]) return 0;
+    const e = edEdges(), ta = d.notes[dr.k][0], want = A.tOf(dr.px) - dr.grab;
+    const du = edU(snapBeat(e, Math.min(e[0], 0), e[e.length - 1] + 60, want)) - edU(ta);
+    const first = Math.min(...dr.ks.map((k) => d.notes[k][0]));
+    return edT(edU(first) + du) < 0 ? edU(0) - edU(first) : du;   // not before the song starts
+  }
+  async function edDrop(du, copy) {
+    if (Math.abs(du) < 1e-4) return;
+    if (!(await draftForFix())) return;                 // (on the automatic or an imported tab the first fix makes the draft; the picks follow)
+    const d = tabView.data, open = d.tunings.find((x) => x.key === d.tuning).open;
+    const ks = pickedNotes().filter((k) => d.notes[k][3] !== 'x');
+    if (!ks.length) return;
+    const at = (t) => +Math.max(0, edT(edU(t) + du)).toFixed(3);
+    if (copy) {
+      const r = await edPlace(ks.map((k) => { const [t, te, s, f] = d.notes[k], nt = at(t); return { t: nt, end: Math.max(nt + 0.02, at(te)), pitch: open[s] + f, s }; }));
+      if (r) toast(`Copied ${r.added} note${r.added === 1 ? '' : 's'} there${r.skipped ? ` (${r.skipped} were there already)` : ''}. Undo takes them out.`);
+      return;
+    }
+    const moves = ks.map((k) => { const [t, , s, f] = d.notes[k]; return { start: t, pitch: open[s] + f, to: at(t), string: s }; });
+    try {
+      const r = await postJSON('/api/tab/mine/shift', { song: tabView.song, tuning: d.tuning, moves });
+      pushUndo({ kind: 'shift', song: tabView.song, tuning: d.tuning, moves: moves.map((m) => ({ start: m.to, pitch: m.pitch, to: m.start, string: m.string })) });
+      tabView.reselectMany = r.moved.map(([start, pitch, string]) => ({ start, pitch, string }));
+      moves.forEach((m) => ed.moved.set(edKey(m.to, m.pitch), true));
+      await loadTab(d.tuning);
+      edLabels(); ed.movedAt = performance.now();
+    } catch (err) { toast(err.message, 'error'); loadTab(d.tuning); }
   }
   function edCap(g, x, y, sz, label, c, st = {}) {        // a keycap, as the Arcade board's
     g.font = `700 ${sz}px ${GAME_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -8602,9 +8646,13 @@ $('#import-form').addEventListener('submit', async (e) => {
     const tun = d.tunings.find((x) => x.key === d.tuning), open = tun.open, names = tun.strings, n = names.length, e = edEdges();
     // following the song while it plays
     const now = tabTime();
-    if (player.playing && !ed.down) {
+    if (player.playing && !ed.down && !ed.drag?.started) {
       const bi = Math.max(0, e.findIndex((b, j) => j + 1 < e.length && now < e[j + 1]));
       if (bi >= ed.view + ed.bars || bi < ed.view) ed.view = bi;
+    }
+    if (ed.drag?.started && ed.at && ms - (ed.drag.edgeAt || 0) > 380) {   // held at the board's edge while dragging: a bar along
+      const step = ed.drag.px < ed.at.L + 36 ? -1 : ed.drag.px > ed.at.R - 36 ? 1 : 0;
+      if (step) { ed.view += step; ed.drag.edgeAt = ms; }
     }
     ed.view = Math.max(0, Math.min(Math.max(0, e.length - 2), ed.view));
     // The board glides to where it's going (user: "lots of clicking and scrolling between pages"): ← → a bar at a time,
@@ -8651,10 +8699,16 @@ $('#import-form').addEventListener('submit', async (e) => {
     let gapPx = Infinity;
     { const lastOn = {}; for (const [t, , s, f] of d.notes) { if (t < t0 - 0.4 || t > t1 + 0.4 || f === 'x') continue; if (lastOn[s] !== undefined) gapPx = Math.min(gapPx, x(t) - x(lastOn[s])); lastOn[s] = t; } }
     const sz = Math.max(12, Math.min(28, sp * 0.6, (gapPx - 1) / 1.06)), picked = new Set(pickedNotes());
+    const du = edDragDu(), dragged = du && ed.drag ? new Set(ed.drag.ks) : null;
     ed.hits = [];
     for (let k = 0; k < d.notes.length; k++) {
       const [t, , s, f] = d.notes[k];
       if (t < t0 - 0.4 || t >= t1 + 0.4 || f === 'x') continue;
+      if (dragged?.has(k) && !ed.drag.copy) {              // moving: only a faint outline where it was
+        const lab = String(f); g.font = `700 ${sz}px ${GAME_FONT}`; const cw = Math.max(sz * 1.05, g.measureText(lab).width + sz * 0.55), ch = sz * 1.12;
+        g.setLineDash([3, 3]); g.strokeStyle = 'rgba(255,255,255,.28)'; g.lineWidth = 1.2; g.beginPath(); g.roundRect(x(t) - cw / 2, y(s) - ch / 2, cw, ch, ch * 0.3); g.stroke(); g.setLineDash([]);
+        continue;
+      }
       const pitch = open[s] + f, key = edKey(t, pitch), an = ed.anims.get(key);
       let yy = y(s), label = String(f), hop = 0;
       if (an) {
@@ -8675,6 +8729,17 @@ $('#import-form').addEventListener('submit', async (e) => {
       const w = edCap(g, x(t), yy - hop * sp * 0.4, sz, label, col(s), { rim: on ? [255, 255, 255] : moved ? [110, 231, 168] : null, fill: on ? [255, 255, 255] : col(s), fillA: on ? 0.16 : 0.1, glow: on ? 14 : fresh * 20 });
       if (fresh > 0) { g.strokeStyle = `rgba(110,231,168,${0.7 * fresh})`; g.lineWidth = 2.5 * fresh + 0.5; g.beginPath(); g.arc(x(t), y(s), 12 + 40 * (1 - fresh), 0, 7); g.stroke(); }
       if (x(t) > L + 8 && x(t) < R - 8) ed.hits.push({ k, x: x(t), y: yy, w, h: sz * 1.12 });
+    }
+    if (dragged) for (const k of dragged) {                // where they'd go: lifted keycaps (amber for a copy)
+      const [t, , s, f] = d.notes[k], nt = edT(edU(t) + du);
+      if (nt < t0 - 0.4 || nt >= t1 + 0.4 || f === 'x') continue;
+      edCap(g, x(nt), y(s) - 3, sz, String(f), col(s), { rim: ed.drag.copy ? [252, 211, 77] : [255, 255, 255], fill: [255, 255, 255], fillA: 0.2, glow: 18 });
+    }
+    if (dragged) {                                         // how far, in words, over the board
+      const G = Number(editGrid), steps = Math.abs(Math.round(du * G)), wb = Math.floor(steps / G), rest = steps % G;   // "1 bar + 7/16"
+      const txt = `${ed.drag.copy ? 'Copy ' : ''}${du > 0 ? '→' : '←'} ${[wb ? `${wb} bar${wb === 1 ? '' : 's'}` : '', rest ? `${rest}/${G}` : ''].filter(Boolean).join(' + ')}`;
+      g.font = `600 13px ${GAME_FONT}`; g.fillStyle = ed.drag.copy ? 'rgba(252,211,77,.95)' : 'rgba(245,245,247,.9)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(txt, Math.max(L + 60, Math.min(R - 60, ed.drag.px)), top - 44);
     }
     g.restore();
     if (ed.box) {
@@ -8700,6 +8765,7 @@ $('#import-form').addEventListener('submit', async (e) => {
       if (offer) hint.push({ k: 'F', t: `also the same notes in ${offer.places.length} place${offer.places.length > 1 ? 's' : ''}`, main: true });
       if (sus) hint.push({ k: 'Enter', t: "it's fine" });
       if (picked.size === 1) hint.push({ k: '0–9', t: 'fret' }, { k: 'N', t: 'add one after' });
+      hint.push({ k: 'drag', t: 'move' }, { k: '⌥ drag', t: 'copy' });
       hint.push({ k: 'Tab', t: sus ? 'skip' : 'next' });
       if (sus) edWhy(g, W / 2, cy - 2, sus.why);
     } else if (performance.now() - (ed.movedAt || 0) < 6000 && tabView.undo.some((u) => u.song === tabView.song)) {
@@ -8731,7 +8797,13 @@ $('#import-form').addEventListener('submit', async (e) => {
     }
     const hit = ed.hits.find((h) => Math.abs(px - h.x) <= h.w / 2 + 2 && Math.abs(py - h.y) <= h.h / 2 + 2);
     if (hit) {
-      const nowMs = performance.now(), again = ed.last.k === hit.k && nowMs - ed.last.at < 400;
+      const nowMs = performance.now(), again = ed.last.k === hit.k && nowMs - ed.last.at < 400, wasPicked = pickedNotes().includes(hit.k);
+      if (!e.shiftKey) {                                   // a drag may follow (picked notes move together; ⌥: a copy)
+        const t = tabView.data.notes[hit.k][0];
+        ed.drag = { k: hit.k, x0: px, px, grab: ed.at ? ed.at.tOf(px) - t : 0, copy: e.altKey, started: false, ks: null };
+        try { edCanvas.setPointerCapture(e.pointerId); } catch { /* moves still come to the window */ }
+        if (wasPicked && pickedNotes().length > 1 && !again) { ed.drag.deferClick = true; return; }   // a click without moving picks just it (on release)
+      }
       ed.last = again ? { k: -1, at: 0 } : { k: hit.k, at: nowMs };
       if (again && !e.shiftKey) {                          // again: its run, within the bars in view
         const ks = ed.hits.map((h) => h.k).sort((a, b) => a - b);
@@ -8748,11 +8820,25 @@ $('#import-form').addEventListener('submit', async (e) => {
     ed.down = { x: px, y: py, shift: e.shiftKey };
   });
   window.addEventListener('pointermove', (e) => {
+    if (ed.on && ed.drag) {
+      const r = edCanvas.getBoundingClientRect(), dr = ed.drag;
+      dr.px = e.clientX - r.left;
+      if (!dr.started && Math.abs(dr.px - dr.x0) > 5) { dr.started = true; dr.ks = pickedNotes().includes(dr.k) ? pickedNotes() : [dr.k]; dr.copy = dr.copy || e.altKey; }
+      if (dr.started) dr.copy = e.altKey;                  // ⌥ can be pressed or let go along the way
+      return;
+    }
     if (!ed.on || !ed.down) return;
     const r = edCanvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
     if (ed.box || Math.hypot(px - ed.down.x, py - ed.down.y) > 6) ed.box = [ed.down.x, ed.down.y, px, py];
   });
   window.addEventListener('pointerup', () => {
+    if (ed.on && ed.drag) {
+      const dr = ed.drag, du = edDragDu();
+      ed.drag = null;
+      if (!dr.started) { if (dr.deferClick) noteClick(dr.k, {}); return; }
+      edDrop(du, dr.copy);
+      return;
+    }
     if (!ed.on || !ed.down) return;
     if (ed.box) {
       const [ax, ay, bx, by] = ed.box, [x0, x1, y0, y1] = [Math.min(ax, bx), Math.max(ax, bx), Math.min(ay, by), Math.max(ay, by)];
@@ -8766,6 +8852,7 @@ $('#import-form').addEventListener('submit', async (e) => {
   $('#ed-dlg').addEventListener('keydown', (e) => {
     if (!ed.on || e.target.closest?.('input, textarea')) return;
     const k = e.key, e2 = edEdges();
+    if (ed.drag) { if (k === 'Escape') { e.preventDefault(); ed.drag = null; } return; }   // a drag going: Esc puts the notes back
     if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === 'z') { e.preventDefault(); undoEdit().then(edPrune); return; }
     if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === 'c') { e.preventDefault(); edCopy(); return; }
     if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === 'v') { e.preventDefault(); edPaste(); return; }
@@ -9001,11 +9088,12 @@ $('#import-form').addEventListener('submit', async (e) => {
     try {
       if (r.kind === 'strings') { await postJSON('/api/tab/mine/strings', { song: r.song, tuning: r.tuning, moves: r.moves }); tabView.reselectMany = r.keep === false ? null : r.moves; fixMore(null); }
       else if (r.kind === 'move') await postJSON('/api/tab/mine/move', { song: r.song, start: r.to, pitch: r.pitch, to: r.start });
+      else if (r.kind === 'shift') { await postJSON('/api/tab/mine/shift', { song: r.song, tuning: r.tuning, moves: r.moves }); tabView.reselectMany = r.moves.map((m) => ({ start: m.to, pitch: m.pitch, string: m.string })); }
       else if (r.kind === 'change') await postJSON('/api/tab/mine/change', { song: r.song, start: r.start, pitch: r.to, to_pitch: r.from, string: r.s, tuning: r.tuning });
       else if (r.kind === 'add') await postJSON('/api/tab/mine/note', { song: r.song, start: r.start, pitch: r.pitch });
       else if (r.kind === 'fill') for (const [start, , pitch] of r.notes) await postJSON('/api/tab/mine/note', { song: r.song, start, pitch });
       else await postJSON('/api/tab/mine/note?restore=true', { song: r.song, start: r.start, end: r.end, pitch: r.pitch });
-      if (r.kind !== 'add' && r.kind !== 'fill' && r.kind !== 'strings') tabView.reselect = { t: r.start, pitch: r.kind === 'change' ? r.from : r.pitch };   // the note it put back
+      if (r.kind !== 'add' && r.kind !== 'fill' && r.kind !== 'strings' && r.kind !== 'shift') tabView.reselect = { t: r.start, pitch: r.kind === 'change' ? r.from : r.pitch };   // the note it put back
       await loadTab($('#tab-tuning').value);   // (awaited: the board editor looks at the result)
     } catch (err) { toast(err.message, 'error'); loadTab($('#tab-tuning').value); }
   }
